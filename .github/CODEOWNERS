@@ -1,0 +1,7 @@
+# Default owners for everything in the repo, unless a later match takes precedence.
+# TODO: replace with real GitHub usernames/teams before enabling branch protection.
+* @TODO-set-owner
+
+# Example of a narrower override — uncomment and adjust as the team splits ownership:
+# /src/solver/ @TODO-solver-owner
+# /formal/ @TODO-formal-proofs-owner

@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Pre-commit gate: block large files, strip notebook outputs, then ruff
+# format, ruff check, radon complexity (grade A required) on staged Python.
+# Installed via `make install-hooks` / `scripts/install-hooks.sh` — see AGENTS.md.
+set -euo pipefail
+
+max_file_size_mb=${MAX_COMMIT_FILE_SIZE_MB:-5}
+max_file_size_bytes=$((max_file_size_mb * 1024 * 1024))
+
+staged_all_files=()
+while IFS= read -r file; do
+    [ -n "$file" ] && staged_all_files+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+large_files=()
+if [ ${#staged_all_files[@]} -gt 0 ]; then
+    for file in "${staged_all_files[@]}"; do
+        [ -f "$file" ] || continue
+        size_bytes=$(wc -c <"$file" | tr -d ' ')
+        if [ "$size_bytes" -gt "$max_file_size_bytes" ]; then
+            large_files+=("$file ($((size_bytes / 1024 / 1024))MB)")
+        fi
+    done
+fi
+
+if [ ${#large_files[@]} -gt 0 ]; then
+    echo "pre-commit: blocked — staged file(s) over ${max_file_size_mb}MB:" >&2
+    printf '  %s\n' "${large_files[@]}" >&2
+    echo "pre-commit: data/results usually don't belong in git — see 'Why data isn't committed' in data/README.md." >&2
+    echo "pre-commit: if this file genuinely belongs in git, re-run with MAX_COMMIT_FILE_SIZE_MB=<n> git commit ..." >&2
+    exit 1
+fi
+
+staged_ipynb_files=()
+while IFS= read -r file; do
+    [ -n "$file" ] && staged_ipynb_files+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR -- '*.ipynb')
+
+if [ ${#staged_ipynb_files[@]} -gt 0 ]; then
+    echo "pre-commit: nbstripout (stripping notebook outputs)"
+    uv run nbstripout "${staged_ipynb_files[@]}"
+    git add "${staged_ipynb_files[@]}"
+fi
+
+staged_py_files=()
+while IFS= read -r file; do
+    [ -n "$file" ] && staged_py_files+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACMR -- '*.py')
+
+if [ ${#staged_py_files[@]} -eq 0 ]; then
+    exit 0
+fi
+
+echo "pre-commit: ruff format --check"
+if ! uv run ruff format --check "${staged_py_files[@]}"; then
+    echo "pre-commit: formatting issues found — run 'uv run ruff format' on the files above and re-stage." >&2
+    exit 1
+fi
+
+echo "pre-commit: ruff check"
+if ! uv run ruff check "${staged_py_files[@]}"; then
+    echo "pre-commit: lint issues found — fix and re-stage." >&2
+    exit 1
+fi
+
+echo "pre-commit: radon complexity (grade A required)"
+complexity_issues=$(uv run radon cc -s -n B "${staged_py_files[@]}")
+if [ -n "$complexity_issues" ]; then
+    echo "$complexity_issues" >&2
+    echo "pre-commit: functions above complexity grade A found — simplify before committing." >&2
+    echo "pre-commit: see 'Fixing a complexity error' in CONTRIBUTING.md for what this means and how to fix it." >&2
+    exit 1
+fi
+
+exit 0

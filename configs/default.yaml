@@ -1,0 +1,7 @@
+project_name: experiments-template
+modeling: pyomo
+solver: gurobi
+paths:
+  instances: data/instances
+  processed: data/processed
+  results: results

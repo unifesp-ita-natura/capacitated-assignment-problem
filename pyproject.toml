@@ -1,0 +1,42 @@
+[project]
+name = "experiments-template"
+version = "0.1.0"
+description = "Starter repository for optimization research experiments"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "gurobipy>=12.0.0,<13.0.0",
+    "pydantic>=2.11.0",
+    "pyomo>=6.9.0",
+    "numpy>=2.0.0,<2.3",
+    "pyyaml>=6.0,<7.0",
+]
+
+[project.optional-dependencies]
+viz = [
+    "matplotlib>=3.10.8",
+]
+tracking = [
+    "mlflow>=2.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "nbstripout>=0.7.1",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
+    "radon>=6.0.1",
+    "ruff>=0.15.11",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+    ".",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

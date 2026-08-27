@@ -1,0 +1,53 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+.pytest_cache/
+build/
+dist/
+wheels/
+*.egg-info
+.coverage
+
+# Virtual environments
+.venv
+
+# .tex compiler files
+*.aux
+*.fdb_latexmk
+*.fls
+docs/paper/*.log
+docs/paper/*.out
+docs/paper/*.gz
+docs/paper/*.bbl
+docs/paper/*.blg
+
+# result files
+results/
+
+# data files — ignore contents, keep the directory skeleton (.gitkeep, README)
+data/generated/*
+data/instances/*
+data/processed/*
+!data/generated/.gitkeep
+!data/instances/.gitkeep
+!data/processed/.gitkeep
+.DS_Store
+
+# env files
+.env
+
+# Lean/Lake build artifacts
+formal/.lake/
+*.bbl
+*.blg
+*.out
+*.synctex.gz
+paper.log
+**/.obsidian
+
+# notebooks
+.ipynb_checkpoints/
+
+# experiment outputs (keep experiment scripts/configs, drop their run artifacts)
+experiments/**/outputs/
+experiments/**/results/
