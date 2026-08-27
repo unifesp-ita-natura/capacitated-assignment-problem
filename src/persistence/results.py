@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import csv
 import subprocess
+from datetime import UTC, date, datetime
 from pathlib import Path
 
-from datetime import datetime, timezone, date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def current_git_commit() -> str | None:
@@ -41,7 +41,7 @@ class ForecastResult(BaseModel):
     forecast_horizon: tuple[date, date]  # (period_start, period_end) the demand values cover
     input_data_range: tuple[date, date]  # (history_start, history_end) used to train the model
     git_commit: str | None = Field(default_factory=current_git_commit)
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("forecast_horizon", "input_data_range")
     @classmethod
@@ -60,7 +60,7 @@ class ForecastResult(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _uncertainty_matches_demand(self) -> "ForecastResult":
+    def _uncertainty_matches_demand(self) -> ForecastResult:
         if self.uncertainty is not None:
             extra = set(self.uncertainty) - set(self.demand)
             if extra:
