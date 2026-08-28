@@ -16,5 +16,5 @@ def test_main_prints_status(mock_solve_example, capsys):
     main()
 
     captured = capsys.readouterr()
-    assert "experiments-template" in captured.out
+    assert "capacitated-assignment-problem" in captured.out
     assert "ok" in captured.out
