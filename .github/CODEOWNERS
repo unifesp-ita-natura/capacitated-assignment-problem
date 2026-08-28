@@ -1,7 +1,9 @@
-# Default owners for everything in the repo, unless a later match takes precedence.
-# TODO: replace with real GitHub usernames/teams before enabling branch protection.
-* @TODO-set-owner
+# No default/catch-all owner: only forecasting/ and solver/ paths below have
+# required reviewers. Everything else (config, persistence, cli, tests, docs,
+# root files) has no required owner.
 
-# Example of a narrower override — uncomment and adjust as the team splits ownership:
-# /src/solver/ @TODO-solver-owner
-# /formal/ @TODO-formal-proofs-owner
+/src/forecasting/ @unifesp-ita-natura/stats
+/tests/forecasting/ @unifesp-ita-natura/stats
+
+/src/solver/ @unifesp-ita-natura/otimization
+/tests/solver/ @unifesp-ita-natura/otimization
