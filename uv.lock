@@ -180,6 +180,56 @@ wheels = [
 ]
 
 [[package]]
+name = "capacitated-assignment-problem"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "gurobipy" },
+    { name = "numpy" },
+    { name = "pydantic" },
+    { name = "pyomo" },
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+tracking = [
+    { name = "mlflow" },
+]
+viz = [
+    { name = "matplotlib" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "nbstripout" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "radon" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gurobipy", specifier = ">=12.0.0,<13.0.0" },
+    { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.10.8" },
+    { name = "mlflow", marker = "extra == 'tracking'", specifier = ">=2.14.0" },
+    { name = "numpy", specifier = ">=2.0.0,<2.3" },
+    { name = "pydantic", specifier = ">=2.11.0" },
+    { name = "pyomo", specifier = ">=6.9.0" },
+    { name = "pyyaml", specifier = ">=6.0,<7.0" },
+]
+provides-extras = ["viz", "tracking"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "nbstripout", specifier = ">=0.7.1" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "radon", specifier = ">=6.0.1" },
+    { name = "ruff", specifier = ">=0.15.11" },
+]
+
+[[package]]
 name = "certifi"
 version = "2026.7.22"
 source = { registry = "https://pypi.org/simple" }
@@ -631,56 +681,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/88/7f/731ff914b0255d3d065f45fd4e626d4b8c95dbcbaada049f337a6ac16410/docker-7.2.0.tar.gz", hash = "sha256:cebb93773d334f778e023a7ee352a8d6e13ab1bd3b863a4d4a59dec897df43ac", size = 118731, upload-time = "2026-07-09T14:53:46.39Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/75/23/529140fe1aab80fc6992f93a706deec709140a6397439139a054e1515c45/docker-7.2.0-py3-none-any.whl", hash = "sha256:a3f45fdeb9165e2d25d9a1d02ddf3bc70fb572cf5ebbf9b58558c22caf29b71f", size = 148775, upload-time = "2026-07-09T14:53:45.224Z" },
-]
-
-[[package]]
-name = "experiments-template"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "gurobipy" },
-    { name = "numpy" },
-    { name = "pydantic" },
-    { name = "pyomo" },
-    { name = "pyyaml" },
-]
-
-[package.optional-dependencies]
-tracking = [
-    { name = "mlflow" },
-]
-viz = [
-    { name = "matplotlib" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "nbstripout" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "radon" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "gurobipy", specifier = ">=12.0.0,<13.0.0" },
-    { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.10.8" },
-    { name = "mlflow", marker = "extra == 'tracking'", specifier = ">=2.14.0" },
-    { name = "numpy", specifier = ">=2.0.0,<2.3" },
-    { name = "pydantic", specifier = ">=2.11.0" },
-    { name = "pyomo", specifier = ">=6.9.0" },
-    { name = "pyyaml", specifier = ">=6.0,<7.0" },
-]
-provides-extras = ["viz", "tracking"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "nbstripout", specifier = ">=0.7.1" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "radon", specifier = ">=6.0.1" },
-    { name = "ruff", specifier = ">=0.15.11" },
 ]
 
 [[package]]

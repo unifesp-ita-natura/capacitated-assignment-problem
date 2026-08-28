@@ -1,5 +1,5 @@
-name = "Project"
-defaultTargets = ["Project"]
+name = "CapacitatedAssignmentProblem"
+defaultTargets = ["CapacitatedAssignmentProblem"]
 
 [[require]]
 name = "mathlib"
@@ -7,4 +7,4 @@ git = "https://github.com/leanprover-community/mathlib4"
 rev = "f34e762642b3470574f0117a100a8fc4eaeae651"
 
 [[lean_lib]]
-name = "Project"
+name = "CapacitatedAssignmentProblem"

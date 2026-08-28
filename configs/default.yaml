@@ -1,4 +1,4 @@
-project_name: experiments-template
+project_name: capacitated-assignment-problem
 modeling: pyomo
 solver: gurobi
 paths:
