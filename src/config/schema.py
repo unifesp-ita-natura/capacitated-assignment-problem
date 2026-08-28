@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field, model_validator
-from typing import Annotated, Literal, Union
 
 
 class Paths(BaseModel):
@@ -49,9 +50,7 @@ class LightGBMParams(BaseModel):
     lags: list[int] = [1, 2, 3, 4]
 
 
-ForecastParams = Annotated[
-    Union[NaiveParams, ArimaParams, LightGBMParams], Field(discriminator="model")
-]
+ForecastParams = Annotated[NaiveParams | ArimaParams | LightGBMParams, Field(discriminator="model")]
 
 
 class ForecastConfig(BaseModel):
