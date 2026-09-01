@@ -28,12 +28,31 @@ and `docs/conventions/function-design.md`.
 `configs/` (e.g. `configs/default.yaml`). YAML is a plain-text format for
 key/value settings — no code required to edit it.
 
+**Cycle shape / density shape (forecasting)** — the shape of demand over a
+sales cycle (e.g. a Natura campaign period), expressed as a distribution
+(density) rather than a single total — how volume is spread across the days
+of the cycle, per sector, not just how much volume there is in total.
+
 **Formulation** — a specific way of mathematically expressing a problem so a
 solver can work on it. Comparing formulations means trying different
 mathematical setups of the same underlying problem.
 
+**INA (anomaly detection)** — the project's term for flagging unusual/outlier
+demand patterns (as opposed to forecasting the "normal" volume or cycle
+shape). See `docs/literature/README.md`'s Zotero collection tree.
+
+**Lagrangian relaxation** — an exact-optimization technique that relaxes
+some hard constraints into the objective (with penalty multipliers), solving
+an easier problem repeatedly while adjusting the multipliers to bound or
+reach the original problem's optimum.
+
 **Lint / linting** — automated checks for likely bugs and style issues
 (unused variables, wrong types, etc.), done here by a tool called `ruff`.
+
+**Metaheuristic** — a general-purpose search strategy (e.g. simulated
+annealing, genetic algorithms) that explores good-enough solutions without
+guaranteeing optimality, used when exact methods are too slow for the problem
+size. See **SA**.
 
 **MIP (mixed-integer program)** — an optimization problem where some
 decision variables must be whole numbers (e.g. "use this route or don't," not
@@ -52,6 +71,11 @@ checks.
 
 **Repository (repo)** — the project's folder plus its full history, tracked
 by git.
+
+**SA (simulated annealing)** — a metaheuristic that searches for good
+solutions by accepting occasional worse moves (with a probability that
+shrinks over time, like cooling metal) so it can escape local optima rather
+than getting stuck near its starting point.
 
 **Solver** — the software that actually searches for a solution to an
 optimization problem once it's set up as a model (e.g. Gurobi, HiGHS,
