@@ -1,27 +1,10 @@
-# experiments-template
-
-A bare scaffold for optimization-research group projects.
+# capacitated-assignment-problem
 
 New to the team or new to software engineering in general? Start with
 `CONTRIBUTING.md` instead of this file — it's a step-by-step, plain-English
 walkthrough, with `docs/glossary.md` for any unfamiliar terms.
 
 ## Getting started
-
-1. Rename the project in `pyproject.toml`, `configs/default.yaml`, and
-   (if using `formal/`) `formal/lakefile.toml`.
-2. Fill in the `TODO`s in `CLAUDE.md` with your actual problem statement.
-3. Set real owners in `.github/CODEOWNERS` (currently `@TODO-set-owner`),
-   then turn on branch protection requiring the `CI / test` check and a
-   CODEOWNERS review.
-4. Replace `src/solver/mip/example.py` with your real model, following the
-   same Pyomo `ConcreteModel` → `SolverFactory(solver_name).solve(...)`
-   pattern. Add other solving approaches (CP-SAT, heuristics) as sibling
-   families under `src/solver/` — see `src/solver/README.md`.
-5. Point `.env` (gitignored) at your Gurobi license — see
-   `src/solver/README.md`.
-6. If you don't need Lean formal proofs, delete `formal/` and the matching
-   `AGENTS.md` bullet.
 
 ```bash
 make setup            # one-time per clone — installs deps, hooks, runs tests
@@ -88,7 +71,3 @@ again after cloning or creating a new worktree.
   protection
 - `.github/PULL_REQUEST_TEMPLATE.md` — fill-in-the-blanks PR description
   checklist
-
-## Repository settings
-
-Branch protection itself is a repo-settings toggle done in GitHub — turn it on once CODEOWNERS has real owners. 

@@ -28,9 +28,11 @@ results/
 data/generated/*
 data/instances/*
 data/processed/*
+data/raw/*
 !data/generated/.gitkeep
 !data/instances/.gitkeep
 !data/processed/.gitkeep
+!data/raw/.gitkeep
 .DS_Store
 
 # env files
