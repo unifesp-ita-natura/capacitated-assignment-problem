@@ -4,14 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TODO: replace this section with your project's actual problem statement — what
-is being modeled, what the solver decides, and what a "solve" produces. Keep
-it to a short paragraph; put details in `src/*/README.md` files, not here.
-
-This scaffold ships with a minimal Pyomo + Gurobi wiring
-(`src/solver/README.md`) and a config-loading pattern
-(`src/config/README.md`) as a starting point — replace or extend them with
-your actual model.
+This problem is a Generalized Assignment Problem (GAP) where we have a set of sectors and their respective historical orders. Each sector is grouped in a specific block and sub-block which determines the sector's start date for each cycle. The goal is to assign each sector to a specific block and sub-block in order to provide a more balanced order distribution across the blocks and sub-blocks. The solver will determine the optimal assignment of sectors to blocks and sub-blocks, taking into account the historical orders and the start dates for each cycle. The output of a solve will be a mapping of sectors to their assigned blocks and sub-blocks, along with any relevant metrics or statistics about the assignment.
 
 ## Commands
 
@@ -38,10 +31,6 @@ uv run python -m src.cli.main
 
 ## Architecture
 
-TODO: as the codebase grows, document the pipeline here the way the original
-template did — one or two sentences per package, linking to that package's
-own `README.md` for detail. Example:
-
 - `src/solver/README.md` — solve loop and model definition
 - `src/config/README.md` — config loading and schema
 - `src/persistence/README.md` — how results are written and read back
@@ -53,9 +42,7 @@ Cross-cutting references:
 
 ## Environment
 
-TODO: document your solver license setup here (this scaffold assumes a
-Gurobi license via `.env` — see `src/solver/README.md`). **Do not call the
-real solver directly in tests** — see `docs/conventions/testing.md`.
+Avoid using a commercial solver considering we are going to propose this solution to a company. We can use open-source solvers like HiGHS, CBC, GLPK, or SCIP.
 
 ## Conventions
 
@@ -68,9 +55,7 @@ These apply whenever you touch code, commit, or write a paper. Each is short —
 
 ## Formal proofs (optional)
 
-`formal/` has a Lean 4 / Mathlib scaffold for formalizing paper theorems, if
-your project needs one. See `formal/README.md`. If you don't need formal
-proofs, delete `formal/` and drop the requirement from `AGENTS.md`.
+`formal/` has a Lean 4 / Mathlib scaffold for formalizing paper theorems. See `formal/README.md`. 
 
 ## AGENTS.md
 
