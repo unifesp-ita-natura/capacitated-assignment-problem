@@ -13,6 +13,23 @@
       "env": {
         "SEMANTIC_SCHOLAR_API_KEY": "${SEMANTIC_SCHOLAR_API_KEY}"
       }
+    },
+    "zotero-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--with",
+        "zotero-mcp-server",
+        "zotero-mcp",
+        "serve"
+      ],
+      "env": {
+        "ZOTERO_LOCAL": "${ZOTERO_LOCAL}",
+        "ZOTERO_API_KEY": "${ZOTERO_API_KEY}",
+        "ZOTERO_LIBRARY_ID": "${ZOTERO_LIBRARY_ID}",
+        "ZOTERO_LIBRARY_TYPE": "${ZOTERO_LIBRARY_TYPE}"
+      }
     }
   }
 }
