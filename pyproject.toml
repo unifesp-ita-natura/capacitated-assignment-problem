@@ -19,6 +19,9 @@ viz = [
 tracking = [
     "mlflow>=2.14.0",
 ]
+forecast = [
+    "statsmodels>=0.15.0",
+]
 
 [dependency-groups]
 dev = [
