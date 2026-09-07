@@ -1,3 +1,7 @@
+"""
+Synthetic generator for AS-IS orders
+"""
+
 import numpy as np
 import pandas as pd
 
@@ -24,18 +28,27 @@ CURRENT_BLOCK_WEIGHTS = {
 }  # skewed toward block 2 (~45% real concentration)
 
 
-# TODO: double check this works for weekends, feels wrong
-def slot_start_day(block, sublock):
+# TODO: double check this works for weekends, feels wrong -> same as CAMPANHA_SPAN
+def slot_start_day(block: int, sublock: int) -> int:
     """Day-in-cycle on which a (block, sublock) slot's sales window opens"""
     return (block - 1) * len(SUBLOCKS) + sublock
 
 
-def build_current_assignment(rng, sectors=None, block_weights=None):
+def uniform_block_distribution(blocks: list[int]) -> dict[int, float]:
+    """Equally distributed blocks"""
+    return {block: 1 / len(blocks) for block in blocks}
+
+
+def build_current_assignment(
+    rng, sectors: list[str] | None = None, block_weights: dict[int, float] = None
+):
     """As-is (block, sublock) per sector
     If block_weights is None, defaults to uniform between sectors
     """
     sectors = sectors if sectors is not None else SECTORS
-    block_weights = block_weights if block_weights is not None else 1 / len(BLOCKS)
+    block_weights = (
+        block_weights if block_weights is not None else uniform_block_distribution(BLOCKS)
+    )
     block_assigned = rng.choice(BLOCKS, size=len(sectors), p=[block_weights[b] for b in BLOCKS])
     sublock_assigned = rng.choice(SUBLOCKS, size=len(sectors))
     return {
