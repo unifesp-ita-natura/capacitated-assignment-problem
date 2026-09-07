@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 SEED = 42
 rng = np.random.default_rng(SEED)
@@ -21,6 +22,12 @@ CURRENT_BLOCK_WEIGHTS = {
     2: 0.65,
     3: 0.2,
 }  # skewed toward block 2 (~45% real concentration)
+
+
+# TODO: double check this works for weekends, feels wrong
+def slot_start_day(block, sublock):
+    """Day-in-cycle on which a (block, sublock) slot's sales window opens"""
+    return (block - 1) * len(SUBLOCKS) + sublock
 
 
 def build_current_assignment(rng, sectors=None, block_weights=None):
@@ -53,5 +60,79 @@ def build_sector_volume_parameters(
     return baseline, factor
 
 
-def expected_orders(sector, campanha_id, weekday_share):
-    pass
+def hump_alpha(window_length, concentration=20, peak_frac=0.5):
+    """Hump-shaped Dirichlet alpha for a window of arbitrary length,
+    peak at peak_frac of the window."""
+    days = np.arange(window_length)
+    peak = peak_frac * (window_length - 1)
+    spread = max(window_length / 4, 0.75)  # avoid degenerate spread for length 1-2
+    weights = np.exp(-0.5 * ((days - peak) / spread) ** 2)
+    return weights / weights.sum() * concentration
+
+
+def build_sector_window_shapes(rng, sector_meta, conc_range=(10, 40), peak_range=(0.3, 0.7)):
+    """
+    sector_meta: dict sector_id -> {"window_length": int, ...}
+    Returns dict sector_id -> np.array(window_length,) summing to 1.
+    """
+    shapes = {}
+    for s, meta in sector_meta.items():
+        length = meta["window_length"]
+        peak_frac = rng.uniform(*peak_range)  # front-loaded vs back-loaded sectors
+        concentration = rng.uniform(*conc_range)  # peaky vs flat sectors
+        alpha = hump_alpha(length, concentration, peak_frac)
+        shapes[s] = rng.dirichlet(alpha)
+    return shapes
+
+
+def expected_orders(
+    sector, window_day_share, sector_baseline, sector_factor, campanha_factor, window_length=None
+):
+    """Poisson mean orders for one sector-day, given its cycle
+    position and window-day share.
+    """
+    window_length = window_length if window_length is not None else WINDOW_LENGTH
+    return sector_baseline * sector_factor * campanha_factor * window_day_share * window_length
+
+
+def generate_sector_campanha_orders(
+    rng,
+    sector,
+    campanha_id,
+    campanha_start,
+    assignment,
+    window_shape,
+):
+    """
+    One sector's simulated order rows for a cycle, following its fixed
+    within-window curve.
+    """
+    block, sublock = assignment[sector]
+    start_day = slot_start_day(block, sublock)
+    return [
+        {
+            "order_date": campanha_start + pd.Timedelta(days=start_day + offset - 1),
+            "campanha_id": campanha_id,
+            "day_in_cycle": start_day + offset,
+            "offset": offset,
+            "block": block,
+            "sublock": sublock,
+            "sector": sector,
+            "orders": int(rng.poisson(expected_orders(sector, campanha_id, share))),
+        }
+        for offset, share in enumerate(window_shape)
+    ]
+
+
+def generate_orders(rng, sectors, campanha_starts, assignment):
+    """Synthetic historical orders for every sector across
+    all cycles, given an assignment"""
+    rows = [
+        row
+        for campanha_id, campanha_start in enumerate(campanha_starts, start=1)
+        for sector in sectors
+        for row in generate_sector_campanha_orders(
+            rng, sector, campanha_id, campanha_starts, assignment
+        )
+    ]
+    return pd.DataFrame(rows)
