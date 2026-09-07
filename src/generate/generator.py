@@ -41,7 +41,7 @@ def uniform_block_distribution(blocks: list[int]) -> dict[int, float]:
 
 def build_current_assignment(
     rng, sectors: list[str] | None = None, block_weights: dict[int, float] = None
-):
+) -> dict[str, tuple[int, int]]:
     """As-is (block, sublock) per sector
     If block_weights is None, defaults to uniform between sectors
     """
@@ -58,8 +58,12 @@ def build_current_assignment(
 
 
 def build_sector_volume_parameters(
-    rng, sectors, min_volume=20, max_volume=60, variance_percentage=0.15
-):
+    rng,
+    sectors: list[str],
+    min_volume: int = 20,
+    max_volume: int = 60,
+    variance_percentage: float = 0.15,
+) -> tuple[dict[str, list[float]], dict[str, list[float]]]:
     """Each sector's baseline order volume and its idiosyncratic
     scaling factor."""
     sectors = sectors if sectors is not None else SECTORS
@@ -73,7 +77,7 @@ def build_sector_volume_parameters(
     return baseline, factor
 
 
-def hump_alpha(window_length, concentration=20, peak_frac=0.5):
+def hump_alpha(window_length: int, concentration: int = 20, peak_frac: float = 0.5) -> float:
     """Hump-shaped Dirichlet alpha for a window of arbitrary length,
     peak at peak_frac of the window."""
     days = np.arange(window_length)
@@ -83,7 +87,12 @@ def hump_alpha(window_length, concentration=20, peak_frac=0.5):
     return weights / weights.sum() * concentration
 
 
-def build_sector_window_shapes(rng, sector_meta, conc_range=(10, 40), peak_range=(0.3, 0.7)):
+def build_sector_window_shapes(
+    rng,
+    sector_meta: dict[str, dict],
+    conc_range: tuple[int, int] = (10, 40),
+    peak_range: tuple[float, float] = (0.3, 0.7),
+):
     """
     sector_meta: dict sector_id -> {"window_length": int, ...}
     Returns dict sector_id -> np.array(window_length,) summing to 1.
@@ -99,7 +108,12 @@ def build_sector_window_shapes(rng, sector_meta, conc_range=(10, 40), peak_range
 
 
 def expected_orders(
-    sector, window_day_share, sector_baseline, sector_factor, campanha_factor, window_length=None
+    sector: str,
+    window_day_share: float,
+    sector_baseline: int,
+    sector_factor: float,
+    campanha_factor: float,
+    window_length: int | None = None,
 ):
     """Poisson mean orders for one sector-day, given its cycle
     position and window-day share.
@@ -110,8 +124,8 @@ def expected_orders(
 
 def generate_sector_campanha_orders(
     rng,
-    sector,
-    campanha_id,
+    sector: str,
+    campanha_id: int,
     campanha_start,
     assignment,
     window_shape,
