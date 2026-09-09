@@ -57,13 +57,28 @@ def test_normalize_shape_rescales_shares_to_sum_to_one():
 def test_to_calendar_maps_offsets_onto_slot_start_days():
     day_offsets = pd.DataFrame({"sector": ["S1", "S1", "S2"], "offset": [0, 1, 0]})
     start_day_by_sector = {"S1": 1, "S2": 6}
-    campanha_open_date = pd.Timestamp("2026-01-01")
+    campanha_open_date = pd.Timestamp("2026-01-01")  # Thursday
 
     calendar = to_calendar(day_offsets, campanha_open_date, start_day_by_sector)
 
     assert calendar["day_in_cycle"].tolist() == [1, 2, 6]
     assert calendar["order_date"].tolist() == [
-        pd.Timestamp("2026-01-01"),
-        pd.Timestamp("2026-01-02"),
-        pd.Timestamp("2026-01-06"),
+        pd.Timestamp("2026-01-01"),  # S1's window opens on the campanha's own start (a Thursday)
+        pd.Timestamp("2026-01-02"),  # offset 1 is a calendar day later (Friday)
+        pd.Timestamp("2026-01-08"),  # S2's window opens on the 6th business day (Thursday)
+    ]
+
+
+def test_to_calendar_lets_orders_land_on_a_weekend_within_a_long_window():
+    day_offsets = pd.DataFrame({"sector": ["S1"] * 4, "offset": [0, 1, 2, 3]})
+    start_day_by_sector = {"S1": 1}
+    campanha_open_date = pd.Timestamp("2026-01-01")  # Thursday
+
+    calendar = to_calendar(day_offsets, campanha_open_date, start_day_by_sector)
+
+    assert calendar["order_date"].tolist() == [
+        pd.Timestamp("2026-01-01"),  # Thursday
+        pd.Timestamp("2026-01-02"),  # Friday
+        pd.Timestamp("2026-01-03"),  # Saturday
+        pd.Timestamp("2026-01-04"),  # Sunday
     ]

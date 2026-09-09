@@ -32,9 +32,16 @@ def normalize_shape(shape: pd.DataFrame) -> pd.DataFrame:
 def to_calendar(
     day_offsets: pd.DataFrame, campanha_open_date: pd.Timestamp, start_day_by_sector: dict[str, int]
 ) -> pd.DataFrame:
-    """Map (sector, offset) rows onto calendar dates, given each sector's slot start day."""
+    """Map (sector, offset) rows onto calendar dates.
+
+    Each sector's window opens on its slot's business-day start (Mon-Fri), but
+    orders within the window can land on any calendar day, weekends included.
+    """
     frame = day_offsets.copy()
     starts = frame["sector"].map(start_day_by_sector)
     frame["day_in_cycle"] = starts + frame["offset"]
-    frame["order_date"] = campanha_open_date + pd.to_timedelta(frame["day_in_cycle"] - 1, unit="D")
+    window_start = starts.apply(
+        lambda start_day: campanha_open_date + pd.offsets.BDay(start_day - 1)
+    )
+    frame["order_date"] = window_start + pd.to_timedelta(frame["offset"], unit="D")
     return frame

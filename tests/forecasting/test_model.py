@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.forecasting.combine import forecast_with_shape
+from src.forecasting.model import forecast_with_shape
 
 
 def test_forecast_with_shape_rounds_shares_times_totals_to_whole_orders():

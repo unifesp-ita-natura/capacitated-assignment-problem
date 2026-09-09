@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.forecasting import combine, metrics
+from src.forecasting import metrics, model
 from src.forecasting.data import to_calendar
 from src.forecasting.level import LevelStrategy, forecast_campanha_total_with
 
@@ -45,7 +45,7 @@ def score_shape_strategy(
     actual_daily: pd.DataFrame,
 ) -> tuple[pd.DataFrame, float, float]:
     """Forecast daily orders for one shape strategy and score it against the actual campanha."""
-    forecast = combine.forecast_with_shape(shape, forecast_campanha_totals)
+    forecast = model.forecast_with_shape(shape, forecast_campanha_totals)
     forecast = to_calendar(forecast, campanha_open_date, start_day_by_sector)
     strategy_daily = forecast.groupby("order_date", as_index=False)["forecast_orders"].sum()
 

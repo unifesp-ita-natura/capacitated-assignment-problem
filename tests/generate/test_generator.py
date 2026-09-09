@@ -187,7 +187,7 @@ def test_generate_sector_campanha_orders_produces_nonnegative_counts(sector_camp
     assert all(row["orders"] >= 0 for row in sector_campanha_rows)
 
 
-def test_generate_sector_campanha_orders_skips_weekends(rng):
+def test_generate_sector_campanha_orders_window_start_is_a_business_day(rng):
     assignment = {"S1": (3, 5)}  # last slot of the cycle, likely to roll into a weekend
     window_shape = np.ones(10) / 10
 
@@ -204,7 +204,8 @@ def test_generate_sector_campanha_orders_skips_weekends(rng):
     )
 
     order_dates = pd.DatetimeIndex([row["order_date"] for row in rows])
-    assert order_dates.dayofweek.max() <= 4  # Mon-Fri only, no Sat/Sun
+    assert order_dates[0].dayofweek <= 4  # the window always opens Mon-Fri
+    assert order_dates.dayofweek.max() > 4  # but customers can order through the weekend
 
 
 @pytest.fixture

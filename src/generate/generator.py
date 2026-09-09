@@ -139,9 +139,10 @@ def generate_sector_campanha_orders(
     """
     block, sublock = assignment[sector]
     start_day = slot_start_day(block, sublock)
+    window_start = campanha_start + pd.offsets.BDay(start_day - 1)
     return [
         {
-            "order_date": campanha_start + pd.offsets.BDay(start_day + offset - 1),
+            "order_date": window_start + pd.Timedelta(days=offset),
             "campanha_id": campanha_id,
             "day_in_cycle": start_day + offset,
             "offset": offset,
