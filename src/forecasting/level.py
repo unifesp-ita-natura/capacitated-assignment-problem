@@ -7,18 +7,7 @@ from collections.abc import Callable
 import numpy as np
 import pandas as pd
 
-CAMPANHA_TOTAL_COLUMNS = ["campanha_id", "sector", "campanha_total"]
-
 LevelStrategy = Callable[[pd.DataFrame, pd.DataFrame], float]
-
-
-def build_campanha_totals(orders: pd.DataFrame) -> pd.DataFrame:
-    """Each sector's total orders per campanha, from a raw orders table."""
-    return (
-        orders.groupby(["campanha_id", "sector"], as_index=False)["orders"]
-        .sum()
-        .rename(columns={"orders": "campanha_total"})
-    )
 
 
 def extrapolate_linear_trend(values: np.ndarray) -> float:
@@ -114,34 +103,3 @@ def forecast_campanha_total_with(
         .rename("forecast_campanha_total")
         .reset_index()
     )
-
-
-def score_level_strategy(
-    forecast: pd.DataFrame, actual_campanha_total: pd.DataFrame
-) -> tuple[float, float]:
-    """Score one level-forecast strategy's per-sector totals against the actual campanha."""
-    comparison = forecast.merge(actual_campanha_total, on="sector")
-    error = comparison["forecast_campanha_total"] - comparison["actual_campanha_total"]
-    mae = float(error.abs().mean())
-    wmape = float(error.abs().sum() / comparison["actual_campanha_total"].sum())
-    return mae, wmape
-
-
-def score_level_strategies(
-    strategies: dict[str, LevelStrategy],
-    historical_campanha_totals: pd.DataFrame,
-    campanhas: pd.DataFrame,
-    actual_campanha_total: pd.DataFrame,
-) -> pd.DataFrame:
-    """Forecast and score every level strategy against the held-out campanha, sorted by WMAPE."""
-    scores = []
-    for name, strategy in strategies.items():
-        forecast = forecast_campanha_total_with(strategy, historical_campanha_totals, campanhas)
-        mae, wmape = score_level_strategy(forecast, actual_campanha_total)
-        scores.append({"strategy": name, "campanha_total_MAE": mae, "campanha_total_WMAPE": wmape})
-    return pd.DataFrame(scores).set_index("strategy").sort_values("campanha_total_WMAPE")
-
-
-def select_best_level_strategy(level_scoreboard: pd.DataFrame) -> str:
-    """Name of the level strategy with the lowest WMAPE on the held-out campanha."""
-    return str(level_scoreboard["campanha_total_WMAPE"].idxmin())

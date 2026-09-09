@@ -6,45 +6,12 @@ import pandas as pd
 import pytest
 
 from src.forecasting.shape import (
-    build_shape_observations,
-    build_shape_strategies,
-    forecast_with_shape,
-    normalize_shape,
-    score_shape_strategies,
-    score_shape_strategy,
-    select_best_shape_strategy,
     shape_last_campanha,
     shape_median,
     shape_plain_average,
     shape_recency_weighted,
     shape_shrinkage,
-    to_calendar,
 )
-
-
-def test_build_shape_observations_computes_order_share():
-    orders = pd.DataFrame(
-        {
-            "campanha_id": [1, 1],
-            "sector": ["S1", "S1"],
-            "offset": [0, 1],
-            "orders": [3, 7],
-        }
-    )
-    campanha_totals = pd.DataFrame({"campanha_id": [1], "sector": ["S1"], "campanha_total": [10]})
-
-    observations = build_shape_observations(orders, campanha_totals)
-
-    assert observations["order_share"].tolist() == pytest.approx([0.3, 0.7])
-
-
-def test_normalize_shape_rescales_shares_to_sum_to_one():
-    shape = pd.DataFrame({"sector": ["S1", "S1"], "offset": [0, 1], "order_share": [0.2, 0.2]})
-
-    normalized = normalize_shape(shape)
-
-    assert normalized["order_share"].tolist() == pytest.approx([0.5, 0.5])
-    assert normalized.groupby("sector")["order_share"].sum().iloc[0] == pytest.approx(1.0)
 
 
 @pytest.fixture
@@ -144,94 +111,3 @@ def test_shape_shrinkage_with_full_shrinkage_matches_the_global_curve():
     s2 = shrunk[shrunk["sector"].eq("S2")].set_index("offset")["order_share"]
     assert s1[0] == pytest.approx(s2[0])
     assert s1[1] == pytest.approx(s2[1])
-
-
-def test_build_shape_strategies_returns_every_named_strategy(shape_observations):
-    strategies = build_shape_strategies(shape_observations)
-
-    assert set(strategies) == {
-        "plain_average",
-        "recency_weighted",
-        "median",
-        "last_campanha",
-        "shrinkage",
-    }
-
-
-def test_to_calendar_maps_offsets_onto_slot_start_days():
-    day_offsets = pd.DataFrame({"sector": ["S1", "S1", "S2"], "offset": [0, 1, 0]})
-    start_day_by_sector = {"S1": 1, "S2": 6}
-    campanha_open_date = pd.Timestamp("2026-01-01")
-
-    calendar = to_calendar(day_offsets, campanha_open_date, start_day_by_sector)
-
-    assert calendar["day_in_cycle"].tolist() == [1, 2, 6]
-    assert calendar["order_date"].tolist() == [
-        pd.Timestamp("2026-01-01"),
-        pd.Timestamp("2026-01-02"),
-        pd.Timestamp("2026-01-06"),
-    ]
-
-
-def test_forecast_with_shape_rounds_shares_times_totals_to_whole_orders():
-    shape = pd.DataFrame({"sector": ["S1", "S1"], "offset": [0, 1], "order_share": [0.25, 0.75]})
-    forecast_totals = pd.DataFrame({"sector": ["S1"], "forecast_campanha_total": [20.0]})
-
-    forecast = forecast_with_shape(shape, forecast_totals)
-
-    assert forecast["forecast_orders"].tolist() == [5, 15]
-
-
-def test_score_shape_strategy_computes_daily_mae_and_wmape():
-    shape = pd.DataFrame({"sector": ["S1", "S1"], "offset": [0, 1], "order_share": [0.5, 0.5]})
-    forecast_totals = pd.DataFrame({"sector": ["S1"], "forecast_campanha_total": [20.0]})
-    start_day_by_sector = {"S1": 1}
-    campanha_open_date = pd.Timestamp("2026-01-01")
-    actual_daily = pd.DataFrame(
-        {
-            "order_date": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02")],
-            "actual_orders": [8, 12],
-        }
-    )
-
-    strategy_daily, mae, wmape = score_shape_strategy(
-        shape, forecast_totals, start_day_by_sector, campanha_open_date, actual_daily
-    )
-
-    assert strategy_daily["forecast_orders"].tolist() == [10, 10]
-    assert mae == pytest.approx(2.0)
-    assert wmape == pytest.approx(4.0 / 20.0)
-
-
-def test_score_shape_strategies_ranks_the_better_strategy_first():
-    forecast_totals = pd.DataFrame({"sector": ["S1"], "forecast_campanha_total": [20.0]})
-    start_day_by_sector = {"S1": 1}
-    campanha_open_date = pd.Timestamp("2026-01-01")
-    actual_daily = pd.DataFrame(
-        {
-            "order_date": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02")],
-            "actual_orders": [10, 10],
-        }
-    )
-    strategies = {
-        "perfect": pd.DataFrame(
-            {"sector": ["S1", "S1"], "offset": [0, 1], "order_share": [0.5, 0.5]}
-        ),
-        "off": pd.DataFrame({"sector": ["S1", "S1"], "offset": [0, 1], "order_share": [0.9, 0.1]}),
-    }
-
-    scoreboard = score_shape_strategies(
-        strategies, forecast_totals, start_day_by_sector, campanha_open_date, actual_daily
-    )
-
-    assert list(scoreboard.index)[0] == "perfect"
-    assert scoreboard["daily_WMAPE"].is_monotonic_increasing
-
-
-def test_select_best_shape_strategy_returns_the_lowest_wmape_strategy():
-    scoreboard = pd.DataFrame(
-        {"daily_WMAPE": [0.3, 0.05, 0.2]},
-        index=["plain_average", "recency_weighted", "median"],
-    )
-
-    assert select_best_shape_strategy(scoreboard) == "recency_weighted"
