@@ -128,7 +128,10 @@ def generate_sector_campanha_orders(
     campanha_id: int,
     campanha_start,
     assignment,
+    campanha_factor: float,
     window_shape,
+    baseline: float,
+    factor: float,
 ):
     """
     One sector's simulated order rows for a cycle, following its fixed
@@ -138,28 +141,71 @@ def generate_sector_campanha_orders(
     start_day = slot_start_day(block, sublock)
     return [
         {
-            "order_date": campanha_start + pd.Timedelta(days=start_day + offset - 1),
+            "order_date": campanha_start + pd.offsets.BDay(start_day + offset - 1),
             "campanha_id": campanha_id,
             "day_in_cycle": start_day + offset,
             "offset": offset,
             "block": block,
             "sublock": sublock,
             "sector": sector,
-            "orders": int(rng.poisson(expected_orders(sector, campanha_id, share))),
+            "orders": int(
+                rng.poisson(expected_orders(sector, share, baseline, factor, campanha_factor))
+            ),
         }
         for offset, share in enumerate(window_shape)
     ]
 
 
-def generate_orders(rng, sectors, campanha_starts, assignment):
+def generate_campanha_orders(
+    rng,
+    sectors,
+    campanha_id,
+    campanha_start,
+    assignment,
+    campanha_factor,
+    window_shapes,
+    baseline,
+    factor,
+):
+    """Every sector's simulated order rows for a single cycle."""
+    return [
+        row
+        for sector in sectors
+        for row in generate_sector_campanha_orders(
+            rng,
+            sector,
+            campanha_id,
+            campanha_start,
+            assignment,
+            campanha_factor,
+            window_shapes[sector],
+            baseline[sector],
+            factor[sector],
+        )
+    ]
+
+
+def generate_orders(rng, sectors, campanha_starts, assignment, campanha_factors=None):
     """Synthetic historical orders for every sector across
     all cycles, given an assignment"""
+    baseline, factor = build_sector_volume_parameters(rng, sectors)
+    window_shapes = build_sector_window_shapes(
+        rng, {sector: {"window_length": WINDOW_LENGTH} for sector in sectors}
+    )
+    campanha_factors = campanha_factors or {}
     rows = [
         row
         for campanha_id, campanha_start in enumerate(campanha_starts, start=1)
-        for sector in sectors
-        for row in generate_sector_campanha_orders(
-            rng, sector, campanha_id, campanha_starts, assignment
+        for row in generate_campanha_orders(
+            rng,
+            sectors,
+            campanha_id,
+            campanha_start,
+            assignment,
+            campanha_factors.get(campanha_id, 1.0),
+            window_shapes,
+            baseline,
+            factor,
         )
     ]
     return pd.DataFrame(rows)
