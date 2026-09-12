@@ -10,13 +10,16 @@ from src.generate.generator import (
     BLOCKS,
     SUBLOCKS,
     WINDOW_LENGTH,
+    build_campanha_window_shapes,
     build_current_assignment,
+    build_sector_metric_ratios,
+    build_sector_shape_traits,
     build_sector_volume_parameters,
-    build_sector_window_shapes,
     expected_orders,
     generate_orders,
     generate_sector_campanha_orders,
     hump_alpha,
+    realize_window_shape,
     slot_start_day,
     uniform_block_distribution,
 )
@@ -121,17 +124,49 @@ def test_hump_alpha_peaks_near_peak_frac():
 
 
 @pytest.fixture
-def window_shapes(rng) -> dict[str, np.ndarray]:
-    sector_meta = {"S1": {"window_length": 10}, "S2": {"window_length": 5}}
-    return build_sector_window_shapes(rng, sector_meta)
+def shape_traits(rng) -> dict[str, dict]:
+    return build_sector_shape_traits(rng, ["S1", "S2"])
 
 
-def test_build_sector_window_shapes_matches_requested_lengths(window_shapes):
-    assert {sector: len(shape) for sector, shape in window_shapes.items()} == {"S1": 10, "S2": 5}
+def test_build_sector_shape_traits_covers_every_sector(shape_traits):
+    assert set(shape_traits) == {"S1", "S2"}
 
 
-def test_build_sector_window_shapes_are_normalized(window_shapes):
-    assert all(shape.sum() == pytest.approx(1.0) for shape in window_shapes.values())
+def test_build_sector_shape_traits_within_default_ranges(shape_traits):
+    assert all(0.3 <= trait["peak_frac"] <= 0.7 for trait in shape_traits.values())
+    assert all(10 <= trait["concentration"] <= 40 for trait in shape_traits.values())
+
+
+def test_realize_window_shape_matches_requested_length(rng, shape_traits):
+    shape = realize_window_shape(rng, shape_traits["S1"], window_length=10)
+
+    assert len(shape) == 10
+
+
+def test_realize_window_shape_is_normalized(rng, shape_traits):
+    shape = realize_window_shape(rng, shape_traits["S1"], window_length=10)
+
+    assert shape.sum() == pytest.approx(1.0)
+
+
+def test_build_campanha_window_shapes_matches_requested_lengths(rng, shape_traits):
+    shapes = build_campanha_window_shapes(rng, ["S1", "S2"], shape_traits, window_length=7)
+
+    assert {sector: len(shape) for sector, shape in shapes.items()} == {"S1": 7, "S2": 7}
+
+
+@pytest.fixture
+def metric_ratios(rng) -> dict[str, dict[str, float]]:
+    return build_sector_metric_ratios(rng, ["S1", "S2"])
+
+
+def test_build_sector_metric_ratios_covers_every_sector(metric_ratios):
+    assert set(metric_ratios) == {"S1", "S2"}
+
+
+def test_build_sector_metric_ratios_within_default_ranges(metric_ratios):
+    assert all(1.0 <= ratios["volumes_per_order"] <= 3.0 for ratios in metric_ratios.values())
+    assert all(1.5 <= ratios["itens_per_order"] <= 5.0 for ratios in metric_ratios.values())
 
 
 def test_expected_orders_scales_linearly_with_each_factor():
@@ -166,6 +201,7 @@ def sector_campanha_rows(rng) -> list[dict]:
         window_shape=window_shape,
         baseline=40,
         factor=1.0,
+        metric_ratios={"volumes_per_order": 2.0, "itens_per_order": 3.0},
     )
 
 
@@ -185,6 +221,8 @@ def test_generate_sector_campanha_orders_offsets_are_sequential(sector_campanha_
 
 def test_generate_sector_campanha_orders_produces_nonnegative_counts(sector_campanha_rows):
     assert all(row["orders"] >= 0 for row in sector_campanha_rows)
+    assert all(row["volumes"] >= 0 for row in sector_campanha_rows)
+    assert all(row["itens"] >= 0 for row in sector_campanha_rows)
 
 
 def test_generate_sector_campanha_orders_window_start_is_a_business_day(rng):
@@ -201,6 +239,7 @@ def test_generate_sector_campanha_orders_window_start_is_a_business_day(rng):
         window_shape=window_shape,
         baseline=40,
         factor=1.0,
+        metric_ratios={"volumes_per_order": 2.0, "itens_per_order": 3.0},
     )
 
     order_dates = pd.DatetimeIndex([row["order_date"] for row in rows])
@@ -230,7 +269,27 @@ def test_generate_orders_has_expected_columns(orders_df):
         "sublock",
         "sector",
         "orders",
+        "volumes",
+        "itens",
     }
+
+
+def test_generate_orders_respects_per_campanha_window_lengths(rng):
+    sectors = ["S1", "S2"]
+    assignment = build_current_assignment(rng, sectors=sectors)
+    campanha_starts = [pd.Timestamp("2026-01-05"), pd.Timestamp("2026-02-02")]
+
+    df = generate_orders(
+        rng,
+        sectors,
+        campanha_starts,
+        assignment,
+        window_lengths={1: 10, 2: 15},
+    )
+
+    counts = df.groupby("campanha_id").size()
+    assert counts[1] == len(sectors) * 10
+    assert counts[2] == len(sectors) * 15
 
 
 def test_generate_orders_covers_every_campanha(orders_df):

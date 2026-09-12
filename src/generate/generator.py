@@ -77,6 +77,25 @@ def build_sector_volume_parameters(
     return baseline, factor
 
 
+# TODO: placeholder ranges pending calibration against real ratios computable
+# from demanda_level.csv (total_volumes/total_pedidos, total_itens/total_pedidos)
+def build_sector_metric_ratios(
+    rng,
+    sectors: list[str],
+    volume_range: tuple[float, float] = (1.0, 3.0),
+    item_range: tuple[float, float] = (1.5, 5.0),
+) -> dict[str, dict[str, float]]:
+    """Each sector's volumes-per-order and itens-per-order ratios, used to
+    derive correlated volume/item counts from its simulated order count."""
+    return {
+        sector: {
+            "volumes_per_order": rng.uniform(*volume_range),
+            "itens_per_order": rng.uniform(*item_range),
+        }
+        for sector in sectors
+    }
+
+
 def hump_alpha(window_length: int, concentration: int = 20, peak_frac: float = 0.5) -> float:
     """Hump-shaped Dirichlet alpha for a window of arbitrary length,
     peak at peak_frac of the window."""
@@ -87,24 +106,40 @@ def hump_alpha(window_length: int, concentration: int = 20, peak_frac: float = 0
     return weights / weights.sum() * concentration
 
 
-def build_sector_window_shapes(
+def build_sector_shape_traits(
     rng,
-    sector_meta: dict[str, dict],
+    sectors: list[str],
     conc_range: tuple[int, int] = (10, 40),
     peak_range: tuple[float, float] = (0.3, 0.7),
+) -> dict[str, dict]:
+    """Each sector's stable within-cycle curve trait (peaky vs flat,
+    front-loaded vs back-loaded), independent of any campanha's window
+    length so it can be realized at whatever length a given cycle has."""
+    return {
+        sector: {
+            "peak_frac": rng.uniform(*peak_range),
+            "concentration": rng.uniform(*conc_range),
+        }
+        for sector in sectors
+    }
+
+
+def realize_window_shape(rng, trait: dict, window_length: int):
+    """One sector-campanha's window shape: the sector's stable curve trait
+    realized at this campanha's window length. Returns np.array(window_length,)
+    summing to 1."""
+    alpha = hump_alpha(window_length, trait["concentration"], trait["peak_frac"])
+    return rng.dirichlet(alpha)
+
+
+def build_campanha_window_shapes(
+    rng, sectors: list[str], shape_traits: dict[str, dict], window_length: int
 ):
-    """
-    sector_meta: dict sector_id -> {"window_length": int, ...}
-    Returns dict sector_id -> np.array(window_length,) summing to 1.
-    """
-    shapes = {}
-    for s, meta in sector_meta.items():
-        length = meta["window_length"]
-        peak_frac = rng.uniform(*peak_range)  # front-loaded vs back-loaded sectors
-        concentration = rng.uniform(*conc_range)  # peaky vs flat sectors
-        alpha = hump_alpha(length, concentration, peak_frac)
-        shapes[s] = rng.dirichlet(alpha)
-    return shapes
+    """Every sector's window shape for a single campanha, at that
+    campanha's window length."""
+    return {
+        sector: realize_window_shape(rng, shape_traits[sector], window_length) for sector in sectors
+    }
 
 
 def expected_orders(
@@ -132,6 +167,7 @@ def generate_sector_campanha_orders(
     window_shape,
     baseline: float,
     factor: float,
+    metric_ratios: dict[str, float],
 ):
     """
     One sector's simulated order rows for a cycle, following its fixed
@@ -140,21 +176,24 @@ def generate_sector_campanha_orders(
     block, sublock = assignment[sector]
     start_day = slot_start_day(block, sublock)
     window_start = campanha_start + pd.offsets.BDay(start_day - 1)
-    return [
-        {
-            "order_date": window_start + pd.Timedelta(days=offset),
-            "campanha_id": campanha_id,
-            "day_in_cycle": start_day + offset,
-            "offset": offset,
-            "block": block,
-            "sublock": sublock,
-            "sector": sector,
-            "orders": int(
-                rng.poisson(expected_orders(sector, share, baseline, factor, campanha_factor))
-            ),
-        }
-        for offset, share in enumerate(window_shape)
-    ]
+    rows = []
+    for offset, share in enumerate(window_shape):
+        orders = int(rng.poisson(expected_orders(sector, share, baseline, factor, campanha_factor)))
+        rows.append(
+            {
+                "order_date": window_start + pd.Timedelta(days=offset),
+                "campanha_id": campanha_id,
+                "day_in_cycle": start_day + offset,
+                "offset": offset,
+                "block": block,
+                "sublock": sublock,
+                "sector": sector,
+                "orders": orders,
+                "volumes": int(rng.poisson(orders * metric_ratios["volumes_per_order"])),
+                "itens": int(rng.poisson(orders * metric_ratios["itens_per_order"])),
+            }
+        )
+    return rows
 
 
 def generate_campanha_orders(
@@ -167,6 +206,7 @@ def generate_campanha_orders(
     window_shapes,
     baseline,
     factor,
+    metric_ratios,
 ):
     """Every sector's simulated order rows for a single cycle."""
     return [
@@ -182,18 +222,28 @@ def generate_campanha_orders(
             window_shapes[sector],
             baseline[sector],
             factor[sector],
+            metric_ratios[sector],
         )
     ]
 
 
-def generate_orders(rng, sectors, campanha_starts, assignment, campanha_factors=None):
+def generate_orders(
+    rng,
+    sectors,
+    campanha_starts,
+    assignment,
+    campanha_factors=None,
+    window_lengths: dict[int, int] | None = None,
+):
     """Synthetic historical orders for every sector across
-    all cycles, given an assignment"""
+    all cycles, given an assignment. `window_lengths` maps campanha_id to
+    that cycle's window length, defaulting to WINDOW_LENGTH for any
+    campanha not listed."""
     baseline, factor = build_sector_volume_parameters(rng, sectors)
-    window_shapes = build_sector_window_shapes(
-        rng, {sector: {"window_length": WINDOW_LENGTH} for sector in sectors}
-    )
+    metric_ratios = build_sector_metric_ratios(rng, sectors)
+    shape_traits = build_sector_shape_traits(rng, sectors)
     campanha_factors = campanha_factors or {}
+    window_lengths = window_lengths or {}
     rows = [
         row
         for campanha_id, campanha_start in enumerate(campanha_starts, start=1)
@@ -204,9 +254,12 @@ def generate_orders(rng, sectors, campanha_starts, assignment, campanha_factors=
             campanha_start,
             assignment,
             campanha_factors.get(campanha_id, 1.0),
-            window_shapes,
+            build_campanha_window_shapes(
+                rng, sectors, shape_traits, window_lengths.get(campanha_id, WINDOW_LENGTH)
+            ),
             baseline,
             factor,
+            metric_ratios,
         )
     ]
     return pd.DataFrame(rows)
