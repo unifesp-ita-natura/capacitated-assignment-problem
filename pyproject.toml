@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=2.0.0,<2.3",
     "pyyaml>=6.0,<7.0",
     "pandas>=2.3.3",
+    "python-calamine>=0.8.2",
 ]
 
 [project.optional-dependencies]
