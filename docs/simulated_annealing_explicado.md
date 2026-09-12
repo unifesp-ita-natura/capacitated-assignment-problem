@@ -129,15 +129,15 @@ Um **apelido de tipo**: `ProjectedDemand` = "um dicionário cuja chave é o trio
 ```python
 @dataclass(frozen=True)
 class AnnealingParams:
-    initial_temperature: float = 1000.0   # T0
-    cooling_rate: float = 0.99            # alfa
-    min_temperature: float = 0.01         # T_min
-    max_iterations: int = 100_000         # MaxIter
-    stagnation_window: int = 200          # L
-    stagnation_tolerance: float = 1e-5    # epsilon
-    sector_bias: float = 0.8              # beta
-    destination_bias: float = 0.7         # gama
-    penalty_coefficient: float = 1e6      # rho
+    initial_temperature: float = 1000.0  # T0
+    cooling_rate: float = 0.99  # alfa
+    min_temperature: float = 0.01  # T_min
+    max_iterations: int = 100_000  # MaxIter
+    stagnation_window: int = 200  # L
+    stagnation_tolerance: float = 1e-5  # epsilon
+    sector_bias: float = 0.8  # beta
+    destination_bias: float = 0.7  # gama
+    penalty_coefficient: float = 1e6  # rho
 ```
 
 **O que é `@dataclass`:** um *decorador* que gera automaticamente o construtor
@@ -166,13 +166,13 @@ O `100_000` é só `100000` — o `_` é separador de milhar, o Python ignora.
 ```python
 @dataclass(frozen=True)
 class AnnealingResult:
-    assignment: dict[int, int]   # setor -> combinacao (a resposta)
-    energy: float                # E(X) da melhor solucao
-    objective: float             # z_max - z_min (sem penalidades)
+    assignment: dict[int, int]  # setor -> combinacao (a resposta)
+    energy: float  # E(X) da melhor solucao
+    objective: float  # z_max - z_min (sem penalidades)
     capacity_penalty: float
     churn_penalty: float
     iterations: int
-    stop_reason: str             # por que parou
+    stop_reason: str  # por que parou
 ```
 
 O "pacote de saída". Note que não devolve só `assignment` — devolve a
@@ -182,14 +182,32 @@ documento de negócio pede comparação As-Is vs To-Be com métricas claras.
 ### 2.5 solve() — a porta de entrada (linhas 44–76)
 
 ```python
-def solve(sectors, combinations, days, cd_sectors, daily_capacity,
-          projected_demand, current_assignment, max_churn,
-          valid_combinations=None, params=None, rng=None) -> AnnealingResult:
+def solve(
+    sectors,
+    combinations,
+    days,
+    cd_sectors,
+    daily_capacity,
+    projected_demand,
+    current_assignment,
+    max_churn,
+    valid_combinations=None,
+    params=None,
+    rng=None,
+) -> AnnealingResult:
     params = params or AnnealingParams()
     rng = rng or random.Random()
-    problem = _build_problem(sectors, combinations, days, cd_sectors,
-                             daily_capacity, projected_demand,
-                             current_assignment, max_churn, valid_combinations)
+    problem = _build_problem(
+        sectors,
+        combinations,
+        days,
+        cd_sectors,
+        daily_capacity,
+        projected_demand,
+        current_assignment,
+        max_churn,
+        valid_combinations,
+    )
     return _anneal(problem, params, rng)
 ```
 
@@ -208,13 +226,13 @@ def solve(sectors, combinations, days, cd_sectors, daily_capacity,
 ```python
 @dataclass(frozen=True)
 class _Problem:
-    demand: np.ndarray          # (n_setores, n_dias, n_combinacoes)  q[s,a,d]
-    capacity: np.ndarray        # (n_cds, n_dias)                     Cap[c,a]
-    sector_cd: np.ndarray       # (n_setores,)  indice do CD de cada setor
+    demand: np.ndarray  # (n_setores, n_dias, n_combinacoes)  q[s,a,d]
+    capacity: np.ndarray  # (n_cds, n_dias)                     Cap[c,a]
+    sector_cd: np.ndarray  # (n_setores,)  indice do CD de cada setor
     valid_combos: list[np.ndarray]  # por CD, os indices de combinacao validos (D_c)
-    as_is: np.ndarray           # (n_setores,)  indice da combinacao atual de cada setor
+    as_is: np.ndarray  # (n_setores,)  indice da combinacao atual de cada setor
     max_churn: float
-    sector_labels: list[int]    # pra traduzir indice -> rotulo no final
+    sector_labels: list[int]  # pra traduzir indice -> rotulo no final
     combo_labels: list[int]
 ```
 
@@ -233,10 +251,10 @@ coisa que `problem["demand"]` (dicionário) não faz.
 ```python
 @dataclass(frozen=True)
 class _Evaluation:
-    objective: float        # z_max - z_min
-    capacity_penalty: float # P_cap
-    churn_penalty: float    # P_churn
-    energy: float           # objective + rho*(P_cap + P_churn)
+    objective: float  # z_max - z_min
+    capacity_penalty: float  # P_cap
+    churn_penalty: float  # P_churn
+    energy: float  # objective + rho*(P_cap + P_churn)
     load_by_cd: np.ndarray  # (n_cds, n_dias) - guardado pra reaproveitar
 ```
 
@@ -251,9 +269,9 @@ trocar a ordem sem querer daria bug silencioso.
 ```python
 @dataclass
 class _SearchState:
-    current: np.ndarray        # a solucao onde a busca esta agora
+    current: np.ndarray  # a solucao onde a busca esta agora
     current_eval: _Evaluation
-    best: np.ndarray           # a melhor solucao ja vista
+    best: np.ndarray  # a melhor solucao ja vista
     best_eval: _Evaluation
     energy_window: deque[float] = field(default_factory=deque)
 ```
@@ -273,7 +291,7 @@ class _SearchState:
 
 ```python
 def _daily_load_by_sector(problem, assignment):
-    sectors = np.arange(assignment.shape[0])       # [0, 1, 2, ..., n-1]
+    sectors = np.arange(assignment.shape[0])  # [0, 1, 2, ..., n-1]
     return problem.demand[sectors, :, assignment]
 ```
 
@@ -292,7 +310,7 @@ certa".
 
 ```python
 def _load_by_cd(problem, load_by_sector):
-    totals = np.zeros_like(problem.capacity)        # zeros com shape (n_cds, n_dias)
+    totals = np.zeros_like(problem.capacity)  # zeros com shape (n_cds, n_dias)
     np.add.at(totals, problem.sector_cd, load_by_sector)
     return totals
 ```
@@ -335,9 +353,9 @@ antiga que abandonou e ganha 1 na nova). Então a penalidade é
 ```python
 def _evaluate(problem, assignment, penalty_coefficient):
     load_by_sector = _daily_load_by_sector(problem, assignment)
-    daily_totals = load_by_sector.sum(axis=0)          # soma sobre setores -> vetor de dias
+    daily_totals = load_by_sector.sum(axis=0)  # soma sobre setores -> vetor de dias
     load_by_cd = _load_by_cd(problem, load_by_sector)
-    objective = float(daily_totals.max() - daily_totals.min())   # z_max - z_min
+    objective = float(daily_totals.max() - daily_totals.min())  # z_max - z_min
     capacity_penalty = _capacity_penalty(problem, load_by_cd)
     churn_penalty = _churn_penalty(problem, assignment)
     energy = objective + penalty_coefficient * (capacity_penalty + churn_penalty)
@@ -391,7 +409,7 @@ está vazio, `overloaded.size` é 0 → sempre cai no `randrange`.
 ```python
 def _slack_destinations(problem, sector, assignment, load_by_cd):
     cd = int(problem.sector_cd[sector])
-    candidates = problem.valid_combos[cd]                       # D_c
+    candidates = problem.valid_combos[cd]  # D_c
     without_sector = load_by_cd[cd] - problem.demand[sector, :, assignment[sector]]
     projected = without_sector[None, :] + problem.demand[sector][:, candidates].T
     feasible = (projected <= problem.capacity[cd]).all(axis=1)
@@ -438,8 +456,7 @@ segundo `return` (o "relaxa gama para 0" do PDF).
 def _neighbor(problem, assignment, evaluation, params, rng):
     violated = _violated_cds(problem, evaluation.load_by_cd)
     sector = _pick_sector(problem, violated, params, rng)
-    destination = _pick_destination(problem, sector, assignment,
-                                    evaluation.load_by_cd, params, rng)
+    destination = _pick_destination(problem, sector, assignment, evaluation.load_by_cd, params, rng)
     neighbor = assignment.copy()
     neighbor[sector] = destination
     return neighbor
@@ -503,8 +520,8 @@ def _step(problem, state, params, rng, temperature):
     candidate_eval = _evaluate(problem, candidate, params.penalty_coefficient)
     delta = candidate_eval.energy - state.current_eval.energy
     if not _accepts(delta, temperature, rng):
-        return state          # rejeitado: nada muda
-    return _accept(state, candidate, candidate_eval)   # aceito: avanca
+        return state  # rejeitado: nada muda
+    return _accept(state, candidate, candidate_eval)  # aceito: avanca
 ```
 
 Gera vizinho → avalia → calcula ΔE → Metropolis decide. Se rejeitou, devolve o
@@ -516,9 +533,13 @@ Gera vizinho → avalia → calcula ΔE → Metropolis decide. Se rejeitou, devo
 ```python
 def _anneal(problem, params, rng):
     initial = _evaluate(problem, problem.as_is, params.penalty_coefficient)
-    state = _SearchState(current=problem.as_is.copy(), current_eval=initial,
-                         best=problem.as_is.copy(), best_eval=initial,
-                         energy_window=deque(maxlen=params.stagnation_window))
+    state = _SearchState(
+        current=problem.as_is.copy(),
+        current_eval=initial,
+        best=problem.as_is.copy(),
+        best_eval=initial,
+        energy_window=deque(maxlen=params.stagnation_window),
+    )
     temperature = params.initial_temperature
     for iteration in range(params.max_iterations):
         if temperature <= params.min_temperature:
@@ -526,7 +547,7 @@ def _anneal(problem, params, rng):
         state = _step(problem, state, params, rng, temperature)
         if _stagnated(state.energy_window, params):
             return _build_result(problem, state, iteration + 1, "stagnation")
-        temperature *= params.cooling_rate       # T <- alfa*T
+        temperature *= params.cooling_rate  # T <- alfa*T
     return _build_result(problem, state, params.max_iterations, "max_iterations")
 ```
 
@@ -544,13 +565,19 @@ def _anneal(problem, params, rng):
 
 ```python
 def _build_result(problem, state, iterations, stop_reason):
-    assignment = {problem.sector_labels[i]: problem.combo_labels[int(d)]
-                  for i, d in enumerate(state.best)}
+    assignment = {
+        problem.sector_labels[i]: problem.combo_labels[int(d)] for i, d in enumerate(state.best)
+    }
     ev = state.best_eval
-    return AnnealingResult(assignment=assignment, energy=ev.energy,
-                           objective=ev.objective, capacity_penalty=ev.capacity_penalty,
-                           churn_penalty=ev.churn_penalty, iterations=iterations,
-                           stop_reason=stop_reason)
+    return AnnealingResult(
+        assignment=assignment,
+        energy=ev.energy,
+        objective=ev.objective,
+        capacity_penalty=ev.capacity_penalty,
+        churn_penalty=ev.churn_penalty,
+        iterations=iterations,
+        stop_reason=stop_reason,
+    )
 ```
 
 `state.best` é um array de índices tipo `[0, 1, 0, ...]`. O dict comprehension
@@ -563,10 +590,10 @@ com os rótulos de verdade. Empacota tudo no `AnnealingResult`.
 #### _build_problem (linhas 293–324)
 
 ```python
-sector_labels = list(sectors)      # [137, 138, 139, ...]
+sector_labels = list(sectors)  # [137, 138, 139, ...]
 combo_labels = list(combinations)
-cd_labels = list(cd_sectors)        # as chaves do dict = os CDs
-sector_ix = {s: i for i, s in enumerate(sector_labels)}   # {137: 0, 138: 1, ...}
+cd_labels = list(cd_sectors)  # as chaves do dict = os CDs
+sector_ix = {s: i for i, s in enumerate(sector_labels)}  # {137: 0, 138: 1, ...}
 combo_ix = {d: i for i, d in enumerate(combo_labels)}
 # ... e monta o _Problem chamando um helper por array
 ```
@@ -625,7 +652,7 @@ PDF, na forma compacta.
 #### _valid_combos_by_cd (linhas 373–385)
 
 ```python
-combos = [np.arange(n_combos) for _ in cd_labels]   # padrao: todo CD aceita tudo
+combos = [np.arange(n_combos) for _ in cd_labels]  # padrao: todo CD aceita tudo
 if valid_combinations is None:
     return combos
 for c, allowed in valid_combinations.items():
