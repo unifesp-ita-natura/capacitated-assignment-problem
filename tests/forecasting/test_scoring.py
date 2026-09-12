@@ -17,19 +17,19 @@ from src.forecasting.scoring import (
 
 
 @pytest.fixture
-def historical_campanha_totals() -> pd.DataFrame:
+def historical_cycle_totals() -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "campanha_id": [1, 2, 3, 4, 1, 2, 3, 4],
+            "cycle_id": [1, 2, 3, 4, 1, 2, 3, 4],
             "sector": ["S1", "S1", "S1", "S1", "S2", "S2", "S2", "S2"],
-            "campanha_total": [10.0, 20.0, 30.0, 40.0, 30.0, 20.0, 10.0, 0.0],
+            "cycle_total": [10.0, 20.0, 30.0, 40.0, 30.0, 20.0, 10.0, 0.0],
         }
     )
 
 
 def test_score_level_strategy_computes_mae_and_wmape():
-    forecast = pd.DataFrame({"sector": ["S1", "S2"], "forecast_campanha_total": [50.0, 0.0]})
-    actual = pd.DataFrame({"sector": ["S1", "S2"], "actual_campanha_total": [40.0, 10.0]})
+    forecast = pd.DataFrame({"sector": ["S1", "S2"], "forecast_cycle_total": [50.0, 0.0]})
+    actual = pd.DataFrame({"sector": ["S1", "S2"], "actual_cycle_total": [40.0, 10.0]})
 
     mae, wmape = score_level_strategy(forecast, actual)
 
@@ -37,21 +37,19 @@ def test_score_level_strategy_computes_mae_and_wmape():
     assert wmape == pytest.approx(20.0 / 50.0)
 
 
-def test_score_level_strategies_ranks_the_better_strategy_first(historical_campanha_totals):
-    actual = pd.DataFrame({"sector": ["S1", "S2"], "actual_campanha_total": [50.0, 0.0]})
+def test_score_level_strategies_ranks_the_better_strategy_first(historical_cycle_totals):
+    actual = pd.DataFrame({"sector": ["S1", "S2"], "actual_cycle_total": [50.0, 0.0]})
     strategies = {"naive_last": level_naive_last, "linear_trend": level_linear_trend}
 
-    scoreboard = score_level_strategies(
-        strategies, historical_campanha_totals, pd.DataFrame(), actual
-    )
+    scoreboard = score_level_strategies(strategies, historical_cycle_totals, pd.DataFrame(), actual)
 
     assert list(scoreboard.index)[0] == "linear_trend"
-    assert scoreboard["campanha_total_WMAPE"].is_monotonic_increasing
+    assert scoreboard["cycle_total_WMAPE"].is_monotonic_increasing
 
 
 def test_select_best_level_strategy_returns_the_lowest_wmape_strategy():
     scoreboard = pd.DataFrame(
-        {"campanha_total_WMAPE": [0.4, 0.1, 0.2]},
+        {"cycle_total_WMAPE": [0.4, 0.1, 0.2]},
         index=["naive_last", "linear_trend", "holt_ets"],
     )
 
@@ -60,9 +58,9 @@ def test_select_best_level_strategy_returns_the_lowest_wmape_strategy():
 
 def test_score_shape_strategy_computes_daily_mae_and_wmape():
     shape = pd.DataFrame({"sector": ["S1", "S1"], "offset": [0, 1], "order_share": [0.5, 0.5]})
-    forecast_totals = pd.DataFrame({"sector": ["S1"], "forecast_campanha_total": [20.0]})
+    forecast_totals = pd.DataFrame({"sector": ["S1"], "forecast_cycle_total": [20.0]})
     start_day_by_sector = {"S1": 1}
-    campanha_open_date = pd.Timestamp("2026-01-01")
+    cycle_open_date = pd.Timestamp("2026-01-01")
     actual_daily = pd.DataFrame(
         {
             "order_date": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02")],
@@ -71,7 +69,7 @@ def test_score_shape_strategy_computes_daily_mae_and_wmape():
     )
 
     strategy_daily, mae, wmape = score_shape_strategy(
-        shape, forecast_totals, start_day_by_sector, campanha_open_date, actual_daily
+        shape, forecast_totals, start_day_by_sector, cycle_open_date, actual_daily
     )
 
     assert strategy_daily["forecast_orders"].tolist() == [10, 10]
@@ -80,9 +78,9 @@ def test_score_shape_strategy_computes_daily_mae_and_wmape():
 
 
 def test_score_shape_strategies_ranks_the_better_strategy_first():
-    forecast_totals = pd.DataFrame({"sector": ["S1"], "forecast_campanha_total": [20.0]})
+    forecast_totals = pd.DataFrame({"sector": ["S1"], "forecast_cycle_total": [20.0]})
     start_day_by_sector = {"S1": 1}
-    campanha_open_date = pd.Timestamp("2026-01-01")
+    cycle_open_date = pd.Timestamp("2026-01-01")
     actual_daily = pd.DataFrame(
         {
             "order_date": [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-01-02")],
@@ -97,7 +95,7 @@ def test_score_shape_strategies_ranks_the_better_strategy_first():
     }
 
     scoreboard = score_shape_strategies(
-        strategies, forecast_totals, start_day_by_sector, campanha_open_date, actual_daily
+        strategies, forecast_totals, start_day_by_sector, cycle_open_date, actual_daily
     )
 
     assert list(scoreboard.index)[0] == "perfect"

@@ -19,7 +19,7 @@ def shape_observations() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "sector": ["S1", "S1", "S1", "S1"],
-            "campanha_id": [1, 1, 2, 2],
+            "cycle_id": [1, 1, 2, 2],
             "offset": [0, 1, 0, 1],
             "order_share": [0.6, 0.4, 0.2, 0.8],
         }
@@ -32,7 +32,7 @@ def test_make_shape_recency_weighted_binds_the_half_life(shape_observations):
     strategy = make_shape_recency_weighted(1.0)
 
     assert strategy(shape_observations).equals(
-        shape_recency_weighted(shape_observations, half_life_campanhas=1.0)
+        shape_recency_weighted(shape_observations, half_life_cycles=1.0)
     )
 
 
@@ -62,12 +62,12 @@ def test_sweep_shape_shrinkage_names_one_variant_per_shrinkage_value():
 
 
 def test_build_shape_strategy_registry_returns_every_named_strategy():
-    registry = build_shape_strategy_registry(half_life_campanhas_grid=[2.0], shrinkage_grid=[0.3])
+    registry = build_shape_strategy_registry(half_life_cycles_grid=[2.0], shrinkage_grid=[0.3])
 
     assert set(registry) == {
         "plain_average",
         "median",
-        "last_campanha",
+        "last_cycle",
         "recency_weighted_hl=2",
         "shrinkage_s=0.3",
     }
@@ -75,7 +75,7 @@ def test_build_shape_strategy_registry_returns_every_named_strategy():
 
 def test_build_shape_strategy_registry_expands_a_multi_value_grid():
     registry = build_shape_strategy_registry(
-        half_life_campanhas_grid=[1.0, 2.0], shrinkage_grid=[0.1, 0.5]
+        half_life_cycles_grid=[1.0, 2.0], shrinkage_grid=[0.1, 0.5]
     )
 
     assert "recency_weighted_hl=1" in registry

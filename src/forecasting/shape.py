@@ -12,18 +12,18 @@ ShapeStrategy = Callable[[pd.DataFrame], pd.DataFrame]
 
 
 def shape_plain_average(shape_observations: pd.DataFrame) -> pd.DataFrame:
-    """Within-window shape: unweighted average of order_share across historical campanhas."""
+    """Within-window shape: unweighted average of order_share across historical cycles."""
     shape = shape_observations.groupby(["sector", "offset"], as_index=False)["order_share"].mean()
     return normalize_shape(shape)
 
 
 def shape_recency_weighted(
-    shape_observations: pd.DataFrame, half_life_campanhas: float = 2.0
+    shape_observations: pd.DataFrame, half_life_cycles: float = 2.0
 ) -> pd.DataFrame:
-    """Within-window shape: campanhas weighted by recency via exponential decay (EWMA)."""
+    """Within-window shape: cycles weighted by recency via exponential decay (EWMA)."""
     frame = shape_observations.copy()
-    campanhas_ago = frame["campanha_id"].max() - frame["campanha_id"]
-    frame["weight"] = 0.5 ** (campanhas_ago / half_life_campanhas)
+    cycles_ago = frame["cycle_id"].max() - frame["cycle_id"]
+    frame["weight"] = 0.5 ** (cycles_ago / half_life_cycles)
     frame["weighted_share"] = frame["order_share"] * frame["weight"]
     grouped = frame.groupby(["sector", "offset"])
     shape = (
@@ -35,16 +35,16 @@ def shape_recency_weighted(
 
 
 def shape_median(shape_observations: pd.DataFrame) -> pd.DataFrame:
-    """Within-window shape: median order_share across historical campanhas, robust to outliers."""
+    """Within-window shape: median order_share across historical cycles, robust to outliers."""
     shape = shape_observations.groupby(["sector", "offset"], as_index=False)["order_share"].median()
     return normalize_shape(shape)
 
 
-def shape_last_campanha(shape_observations: pd.DataFrame) -> pd.DataFrame:
-    """Within-window shape: only the most recent historical campanha's share, no averaging."""
-    last_campanha_id = shape_observations["campanha_id"].max()
+def shape_last_cycle(shape_observations: pd.DataFrame) -> pd.DataFrame:
+    """Within-window shape: only the most recent historical cycle's share, no averaging."""
+    last_cycle_id = shape_observations["cycle_id"].max()
     columns = ["sector", "offset", "order_share"]
-    shape = shape_observations.loc[shape_observations["campanha_id"].eq(last_campanha_id), columns]
+    shape = shape_observations.loc[shape_observations["cycle_id"].eq(last_cycle_id), columns]
     return normalize_shape(shape.reset_index(drop=True))
 
 
@@ -65,5 +65,5 @@ def shape_shrinkage(plain_average_shape: pd.DataFrame, shrinkage: float = 0.3) -
 SHAPE_STRATEGIES: dict[str, ShapeStrategy] = {
     "plain_average": shape_plain_average,
     "median": shape_median,
-    "last_campanha": shape_last_campanha,
+    "last_cycle": shape_last_cycle,
 }

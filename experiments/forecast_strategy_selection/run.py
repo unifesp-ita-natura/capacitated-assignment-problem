@@ -1,5 +1,5 @@
 """Generate synthetic orders, score every level/shape forecast strategy against a
-held-out campanha, and report the best-performing combination."""
+held-out cycle, and report the best-performing combination."""
 
 from __future__ import annotations
 
@@ -13,8 +13,12 @@ from src.generate import generator
 
 SEED = 7
 SECTORS = [f"S{i:02d}" for i in range(1, 41)]
-N_CAMPANHAS = 6
+N_CYCLES = 6
 OUTPUT_DIR = "experiments/forecast_strategy_selection/outputs"
+
+# which demanda_level/demanda_shape metric to forecast - only one makes sense as a
+# target at a time. One of "pedidos", "volumes", "itens".
+METRIC = "pedidos"
 
 HALF_LIFE_GRID = (1.0, 2.0, 4.0)
 SHRINKAGE_GRID = (0.1, 0.3, 0.5)
@@ -28,53 +32,60 @@ def level_strategies() -> dict[str, level.LevelStrategy]:
     return {name: fn for name, fn in level.LEVEL_STRATEGIES.items() if name not in statsmodels_only}
 
 
-def build_synthetic_orders(
+def build_synthetic_demand(
     rng: np.random.Generator,
-) -> tuple[pd.DataFrame, list[pd.Timestamp], dict]:
-    """Synthetic historical orders, one campanha_start per campanha, and the as-is assignment."""
+) -> tuple[pd.DataFrame, pd.DataFrame, list[pd.Timestamp], dict]:
+    """Synthetic demanda_level/demanda_shape tables, one cycle_start per cycle,
+    and the as-is assignment."""
     assignment = generator.build_current_assignment(rng, SECTORS, generator.CURRENT_BLOCK_WEIGHTS)
-    campanha_starts = [
-        pd.Timestamp("2026-01-05") + pd.Timedelta(weeks=6 * i) for i in range(N_CAMPANHAS)
-    ]
-    orders = generator.generate_orders(rng, SECTORS, campanha_starts, assignment)
-    return orders, campanha_starts, assignment
+    cycle_starts = [pd.Timestamp("2026-01-05") + pd.Timedelta(weeks=6 * i) for i in range(N_CYCLES)]
+    orders = generator.generate_orders(rng, SECTORS, cycle_starts, assignment)
+    demand_level = generator.build_demand_level(orders)
+    demand_shape = generator.build_demand_shape(orders)
+    return demand_level, demand_shape, cycle_starts, assignment
 
 
 def split_history_and_holdout(
-    orders: pd.DataFrame, holdout_campanha_id: int
+    demand: pd.DataFrame, holdout_cycle_id: int
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Every campanha before the holdout as history, the holdout campanha's orders separately."""
-    history = orders.loc[orders["campanha_id"].lt(holdout_campanha_id)]
-    holdout = orders.loc[orders["campanha_id"].eq(holdout_campanha_id)]
+    """Every cycle before the holdout as history, the holdout cycle separately.
+
+    Works on either a demanda_level or demanda_shape table - both key cycles by
+    the string `ciclo` column.
+    """
+    ciclo = demand["ciclo"].astype(int)
+    history = demand.loc[ciclo.lt(holdout_cycle_id)]
+    holdout = demand.loc[ciclo.eq(holdout_cycle_id)]
     return history, holdout
 
 
 def run() -> tuple[pd.DataFrame, pd.DataFrame, str, str]:
     rng = np.random.default_rng(SEED)
-    orders, campanha_starts, assignment = build_synthetic_orders(rng)
-    holdout_campanha_id = N_CAMPANHAS
-    holdout_open_date = campanha_starts[-1]
+    demand_level, demand_shape, cycle_starts, assignment = build_synthetic_demand(rng)
+    holdout_cycle_id = N_CYCLES
+    holdout_open_date = cycle_starts[-1]
 
-    history, holdout = split_history_and_holdout(orders, holdout_campanha_id)
-    campanhas = pd.DataFrame(
+    level_history, level_holdout = split_history_and_holdout(demand_level, holdout_cycle_id)
+    shape_history, shape_holdout = split_history_and_holdout(demand_shape, holdout_cycle_id)
+    cycles = pd.DataFrame(
         {
-            "campanha_id": range(1, N_CAMPANHAS + 1),
-            "open_date": campanha_starts,
+            "cycle_id": range(1, N_CYCLES + 1),
+            "open_date": cycle_starts,
         }
     )
 
-    campanha_totals = data.build_campanha_totals(history)
-    shape_observations = data.build_shape_observations(history, campanha_totals)
-    actual_campanha_total = data.build_campanha_totals(holdout).rename(
-        columns={"campanha_total": "actual_campanha_total"}
-    )[["sector", "actual_campanha_total"]]
+    cycle_totals = data.build_cycle_totals(level_history, metric=METRIC)
+    shape_observations = data.build_shape_observations(shape_history, level_history, metric=METRIC)
+    actual_cycle_total = data.build_cycle_totals(level_holdout, metric=METRIC).rename(
+        columns={"cycle_total": "actual_cycle_total"}
+    )[["sector", "actual_cycle_total"]]
 
     level_scoreboard = scoring.score_level_strategies(
-        level_strategies(), campanha_totals, campanhas, actual_campanha_total
+        level_strategies(), cycle_totals, cycles, actual_cycle_total
     )
     best_level_name = scoring.select_best_level_strategy(level_scoreboard)
-    forecast_campanha_totals = level.forecast_campanha_total_with(
-        level.LEVEL_STRATEGIES[best_level_name], campanha_totals, campanhas
+    forecast_cycle_totals = level.forecast_cycle_total_with(
+        level.LEVEL_STRATEGIES[best_level_name], cycle_totals, cycles
     )
 
     shape_registry = sweep.build_shape_strategy_registry(HALF_LIFE_GRID, SHRINKAGE_GRID)
@@ -83,14 +94,15 @@ def run() -> tuple[pd.DataFrame, pd.DataFrame, str, str]:
         sector: generator.slot_start_day(block, sublock)
         for sector, (block, sublock) in assignment.items()
     }
+    total_column, _ = data.DEMAND_METRIC_COLUMNS[METRIC]
     actual_daily = (
-        holdout.groupby("order_date", as_index=False)["orders"]
+        shape_holdout.groupby("data_pedido", as_index=False)[total_column]
         .sum()
-        .rename(columns={"orders": "actual_orders"})
+        .rename(columns={"data_pedido": "order_date", total_column: "actual_orders"})
     )
 
     shape_scoreboard = scoring.score_shape_strategies(
-        shapes, forecast_campanha_totals, start_day_by_sector, holdout_open_date, actual_daily
+        shapes, forecast_cycle_totals, start_day_by_sector, holdout_open_date, actual_daily
     )
     best_shape_name = scoring.select_best_shape_strategy(shape_scoreboard)
 

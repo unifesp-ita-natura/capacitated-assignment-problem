@@ -10,14 +10,16 @@ from src.generate.generator import (
     BLOCKS,
     SUBLOCKS,
     WINDOW_LENGTH,
-    build_campanha_window_shapes,
+    build_cycle_window_shapes,
     build_current_assignment,
+    build_demand_level,
+    build_demand_shape,
     build_sector_metric_ratios,
     build_sector_shape_traits,
     build_sector_volume_parameters,
     expected_orders,
     generate_orders,
-    generate_sector_campanha_orders,
+    generate_sector_cycle_orders,
     hump_alpha,
     realize_window_shape,
     slot_start_day,
@@ -149,8 +151,8 @@ def test_realize_window_shape_is_normalized(rng, shape_traits):
     assert shape.sum() == pytest.approx(1.0)
 
 
-def test_build_campanha_window_shapes_matches_requested_lengths(rng, shape_traits):
-    shapes = build_campanha_window_shapes(rng, ["S1", "S2"], shape_traits, window_length=7)
+def test_build_cycle_window_shapes_matches_requested_lengths(rng, shape_traits):
+    shapes = build_cycle_window_shapes(rng, ["S1", "S2"], shape_traits, window_length=7)
 
     assert {sector: len(shape) for sector, shape in shapes.items()} == {"S1": 7, "S2": 7}
 
@@ -171,10 +173,10 @@ def test_build_sector_metric_ratios_within_default_ranges(metric_ratios):
 
 def test_expected_orders_scales_linearly_with_each_factor():
     base = expected_orders(
-        "S1", window_day_share=0.1, sector_baseline=40, sector_factor=1.0, campanha_factor=1.0
+        "S1", window_day_share=0.1, sector_baseline=40, sector_factor=1.0, cycle_factor=1.0
     )
     doubled_baseline = expected_orders(
-        "S1", window_day_share=0.1, sector_baseline=80, sector_factor=1.0, campanha_factor=1.0
+        "S1", window_day_share=0.1, sector_baseline=80, sector_factor=1.0, cycle_factor=1.0
     )
 
     assert doubled_baseline == pytest.approx(2 * base)
@@ -188,16 +190,16 @@ def test_expected_orders_uses_module_default_window_length():
 
 
 @pytest.fixture
-def sector_campanha_rows(rng) -> list[dict]:
+def sector_cycle_rows(rng) -> list[dict]:
     assignment = {"S1": (1, 1)}
     window_shape = np.array([0.5, 0.3, 0.2])
-    return generate_sector_campanha_orders(
+    return generate_sector_cycle_orders(
         rng,
         sector="S1",
-        campanha_id=1,
-        campanha_start=pd.Timestamp("2026-01-05"),  # Monday
+        cycle_id=1,
+        cycle_start=pd.Timestamp("2026-01-05"),  # Monday
         assignment=assignment,
-        campanha_factor=1.0,
+        cycle_factor=1.0,
         window_shape=window_shape,
         baseline=40,
         factor=1.0,
@@ -205,37 +207,37 @@ def sector_campanha_rows(rng) -> list[dict]:
     )
 
 
-def test_generate_sector_campanha_orders_has_one_row_per_window_day(sector_campanha_rows):
-    assert len(sector_campanha_rows) == 3
+def test_generate_sector_cycle_orders_has_one_row_per_window_day(sector_cycle_rows):
+    assert len(sector_cycle_rows) == 3
 
 
-def test_generate_sector_campanha_orders_uses_the_assigned_slot(sector_campanha_rows):
-    slots = {(row["block"], row["sublock"]) for row in sector_campanha_rows}
+def test_generate_sector_cycle_orders_uses_the_assigned_slot(sector_cycle_rows):
+    slots = {(row["block"], row["sublock"]) for row in sector_cycle_rows}
 
     assert slots == {(1, 1)}
 
 
-def test_generate_sector_campanha_orders_offsets_are_sequential(sector_campanha_rows):
-    assert [row["offset"] for row in sector_campanha_rows] == [0, 1, 2]
+def test_generate_sector_cycle_orders_offsets_are_sequential(sector_cycle_rows):
+    assert [row["offset"] for row in sector_cycle_rows] == [0, 1, 2]
 
 
-def test_generate_sector_campanha_orders_produces_nonnegative_counts(sector_campanha_rows):
-    assert all(row["orders"] >= 0 for row in sector_campanha_rows)
-    assert all(row["volumes"] >= 0 for row in sector_campanha_rows)
-    assert all(row["itens"] >= 0 for row in sector_campanha_rows)
+def test_generate_sector_cycle_orders_produces_nonnegative_counts(sector_cycle_rows):
+    assert all(row["orders"] >= 0 for row in sector_cycle_rows)
+    assert all(row["volumes"] >= 0 for row in sector_cycle_rows)
+    assert all(row["itens"] >= 0 for row in sector_cycle_rows)
 
 
-def test_generate_sector_campanha_orders_window_start_is_a_business_day(rng):
+def test_generate_sector_cycle_orders_window_start_is_a_business_day(rng):
     assignment = {"S1": (3, 5)}  # last slot of the cycle, likely to roll into a weekend
     window_shape = np.ones(10) / 10
 
-    rows = generate_sector_campanha_orders(
+    rows = generate_sector_cycle_orders(
         rng,
         sector="S1",
-        campanha_id=1,
-        campanha_start=pd.Timestamp("2026-01-05"),  # Monday
+        cycle_id=1,
+        cycle_start=pd.Timestamp("2026-01-05"),  # Monday
         assignment=assignment,
-        campanha_factor=1.0,
+        cycle_factor=1.0,
         window_shape=window_shape,
         baseline=40,
         factor=1.0,
@@ -251,18 +253,18 @@ def test_generate_sector_campanha_orders_window_start_is_a_business_day(rng):
 def orders_df(rng) -> pd.DataFrame:
     sectors = [f"S{i}" for i in range(3)]
     assignment = build_current_assignment(rng, sectors=sectors)
-    campanha_starts = [pd.Timestamp("2026-01-05"), pd.Timestamp("2026-02-02")]
-    return generate_orders(rng, sectors, campanha_starts, assignment)
+    cycle_starts = [pd.Timestamp("2026-01-05"), pd.Timestamp("2026-02-02")]
+    return generate_orders(rng, sectors, cycle_starts, assignment)
 
 
-def test_generate_orders_row_count_matches_sectors_campanhas_and_window(orders_df):
+def test_generate_orders_row_count_matches_sectors_cycles_and_window(orders_df):
     assert len(orders_df) == 3 * 2 * WINDOW_LENGTH
 
 
 def test_generate_orders_has_expected_columns(orders_df):
     assert set(orders_df.columns) == {
         "order_date",
-        "campanha_id",
+        "cycle_id",
         "day_in_cycle",
         "offset",
         "block",
@@ -274,26 +276,26 @@ def test_generate_orders_has_expected_columns(orders_df):
     }
 
 
-def test_generate_orders_respects_per_campanha_window_lengths(rng):
+def test_generate_orders_respects_per_cycle_window_lengths(rng):
     sectors = ["S1", "S2"]
     assignment = build_current_assignment(rng, sectors=sectors)
-    campanha_starts = [pd.Timestamp("2026-01-05"), pd.Timestamp("2026-02-02")]
+    cycle_starts = [pd.Timestamp("2026-01-05"), pd.Timestamp("2026-02-02")]
 
     df = generate_orders(
         rng,
         sectors,
-        campanha_starts,
+        cycle_starts,
         assignment,
         window_lengths={1: 10, 2: 15},
     )
 
-    counts = df.groupby("campanha_id").size()
+    counts = df.groupby("cycle_id").size()
     assert counts[1] == len(sectors) * 10
     assert counts[2] == len(sectors) * 15
 
 
-def test_generate_orders_covers_every_campanha(orders_df):
-    assert set(orders_df["campanha_id"]) == {1, 2}
+def test_generate_orders_covers_every_cycle(orders_df):
+    assert set(orders_df["cycle_id"]) == {1, 2}
 
 
 def test_generate_orders_covers_every_sector(orders_df):
@@ -304,18 +306,97 @@ def test_generate_orders_produces_nonnegative_counts(orders_df):
     assert (orders_df["orders"] >= 0).all()
 
 
-def test_generate_orders_uses_supplied_campanha_factors():
+def test_generate_orders_uses_supplied_cycle_factors():
     sectors = ["S1"]
     assignment = {"S1": (1, 1)}
-    campanha_starts = [pd.Timestamp("2026-01-05"), pd.Timestamp("2026-02-02")]
+    cycle_starts = [pd.Timestamp("2026-01-05"), pd.Timestamp("2026-02-02")]
 
     df = generate_orders(
         np.random.default_rng(1),
         sectors,
-        campanha_starts,
+        cycle_starts,
         assignment,
-        campanha_factors={1: 1.0, 2: 5.0},
+        cycle_factors={1: 1.0, 2: 5.0},
     )
 
-    mean_by_campanha = df.groupby("campanha_id")["orders"].mean()
-    assert mean_by_campanha[2] > mean_by_campanha[1]
+    mean_by_cycle = df.groupby("cycle_id")["orders"].mean()
+    assert mean_by_cycle[2] > mean_by_cycle[1]
+
+
+def test_build_demand_level_matches_processed_schema(orders_df):
+    level = build_demand_level(orders_df)
+
+    assert list(level.columns) == [
+        "cd_setor",
+        "ciclo",
+        "date",
+        "cycle_duration",
+        "total_pedidos",
+        "total_volumes",
+        "total_itens",
+    ]
+
+
+def test_build_demand_level_one_row_per_sector_cycle(orders_df):
+    level = build_demand_level(orders_df)
+
+    assert len(level) == orders_df[["sector", "cycle_id"]].drop_duplicates().shape[0]
+
+
+def test_build_demand_level_cycle_duration_matches_window_length(orders_df):
+    level = build_demand_level(orders_df)
+
+    assert (level["cycle_duration"] == WINDOW_LENGTH).all()
+
+
+def test_build_demand_level_totals_match_raw_sums(orders_df):
+    level = build_demand_level(orders_df)
+    expected_total = orders_df.loc[
+        orders_df["sector"].eq("S0") & orders_df["cycle_id"].eq(1), "orders"
+    ].sum()
+    actual_total = level.loc[
+        level["cd_setor"].eq("S0") & level["ciclo"].eq("1"), "total_pedidos"
+    ].iloc[0]
+
+    assert actual_total == expected_total
+
+
+def test_build_demand_shape_matches_processed_schema(orders_df):
+    shape = build_demand_shape(orders_df)
+
+    assert list(shape.columns) == [
+        "cd_setor",
+        "ciclo",
+        "data_pedido",
+        "relative_date",
+        "total_pedidos",
+        "total_volumes",
+        "total_itens",
+        "ciclo_total_pedidos",
+        "ciclo_total_volumes",
+        "ciclo_total_itens",
+        "share_pedidos",
+        "share_volumes",
+        "share_itens",
+    ]
+
+
+def test_build_demand_shape_one_row_per_orders_row(orders_df):
+    shape = build_demand_shape(orders_df)
+
+    assert len(shape) == len(orders_df)
+
+
+def test_build_demand_shape_relative_date_within_unit_interval(orders_df):
+    shape = build_demand_shape(orders_df)
+
+    assert shape["relative_date"].between(0, 1, inclusive="left").all()
+
+
+def test_build_demand_shape_shares_sum_to_one_per_sector_cycle(orders_df):
+    shape = build_demand_shape(orders_df)
+    # only groups with nonzero cycle totals have well-defined shares
+    non_degenerate = shape[shape["ciclo_total_pedidos"] > 0]
+
+    totals = non_degenerate.groupby(["cd_setor", "ciclo"])["share_pedidos"].sum()
+    assert all(total == pytest.approx(1.0) for total in totals)

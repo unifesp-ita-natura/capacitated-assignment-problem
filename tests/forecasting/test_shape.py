@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from src.forecasting.shape import (
-    shape_last_campanha,
+    shape_last_cycle,
     shape_median,
     shape_plain_average,
     shape_recency_weighted,
@@ -19,7 +19,7 @@ def shape_observations() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "sector": ["S1", "S1", "S1", "S1"],
-            "campanha_id": [1, 1, 2, 2],
+            "cycle_id": [1, 1, 2, 2],
             "offset": [0, 1, 0, 1],
             "order_share": [0.6, 0.4, 0.2, 0.8],
         }
@@ -34,11 +34,11 @@ def test_shape_plain_average_is_the_unweighted_mean_per_offset(shape_observation
     assert result[1] == pytest.approx(0.6)
 
 
-def test_shape_median_is_robust_to_an_outlier_campanha():
+def test_shape_median_is_robust_to_an_outlier_cycle():
     observations = pd.DataFrame(
         {
             "sector": ["S1"] * 6,
-            "campanha_id": [1, 1, 2, 2, 3, 3],
+            "cycle_id": [1, 1, 2, 2, 3, 3],
             "offset": [0, 1, 0, 1, 0, 1],
             "order_share": [0.1, 0.9, 0.1, 0.9, 0.9, 0.1],
         }
@@ -53,17 +53,17 @@ def test_shape_median_is_robust_to_an_outlier_campanha():
     assert average_offset0 == pytest.approx((0.1 + 0.1 + 0.9) / 3)
 
 
-def test_shape_recency_weighted_favors_the_most_recent_campanha():
+def test_shape_recency_weighted_favors_the_most_recent_cycle():
     observations = pd.DataFrame(
         {
             "sector": ["S1", "S1", "S1", "S1"],
-            "campanha_id": [1, 1, 2, 2],
+            "cycle_id": [1, 1, 2, 2],
             "offset": [0, 1, 0, 1],
             "order_share": [0.0, 1.0, 1.0, 0.0],
         }
     )
 
-    weighted = shape_recency_weighted(observations, half_life_campanhas=1.0)
+    weighted = shape_recency_weighted(observations, half_life_cycles=1.0)
     plain = shape_plain_average(observations)
 
     weighted_value = weighted.set_index("offset")["order_share"][0]
@@ -71,8 +71,8 @@ def test_shape_recency_weighted_favors_the_most_recent_campanha():
     assert weighted_value > plain_value
 
 
-def test_shape_last_campanha_uses_only_the_most_recent_campanha(shape_observations):
-    shape = shape_last_campanha(shape_observations)
+def test_shape_last_cycle_uses_only_the_most_recent_cycle(shape_observations):
+    shape = shape_last_cycle(shape_observations)
 
     result = shape.set_index("offset")["order_share"]
     assert result[0] == pytest.approx(0.2)
