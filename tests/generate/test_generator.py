@@ -14,6 +14,7 @@ from src.generate.generator import (
     build_cycle_window_shapes,
     build_demand_level,
     build_demand_shape,
+    build_sector_cd_assignment,
     build_sector_metric_ratios,
     build_sector_shape_traits,
     build_sector_volume_parameters,
@@ -85,6 +86,48 @@ def test_build_current_assignment_is_deterministic_for_a_given_rng_state():
     second = build_current_assignment(np.random.default_rng(0), sectors=sectors)
 
     assert first == second
+
+
+@pytest.fixture
+def cd_capacities() -> dict[int, int]:
+    return {1: 100_000, 2: 300_000, 3: 600_000}
+
+
+def test_build_sector_cd_assignment_covers_every_sector(rng, cd_capacities):
+    sectors = [f"S{i}" for i in range(20)]
+
+    assignment = build_sector_cd_assignment(rng, sectors, cd_capacities)
+
+    assert set(assignment) == set(sectors)
+
+
+def test_build_sector_cd_assignment_uses_valid_cd_codes(rng, cd_capacities):
+    sectors = [f"S{i}" for i in range(20)]
+
+    assignment = build_sector_cd_assignment(rng, sectors, cd_capacities)
+
+    assert set(assignment.values()) <= set(cd_capacities)
+
+
+def test_build_sector_cd_assignment_is_deterministic_for_a_given_rng_state(cd_capacities):
+    sectors = ["S1", "S2", "S3"]
+
+    first = build_sector_cd_assignment(np.random.default_rng(0), sectors, cd_capacities)
+    second = build_sector_cd_assignment(np.random.default_rng(0), sectors, cd_capacities)
+
+    assert first == second
+
+
+def test_build_sector_cd_assignment_tracks_capacity_shares(cd_capacities):
+    sectors = [f"S{i}" for i in range(5000)]
+
+    assignment = build_sector_cd_assignment(np.random.default_rng(0), sectors, cd_capacities)
+
+    counts = pd.Series(assignment.values()).value_counts(normalize=True)
+    total_capacity = sum(cd_capacities.values())
+    for cd, capacity in cd_capacities.items():
+        expected_share = capacity / total_capacity
+        assert counts[cd] == pytest.approx(expected_share, abs=0.03)
 
 
 @pytest.fixture

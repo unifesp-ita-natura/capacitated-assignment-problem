@@ -163,12 +163,31 @@ def _build_id_maps(sectors: list[str]) -> tuple[dict[str, int], dict[int, tuple[
     return sector_ids, combo_slots
 
 
+def _items_per_order_by_sector(demand_level: pd.DataFrame) -> dict[str, float]:
+    """Each sector's empirical items-per-order ratio, from historical demand_level totals.
+
+    `CD_CAPACITIES` is expressed in itens/dia while `forecast_orders` is a pedido
+    (order) count; this ratio converts the latter into the former so demand and
+    capacity are compared in the same unit.
+    """
+    totals = demand_level.groupby("cd_setor")[["total_itens", "total_pedidos"]].sum()
+    return (totals["total_itens"] / totals["total_pedidos"]).to_dict()
+
+
+def _forecast_items(
+    combined_forecast: pd.DataFrame, items_per_order: dict[str, float]
+) -> pd.DataFrame:
+    """`combined_forecast` with a `forecast_items` column added (orders converted to itens)."""
+    ratio = combined_forecast["sector"].map(items_per_order)
+    return combined_forecast.assign(forecast_items=combined_forecast["forecast_orders"] * ratio)
+
+
 def _projected_demand(
     combined_forecast: pd.DataFrame,
     sector_ids: dict[str, int],
     combo_slots: dict[int, tuple[int, int]],
 ) -> dict[tuple[int, int, int], float]:
-    """Every (sector, day-in-cycle, combination) forecast quantity.
+    """Every (sector, day-in-cycle, combination) forecast quantity, in itens.
 
     A sector's forecast order-share curve is fixed; only where it *lands* in the
     cycle shifts with the (block, sublock) combination it is assigned to (each
@@ -180,22 +199,33 @@ def _projected_demand(
         sector_id = sector_ids[row.sector]
         for combo_id, (block, sublock) in combo_slots.items():
             day_id = generator.slot_start_day(block, sublock) + row.offset
-            projected_demand[(sector_id, day_id, combo_id)] = float(row.forecast_orders)
+            projected_demand[(sector_id, day_id, combo_id)] = float(row.forecast_items)
     return projected_demand
 
 
-def _average_daily_orders(demand_level: pd.DataFrame, n_cycles: int) -> float:
-    """Average total daily order count across all sectors, from historical demand_level."""
-    per_sector_cycle_daily_rate = demand_level["total_pedidos"] / demand_level["cycle_duration"]
-    return float(per_sector_cycle_daily_rate.sum() / n_cycles)
-
-
 def _build_daily_capacity(
-    demand_level: pd.DataFrame, n_cycles: int, capacity_multiplier: float, days: list[int]
+    cd_codes: list[int], days: list[int], capacity_multiplier: float = 1.0
 ) -> dict[tuple[int, int], float]:
-    """Flat per-day capacity for the single CD, scaled off the historical average daily load."""
-    capacity = capacity_multiplier * _average_daily_orders(demand_level, n_cycles)
-    return {(1, day): capacity for day in days}
+    """Flat per-day itens capacity for each CD, from its real daily throughput limit.
+
+    `capacity_multiplier` is an optional headroom/derate factor applied on top of
+    the real `CD_CAPACITIES` limit (1.0 leaves it unchanged).
+    """
+    return {
+        (cd_code, day): capacity_multiplier * generator.CD_CAPACITIES[cd_code]
+        for cd_code in cd_codes
+        for day in days
+    }
+
+
+def _build_cd_sectors(
+    sector_to_cd: dict[str, int], sector_ids: dict[str, int]
+) -> dict[int, list[int]]:
+    """CD code -> list of sector ids assigned to it."""
+    cd_sectors: dict[int, list[int]] = {}
+    for sector, cd_code in sector_to_cd.items():
+        cd_sectors.setdefault(cd_code, []).append(sector_ids[sector])
+    return cd_sectors
 
 
 def _build_current_assignment_mip(
@@ -300,7 +330,7 @@ def main(
     cycle_length: int = 21,
     n_cycles: int = 6,
     max_churn: float = 0.2,
-    capacity_multiplier: float = 1.2,
+    capacity_multiplier: float = 1.0,
     seed: int = 42,
 ) -> None:
     """Run the full generate -> forecast -> solve pipeline and compare both solvers."""
@@ -332,10 +362,15 @@ def main(
     sector_ids_list = list(sector_ids.values())
     combo_ids_list = list(combo_slots.keys())
 
+    items_per_order = _items_per_order_by_sector(demand_level)
+    calendar_forecast = _forecast_items(calendar_forecast, items_per_order)
+
     projected_demand = _projected_demand(calendar_forecast, sector_ids, combo_slots)
     days = sorted({day for _, day, _ in projected_demand})
-    daily_capacity = _build_daily_capacity(demand_level, n_cycles, capacity_multiplier, days)
-    cd_sectors = {1: sector_ids_list}  # single CD: a simplification for this demo pipeline
+
+    sector_to_cd = generator.build_sector_cd_assignment(rng, sectors)
+    cd_sectors = _build_cd_sectors(sector_to_cd, sector_ids)
+    daily_capacity = _build_daily_capacity(list(cd_sectors), days, capacity_multiplier)
 
     current_assignment_mip = _build_current_assignment_mip(assignment, sector_ids, combo_ids)
     current_assignment_sa = _build_current_assignment_sa(assignment, sector_ids, combo_ids)

@@ -27,6 +27,20 @@ CURRENT_BLOCK_WEIGHTS = {
     3: 0.2,
 }  # skewed toward block 2 (~45% real concentration)
 
+# Real per-CD daily throughput limits, in ITENS (items/day) - not order counts.
+# Downstream demand must be converted to items before being compared against these.
+CD_CAPACITIES: dict[int, int] = {
+    2700: 350_000,
+    2800: 44_000,
+    5100: 1_000_000,
+    5300: 120_000,
+    5400: 350_000,
+    5500: 140_000,
+    5600: 200_000,
+    5700: 1_200_000,
+    5800: 400_000,
+}
+
 
 # TODO: double check this works for weekends, feels wrong -> same as CYCLE_SPAN
 def slot_start_day(block: int, sublock: int) -> int:
@@ -55,6 +69,19 @@ def build_current_assignment(
         sector: (int(block), int(sublock))
         for sector, block, sublock in zip(sectors, block_assigned, sublock_assigned)
     }
+
+
+def build_sector_cd_assignment(
+    rng,
+    sectors: list[str],
+    cd_capacities: dict[int, int] = CD_CAPACITIES,
+) -> dict[str, int]:
+    """Each sector's CD, chosen randomly with probability weighted by each CD's capacity share."""
+    cd_codes = list(cd_capacities)
+    total_capacity = sum(cd_capacities.values())
+    weights = [cd_capacities[cd] / total_capacity for cd in cd_codes]
+    cd_assigned = rng.choice(cd_codes, size=len(sectors), p=weights)
+    return {sector: int(cd) for sector, cd in zip(sectors, cd_assigned)}
 
 
 def build_sector_volume_parameters(
