@@ -76,14 +76,13 @@ class EvaluationResult:
                 f"{self.candidate_name}: nothing was scored — check min_train_cycles/horizon "
                 "against the panel's number of cycles"
             )
-        per_sector_mae = scored.groupby("cd_setor")["abs_error"].mean()
         per_origin_mase = [
             mase(o.scored["actual"], o.scored["items_pred"], o.naive_in_sample_mae)
             for o in self.origins
             if not o.scored.empty
         ]
         return {
-            "mae": float(per_sector_mae.mean()),  # equal weight per sector, not per row
+            "mae": equal_weight_mae(scored),
             "rmse": rmse(scored["actual"], scored["items_pred"]),
             "mase": float(np.mean(per_origin_mase)) if per_origin_mase else float("nan"),
             "p90_abs_error": float(np.percentile(scored["abs_error"], 90)),
@@ -98,6 +97,18 @@ class EvaluationResult:
     def ranking_metric(self) -> float:
         """The number candidates are ranked by — `metrics.PRIMARY_METRIC`, decided in one place."""
         return self.summary()[PRIMARY_METRIC]
+
+
+def equal_weight_mae(scored: pd.DataFrame) -> float:
+    """MAE giving every sector one vote, regardless of how many rows it contributed.
+
+    The spec's decision rule (section 4.6) weights sectors equally rather
+    than by volume, because the assignment problem treats every sector
+    symmetrically — a big sector's error shouldn't dominate the ranking.
+    Shared with `comparison.py` so a candidate's headline number and its
+    common-subset number are computed the same way.
+    """
+    return float(scored.groupby("cd_setor")["abs_error"].mean().mean())
 
 
 def _cycle_order(panel: pd.DataFrame) -> list[str]:
