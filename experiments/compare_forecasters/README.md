@@ -75,14 +75,53 @@ same folds the result table reports, so those numbers are optimistic as an
 estimate of unseen-data error; `num_leaves: 7` was chosen on the principle
 (tiny training set → regularize hard), not by taking the grid's minimum.
 
+## Why naive:mean wins — the series is mostly noise
+
+Three measurements on the full panel explain the result, and bound how much
+any future candidate can gain:
+
+| measurement | value | reading |
+|---|---|---|
+| variance between sectors (the "level") | 20.8% | the level is a fifth of the variation |
+| variance within a sector, cycle to cycle | 79.2% | the rest is a sector bouncing around |
+| lag-1 autocorrelation of deviations from the sector mean | **−0.065** | being above the mean says nothing about next cycle |
+| MAE of an oracle that knew each sector's exact mean | 1.658 items | uses future data — not achievable |
+| MAE of `naive:mean` | 1.851 items | the honest version of the same idea |
+
+The autocorrelation is the decisive one: deviations from a sector's own mean
+carry essentially no usable structure. Only 10% of sectors exceed |0.5|,
+which is roughly what 11-point series produce by chance. And the gap between
+`naive:mean` (1.851) and a cheating oracle (1.658) is about 10% — that is
+the entire space any better model can compete for at this granularity.
+
+## The error that matters is at the CD, not the sector
+
+The capacity constraint is per distribution centre per day, not per sector,
+and sector errors partly cancel when summed — one sector over-orders while
+another under-orders. Measured on the same `naive:mean` run:
+
+| level the error is measured at | relative error |
+|---|---|
+| per sector (what this experiment ranks on) | 41.0% |
+| per CD (what constraint 3.5.4 acts on) | **12.5%** |
+
+With a median of ~42 sectors per CD, aggregation cuts relative error to
+under a third. This experiment therefore ranks candidates on a harder
+metric than the optimization actually requires. (Approximate: each sector is
+assigned to its dominant CD, and 429 sectors appear under more than one.)
+
 ## What to try next
 
-- **Predict the deviation from the sector's mean, not the level.** Every
-  model here spends most of its capacity re-learning each sector's level —
-  which `naive:mean` gets for free. Fitting LightGBM to `items - sector mean`
-  would let the trees work only on the part `mean` cannot explain.
+- **Add a CD-day error metric and rank on it too.** It's the level the MIP's
+  capacity constraint acts on, and it may not pick the same winner.
 - **Shorten the rolling window** so LightGBM can score the first fold and
   stop forfeiting 606 points.
+- **Predicting the deviation from the sector mean** (fitting the model to
+  `items / sector mean` rather than to the level) is cheap to try, but the
+  autocorrelation above says there is little there to find. A ratio is
+  better supported than a subtraction: absolute variation grows with sector
+  size (1.609 → 2.400 items from smallest to largest quartile) while
+  relative variation stays near 0.45.
 - **Revisit once a second year of history exists.** Seasonal orders, the
   `seasonal_naive` strategy, and the year-ago lag feature from the spec's
   section 4.4 are all unusable today and are the main untested source of

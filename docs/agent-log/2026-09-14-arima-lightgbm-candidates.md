@@ -87,3 +87,36 @@ forecasting side now has a defensible answer to "which model produces
   `uv.lock` was not regenerated after adding `lightgbm`. A human should run
   `uv lock` before merging. Verification used a scratch virtualenv on
   Python 3.14 with pandas 3.0.5, statsmodels 0.15.0 and lightgbm 4.7.0.
+
+## Addendum (2026-09-14, same day)
+
+The "what to try next" recommendation in this entry — fit LightGBM to the
+deviation from each sector's mean, because "every model here spends most of
+its capacity re-learning a sector's level" — was **wrong on its stated
+reasoning**, and the experiment README has been corrected. Measuring instead
+of asserting gave three numbers:
+
+- The level accounts for only **20.8%** of the panel's variance; 79.2% is a
+  sector varying from one cycle to the next. The level is not where the
+  models' capacity goes.
+- The lag-1 autocorrelation of deviations from a sector's own mean is
+  **−0.065** — effectively zero. Deviations carry essentially no usable
+  structure, so normalizing the target is unlikely to unlock anything.
+  Only 10% of sectors exceed |0.5|, about what 11-point series yield by
+  chance.
+- An oracle knowing each sector's exact mean (using future data) reaches
+  **1.658** items MAE against `naive:mean`'s 1.851. The entire headroom at
+  this granularity is ~10%, and it isn't reachable.
+
+One part of the original instinct survived: if the target is normalized, a
+ratio is better supported than a subtraction, since absolute variation grows
+with sector size while relative variation stays near 0.45.
+
+**The more consequential finding** came out of the same check: the error at
+the level the capacity constraint actually acts on is far smaller than the
+per-sector number this experiment ranks by — **12.5% per CD against 41.0%
+per sector**, since sector errors partly cancel across the ~42 sectors a CD
+aggregates. The forecasting side has been selecting models on a harder
+metric than the optimization requires. Adding a CD-day metric to the
+comparison is now the top recommendation, ahead of any further per-sector
+modeling.
