@@ -42,6 +42,40 @@ CD_CAPACITIES: dict[int, int] = {
 }
 
 
+def build_sectors(n_sectors: int) -> list[str]:
+    """Sector labels S01, S02, ... for a given sector count."""
+    return [f"S{i:02d}" for i in range(1, n_sectors + 1)]
+
+
+def cycle_span_business_days(cycle_length: int) -> int:
+    """Business days from a cycle's first slot opening to its last slot's window close.
+
+    Mirrors `CYCLE_SPAN` (which hardcodes `WINDOW_LENGTH`) so custom `cycle_length`
+    values still produce non-overlapping cycles.
+    """
+    return len(SLOTS) + cycle_length - 1
+
+
+def build_cycle_starts(cycle_length: int, n_cycles: int) -> list[pd.Timestamp]:
+    """One non-overlapping start date per historical cycle, spaced by the cycle span."""
+    base_date = pd.Timestamp("2026-01-05")  # Monday, arbitrary fixed anchor
+    span = cycle_span_business_days(cycle_length)
+    return [base_date + pd.offsets.BDay(span * i) for i in range(n_cycles)]
+
+
+def next_cycle_start(cycle_starts: list[pd.Timestamp], cycle_length: int) -> pd.Timestamp:
+    """Start date of the cycle immediately following the last historical one."""
+    span = cycle_span_business_days(cycle_length)
+    return cycle_starts[-1] + pd.offsets.BDay(span)
+
+
+CURRENT_BLOCK_WEIGHTS = {
+    1: 0.15,
+    2: 0.65,
+    3: 0.2,
+}  # skewed toward block 2 (~45% real concentration)
+
+
 # TODO: double check this works for weekends, feels wrong -> same as CYCLE_SPAN
 def slot_start_day(block: int, sublock: int) -> int:
     """Day-in-cycle on which a (block, sublock) slot's sales window opens"""
@@ -352,3 +386,16 @@ def build_demand_shape(orders_df: pd.DataFrame) -> pd.DataFrame:
             "share_itens",
         ]
     ]
+
+
+def generate_synthetic_demand(
+    rng: np.random.Generator, sectors: list[str], cycle_length: int, n_cycles: int
+) -> tuple[pd.DataFrame, pd.DataFrame, list[pd.Timestamp], dict[str, tuple[int, int]]]:
+    """Synthetic demanda_level/demanda_shape tables, cycle start dates, and the as-is assignment."""
+    assignment = build_current_assignment(rng, sectors, CURRENT_BLOCK_WEIGHTS)
+    cycle_starts = build_cycle_starts(cycle_length, n_cycles)
+    window_lengths = dict.fromkeys(range(1, n_cycles + 1), cycle_length)
+    orders = generate_orders(rng, sectors, cycle_starts, assignment, window_lengths=window_lengths)
+    demand_level = build_demand_level(orders)
+    demand_shape = build_demand_shape(orders)
+    return demand_level, demand_shape, cycle_starts, assignment

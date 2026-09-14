@@ -8,7 +8,10 @@ import pytest
 from src.forecasting.data import (
     build_cycle_totals,
     build_shape_observations,
+    forecast_items,
+    items_per_order_by_sector,
     normalize_shape,
+    split_history_and_holdout,
     to_calendar,
     validate_demand_metric,
 )
@@ -130,3 +133,41 @@ def test_to_calendar_lets_orders_land_on_a_weekend_within_a_long_window():
         pd.Timestamp("2026-01-03"),  # Saturday
         pd.Timestamp("2026-01-04"),  # Sunday
     ]
+
+
+def test_split_history_and_holdout_separates_by_cycle_id():
+    demand = pd.DataFrame({"ciclo": ["1", "2", "3", "4"], "value": [10, 20, 30, 40]})
+
+    history, holdout = split_history_and_holdout(demand, holdout_cycle_id=3)
+
+    assert history["ciclo"].astype(int).tolist() == [1, 2]
+    assert holdout["ciclo"].astype(int).tolist() == [3]
+    assert (history["ciclo"].astype(int) < 3).all()
+    assert 3 not in history["ciclo"].astype(int).tolist()
+
+
+def test_items_per_order_by_sector_computes_ratio_per_sector():
+    demand_level = pd.DataFrame(
+        {
+            "cd_setor": ["S1", "S1", "S2"],
+            "total_itens": [100, 100, 60],
+            "total_pedidos": [20, 30, 20],
+        }
+    )
+
+    ratios = items_per_order_by_sector(demand_level)
+
+    assert ratios == pytest.approx({"S1": 200 / 50, "S2": 60 / 20})
+
+
+def test_forecast_items_multiplies_forecast_orders_by_mapped_ratio():
+    combined_forecast = pd.DataFrame(
+        {"sector": ["S1", "S2", "S3"], "forecast_orders": [10, 20, 30]}
+    )
+    items_per_order = {"S1": 2.0, "S2": 3.0}
+
+    result = forecast_items(combined_forecast, items_per_order)
+
+    assert result["forecast_items"].iloc[0] == pytest.approx(20.0)
+    assert result["forecast_items"].iloc[1] == pytest.approx(60.0)
+    assert pd.isna(result["forecast_items"].iloc[2])

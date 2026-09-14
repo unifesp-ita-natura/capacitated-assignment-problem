@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable, Mapping
 
 import pyomo.environ as pyo
+
+from src.persistence import SolveResult
 
 ProjectedDemand = Mapping[tuple[int, int, int], float]  # (sector, day, combination) -> qty
 
@@ -45,6 +48,41 @@ def solve_block_assignment(model: pyo.ConcreteModel, solver: str = "gurobi") -> 
     """
     solver_interface = pyo.SolverFactory(solver)
     return solver_interface.solve(model)
+
+
+def run_block_assignment_mip(
+    sectors: list[int],
+    combinations: list[int],
+    days: list[int],
+    cd_sectors: dict[int, list[int]],
+    daily_capacity: dict[tuple[int, int], float],
+    projected_demand: ProjectedDemand,
+    current_assignment: dict[tuple[int, int], int],
+    max_churn: float,
+    solver: str = "appsi_highs",
+) -> SolveResult:
+    """Build and solve the block-assignment MIP, returning a timed `SolveResult`."""
+    model = build_block_assignment_model(
+        sectors=sectors,
+        combinations=combinations,
+        days=days,
+        cd_sectors=cd_sectors,
+        daily_capacity=daily_capacity,
+        projected_demand=projected_demand,
+        current_assignment=current_assignment,
+        max_churn=max_churn,
+    )
+    start = time.perf_counter()
+    pyomo_results = solve_block_assignment(model, solver=solver)
+    wall_time_seconds = time.perf_counter() - start
+    return SolveResult(
+        model_name="mip_highs",
+        solver=solver,
+        status=str(pyomo_results.solver.status),
+        termination_condition=str(pyomo_results.solver.termination_condition),
+        objective=pyo.value(model.objective, exception=False),
+        wall_time_seconds=wall_time_seconds,
+    )
 
 
 def _add_sets(

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
+
+from src.persistence import SolveResult
 
 ProjectedDemand = Mapping[tuple[int, int, int], float]  # (setor, dia, combinação) -> qtd
 
@@ -74,6 +77,41 @@ def solve(
         valid_combinations,
     )
     return _anneal(problem, params, rng)
+
+
+def run_simulated_annealing(
+    sectors: list[int],
+    combinations: list[int],
+    days: list[int],
+    cd_sectors: dict[int, list[int]],
+    daily_capacity: dict[tuple[int, int], float],
+    projected_demand: ProjectedDemand,
+    current_assignment: dict[int, int],
+    max_churn: float,
+    seed: int,
+) -> SolveResult:
+    """Run the simulated-annealing heuristic, returning a timed `SolveResult`."""
+    start = time.perf_counter()
+    result = solve(
+        sectors=sectors,
+        combinations=combinations,
+        days=days,
+        cd_sectors=cd_sectors,
+        daily_capacity=daily_capacity,
+        projected_demand=projected_demand,
+        current_assignment=current_assignment,
+        max_churn=max_churn,
+        rng=random.Random(seed),
+    )
+    wall_time_seconds = time.perf_counter() - start
+    return SolveResult(
+        model_name="simulated_annealing",
+        solver="simulated_annealing",
+        status=result.stop_reason,
+        termination_condition=result.stop_reason,
+        objective=result.objective,
+        wall_time_seconds=wall_time_seconds,
+    )
 
 
 @dataclass(frozen=True)

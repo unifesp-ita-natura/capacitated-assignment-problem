@@ -6,7 +6,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.solver.mip.block_assignment import build_block_assignment_model, solve_block_assignment
+from src.solver.mip.block_assignment import (
+    build_block_assignment_model,
+    run_block_assignment_mip,
+    solve_block_assignment,
+)
 
 
 @pytest.fixture
@@ -92,3 +96,37 @@ def test_solve_block_assignment_dispatches_to_requested_solver(
     solve_block_assignment(model, solver=solver_name)
 
     mock_solver_factory.assert_called_once_with(solver_name)
+
+
+@patch("src.solver.mip.block_assignment.pyo.SolverFactory")
+def test_run_block_assignment_mip_defaults_to_highs(mock_solver_factory, toy_instance):
+    mock_solver = MagicMock()
+    mock_solver.solve.return_value = MagicMock(
+        solver=MagicMock(status="ok", termination_condition="optimal")
+    )
+    mock_solver_factory.return_value = mock_solver
+
+    result = run_block_assignment_mip(**toy_instance)
+
+    mock_solver_factory.assert_called_once_with("appsi_highs")
+    assert (
+        result.model_name,
+        result.solver,
+        result.status,
+        result.termination_condition,
+    ) == ("mip_highs", "appsi_highs", "ok", "optimal")
+    assert result.wall_time_seconds >= 0
+
+
+@patch("src.solver.mip.block_assignment.pyo.SolverFactory")
+def test_run_block_assignment_mip_dispatches_to_requested_solver(mock_solver_factory, toy_instance):
+    mock_solver = MagicMock()
+    mock_solver.solve.return_value = MagicMock(
+        solver=MagicMock(status="ok", termination_condition="optimal")
+    )
+    mock_solver_factory.return_value = mock_solver
+
+    result = run_block_assignment_mip(**toy_instance, solver="cbc")
+
+    mock_solver_factory.assert_called_once_with("cbc")
+    assert result.solver == "cbc"

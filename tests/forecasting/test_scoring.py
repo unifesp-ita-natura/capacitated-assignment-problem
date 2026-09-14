@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from src.forecasting.level import level_linear_trend, level_naive_last
+from src.forecasting.level import LEVEL_STRATEGIES, level_linear_trend, level_naive_last
 from src.forecasting.scoring import (
+    score_and_select_strategies,
     score_level_strategies,
     score_level_strategy,
     score_shape_strategies,
@@ -14,6 +16,8 @@ from src.forecasting.scoring import (
     select_best_level_strategy,
     select_best_shape_strategy,
 )
+from src.forecasting.shape import SHAPE_STRATEGIES
+from src.generate.generator import generate_synthetic_demand
 
 
 @pytest.fixture
@@ -109,3 +113,26 @@ def test_select_best_shape_strategy_returns_the_lowest_wmape_strategy():
     )
 
     assert select_best_shape_strategy(scoreboard) == "recency_weighted"
+
+
+@pytest.fixture
+def synthetic_demand():
+    rng = np.random.default_rng(0)
+    sectors = ["S01", "S02", "S03"]
+    demand_level, demand_shape, cycle_starts, assignment = generate_synthetic_demand(
+        rng, sectors, cycle_length=10, n_cycles=4
+    )
+    return demand_level, demand_shape, cycle_starts, assignment
+
+
+def test_score_and_select_strategies_returns_valid_strategy_names(synthetic_demand):
+    demand_level, demand_shape, cycle_starts, assignment = synthetic_demand
+
+    best_level_name, best_shape_name = score_and_select_strategies(
+        demand_level, demand_shape, cycle_starts, assignment, n_cycles=4
+    )
+
+    assert isinstance(best_level_name, str)
+    assert isinstance(best_shape_name, str)
+    assert best_level_name in LEVEL_STRATEGIES
+    assert best_shape_name in SHAPE_STRATEGIES

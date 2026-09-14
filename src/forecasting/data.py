@@ -43,6 +43,14 @@ def build_cycle_totals(
     )
 
 
+def split_history_and_holdout(
+    demand: pd.DataFrame, holdout_cycle_id: int
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Every cycle before the holdout as training history, the holdout cycle separately."""
+    ciclo = demand["ciclo"].astype(int)
+    return demand.loc[ciclo.lt(holdout_cycle_id)], demand.loc[ciclo.eq(holdout_cycle_id)]
+
+
 def build_shape_observations(
     demand_shape: pd.DataFrame, demand_level: pd.DataFrame, metric: DemandMetric = "pedidos"
 ) -> pd.DataFrame:
@@ -82,3 +90,22 @@ def to_calendar(
     window_start = starts.apply(lambda start_day: cycle_open_date + pd.offsets.BDay(start_day - 1))
     frame["order_date"] = window_start + pd.to_timedelta(frame["offset"], unit="D")
     return frame
+
+
+def items_per_order_by_sector(demand_level: pd.DataFrame) -> dict[str, float]:
+    """Each sector's empirical items-per-order ratio, from historical demand_level totals.
+
+    `CD_CAPACITIES` (see `src.generate.generator`) is expressed in itens/dia while
+    forecast order counts are pedidos; this ratio converts the latter into the
+    former so demand and capacity are compared in the same unit.
+    """
+    totals = demand_level.groupby("cd_setor")[["total_itens", "total_pedidos"]].sum()
+    return (totals["total_itens"] / totals["total_pedidos"]).to_dict()
+
+
+def forecast_items(
+    combined_forecast: pd.DataFrame, items_per_order: dict[str, float]
+) -> pd.DataFrame:
+    """`combined_forecast` with a `forecast_items` column added (orders converted to itens)."""
+    ratio = combined_forecast["sector"].map(items_per_order)
+    return combined_forecast.assign(forecast_items=combined_forecast["forecast_orders"] * ratio)

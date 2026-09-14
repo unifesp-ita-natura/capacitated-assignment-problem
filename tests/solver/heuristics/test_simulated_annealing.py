@@ -6,7 +6,12 @@ import random
 
 import pytest
 
-from src.solver.heuristics.simulated_annealing import AnnealingParams, solve
+from src.persistence import SolveResult
+from src.solver.heuristics.simulated_annealing import (
+    AnnealingParams,
+    run_simulated_annealing,
+    solve,
+)
 
 # Instância base: 2 setores, 2 combinações, 2 dias, 1 CD.
 # Combinação 1 -> toda a demanda cai no dia 1; combinação 2 -> tudo no dia 2.
@@ -103,3 +108,26 @@ def test_finds_the_optimum_across_seeds(seed):
     )
 
     assert result.objective == 0.0
+
+
+def test_run_simulated_annealing_returns_a_solve_result():
+    seed = 42
+
+    result = run_simulated_annealing(**_instance(), seed=seed)
+
+    expected = solve(**_instance(), rng=random.Random(seed))
+    assert isinstance(result, SolveResult)
+    assert (
+        result.model_name,
+        result.solver,
+        result.status,
+        result.termination_condition,
+        result.objective,
+    ) == (
+        "simulated_annealing",
+        "simulated_annealing",
+        expected.stop_reason,
+        expected.stop_reason,
+        expected.objective,
+    )
+    assert result.wall_time_seconds >= 0

@@ -11,6 +11,7 @@ from src.generate.generator import (
     SUBLOCKS,
     WINDOW_LENGTH,
     build_current_assignment,
+    build_cycle_starts,
     build_cycle_window_shapes,
     build_demand_level,
     build_demand_shape,
@@ -18,10 +19,14 @@ from src.generate.generator import (
     build_sector_metric_ratios,
     build_sector_shape_traits,
     build_sector_volume_parameters,
+    build_sectors,
+    cycle_span_business_days,
     expected_orders,
     generate_orders,
     generate_sector_cycle_orders,
+    generate_synthetic_demand,
     hump_alpha,
+    next_cycle_start,
     realize_window_shape,
     slot_start_day,
     uniform_block_distribution,
@@ -443,3 +448,94 @@ def test_build_demand_shape_shares_sum_to_one_per_sector_cycle(orders_df):
 
     totals = non_degenerate.groupby(["cd_setor", "ciclo"])["share_pedidos"].sum()
     assert all(total == pytest.approx(1.0) for total in totals)
+
+
+@pytest.mark.parametrize(
+    "n_sectors, expected",
+    [
+        (1, ["S01"]),
+        (3, ["S01", "S02", "S03"]),
+    ],
+)
+def test_build_sectors(n_sectors, expected):
+    assert build_sectors(n_sectors) == expected
+
+
+def test_build_sectors_pads_to_two_digits_for_double_digit_counts():
+    sectors = build_sectors(12)
+
+    assert sectors[-1] == "S12"
+
+
+def test_cycle_span_business_days_matches_manual_arithmetic():
+    # len(SLOTS) == len(BLOCKS) * len(SUBLOCKS) == 3 * 5 == 15
+    assert cycle_span_business_days(21) == 15 + 21 - 1
+
+
+def test_cycle_span_business_days_increases_with_cycle_length():
+    assert cycle_span_business_days(30) > cycle_span_business_days(21)
+
+
+def test_build_cycle_starts_returns_requested_count():
+    starts = build_cycle_starts(cycle_length=21, n_cycles=5)
+
+    assert len(starts) == 5
+
+
+def test_build_cycle_starts_is_non_decreasing():
+    starts = build_cycle_starts(cycle_length=21, n_cycles=5)
+
+    assert all(later >= earlier for earlier, later in zip(starts, starts[1:]))
+
+
+def test_build_cycle_starts_is_spaced_by_the_cycle_span():
+    cycle_length = 21
+    starts = build_cycle_starts(cycle_length=cycle_length, n_cycles=3)
+    span = cycle_span_business_days(cycle_length)
+
+    for earlier, later in zip(starts, starts[1:]):
+        assert later == earlier + pd.offsets.BDay(span)
+
+
+def test_next_cycle_start_is_after_the_last_cycle_start():
+    cycle_length = 21
+    starts = build_cycle_starts(cycle_length=cycle_length, n_cycles=3)
+
+    assert next_cycle_start(starts, cycle_length) > starts[-1]
+
+
+def test_next_cycle_start_is_spaced_by_the_cycle_span():
+    cycle_length = 21
+    starts = build_cycle_starts(cycle_length=cycle_length, n_cycles=3)
+    span = cycle_span_business_days(cycle_length)
+
+    assert next_cycle_start(starts, cycle_length) == starts[-1] + pd.offsets.BDay(span)
+
+
+@pytest.fixture
+def synthetic_demand(rng):
+    sectors = build_sectors(5)
+    return generate_synthetic_demand(rng, sectors, cycle_length=10, n_cycles=3)
+
+
+def test_generate_synthetic_demand_returns_four_pieces(synthetic_demand):
+    assert len(synthetic_demand) == 4
+
+
+def test_generate_synthetic_demand_level_and_shape_are_nonempty_dataframes(synthetic_demand):
+    demand_level, demand_shape, _, _ = synthetic_demand
+
+    assert isinstance(demand_level, pd.DataFrame) and not demand_level.empty
+    assert isinstance(demand_shape, pd.DataFrame) and not demand_shape.empty
+
+
+def test_generate_synthetic_demand_cycle_starts_count(synthetic_demand):
+    _, _, cycle_starts, _ = synthetic_demand
+
+    assert len(cycle_starts) == 3
+
+
+def test_generate_synthetic_demand_assignment_covers_every_sector(synthetic_demand):
+    _, _, _, assignment = synthetic_demand
+
+    assert set(assignment) == set(build_sectors(5))
