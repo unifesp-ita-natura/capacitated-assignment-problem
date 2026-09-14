@@ -24,6 +24,7 @@ tracking = [
     "mlflow>=2.14.0",
 ]
 forecast = [
+    "pandas>=2.3.0",
     "statsmodels>=0.15.0",
 ]
 
