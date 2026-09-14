@@ -51,18 +51,35 @@ Nothing in `evaluation.py` or `model.py` changes.
   slices history by cycle, hands a candidate only the past, and scores its
   predictions against what actually happened. A candidate never sees or
   computes its own training cutoff.
-- `candidates/` — concrete techniques. `naive.py` (last_value, mean,
-  seasonal_naive) is the required baseline every other technique must beat.
-- `features.py` — reserved for the lag/rolling-mean features a pooled
-  (LightGBM-style) candidate will need; empty until that candidate exists.
+- `comparison.py` — ranks several `EvaluationResult`s against each other on
+  the (sector, cycle, fold) points *all* of them scored. Candidates skip
+  different points, so their own headline errors aren't comparable; this is.
+- `candidates/` — concrete techniques:
+  - `naive.py` (last_value, mean, seasonal_naive) — the required baseline,
+    and as of the `compare_forecasters` experiment still the one to beat.
+  - `arima.py` — ARIMA/SARIMA per sector via statsmodels' SARIMAX, through
+    the Adapter. Skips a sector whose history is too short for the requested
+    order, or that SARIMAX can't fit, instead of failing the run.
+  - `lightgbm.py` — gradient boosting pooled across every sector at once.
+    The one candidate that implements `ForecastCandidate` directly rather
+    than through `per_sector`, because it needs the whole panel.
+- `features.py` — the lag / rolling-mean / calendar feature table the pooled
+  candidate trains on. The rolling means are shifted by one cycle so a row
+  can never see the value it is being asked to predict.
 
 ## Running the baseline against the real base
 
 ```bash
+# the naive baseline alone
 uv run python -m experiments.forecast_baseline.run
+
+# every candidate, ranked against each other on a common subset
+uv run python -m experiments.compare_forecasters.run
 ```
 
-See `experiments/forecast_baseline/README.md` for what it reports.
+See those experiments' READMEs for what they report — including the current
+standing result, which is that `naive:mean` still beats both ARIMA and
+LightGBM on this base.
 
 ## Testing
 
