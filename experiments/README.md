@@ -49,3 +49,4 @@ One line per experiment, updated as status changes:
 |---|---|---|
 | [compare_modeling](compare_modeling/README.md) | reference | Reference pattern for comparing solvers/formulations — not itself a research question, see its README. |
 | [forecast_baseline](forecast_baseline/README.md) | exploratory | Run the naive candidate end-to-end through the shared forecasting harness against the real demand base. |
+| [compare_forecasters](compare_forecasters/README.md) | confirmed | Rank naive, ARIMA and pooled LightGBM against each other on the real demand base through one shared harness. |
