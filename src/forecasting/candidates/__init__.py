@@ -2,4 +2,4 @@
 
 from __future__ import annotations
 
-from src.forecasting.candidates import naive  # noqa: F401
+from src.forecasting.candidates import arima, lightgbm, naive  # noqa: F401
