@@ -1,0 +1,89 @@
+# ARIMA/SARIMA and pooled LightGBM candidates, and a fair comparison between them
+
+**Date:** 2026-09-14
+**Related:** branch `tasso/forecasting-harness`, follows
+`2026-09-14-forecasting-harness.md`
+
+## Task
+
+Implement the two remaining forecasting candidates from the spec's section
+4.4 — ARIMA/SARIMA and LightGBM — on top of the interface and harness built
+earlier the same day, and explain both models to the requester before
+writing code.
+
+## Outcome
+
+Both candidates are implemented, tested and ranked against the naive
+baseline on the real demand base. **The result contradicts the hypothesis
+that was pre-registered before the run:** `naive:mean` — simply averaging a
+sector's own history — beats both, at 1.851 items MAE against LightGBM's
+1.900 and ARIMA's 2.397 on the 3.010 points every candidate scored. The
+forecasting side now has a defensible answer to "which model produces
+`q_{s,a,d}`", and it is a much simpler one than expected.
+
+## What changed
+
+- `src/forecasting/candidates/arima.py` (new) — SARIMAX per sector through
+  the existing `per_sector` Adapter.
+- `src/forecasting/candidates/lightgbm.py` (new) — gradient boosting pooled
+  across all sectors, implementing `ForecastCandidate` directly.
+- `src/forecasting/features.py` — filled in (was an empty stub): lag,
+  rolling-mean and calendar features.
+- `src/forecasting/comparison.py` (new) — common-subset ranking.
+- `src/forecasting/evaluation.py` — extracted `equal_weight_mae` so the
+  harness's summary and the comparison compute MAE the same way.
+- `src/config/schema.py` — `LightGBMParams` gained `rolling_windows`,
+  `min_child_samples` and `random_state`.
+- `experiments/compare_forecasters/` + its config (new).
+- `tests/forecasting/` — 31 new tests; the forecasting modules stay at 100%
+  coverage and radon grade A.
+- `pyproject.toml` — `lightgbm` added to the `forecast` extra.
+
+## Notes
+
+- **The headline finding is that the simplest candidate wins.** Both
+  readings of it are recorded in the experiment README: with one year of
+  history there's no seasonal signal, and per-sector trend is weak next to
+  cycle-to-cycle noise. `naive:last_value` finishing 4th (2.522) while
+  `naive:mean` finishes 1st (1.851) is the same fact seen from the other
+  side — chasing the last cycle chases noise.
+- **A methodological trap was found while running, not while designing.**
+  Candidates skip different (sector, cycle, fold) points — LightGBM cannot
+  predict the first fold at all (a 6-cycle rolling mean needs 6 prior
+  cycles), forfeiting 606 points; some sectors don't fit an ARIMA order.
+  Ranking each candidate by its own headline MAE would therefore have
+  rewarded whichever one skipped the hardest points, and LightGBM's raw
+  number did look better than it deserved. `comparison.py` exists to fix
+  that: the ranking runs on the intersection, with each candidate's own
+  coverage reported beside it.
+- **Two deliberate deviations from the spec's section 4.4**, both
+  documented in the code that makes them: (1) ARIMA's order comes from the
+  config and is applied uniformly, not searched per sector by AIC — with
+  6-11 points a per-sector order search selects noise and multiplies
+  runtime by the grid size; (2) the year-ago lag feature and any seasonal
+  order are unusable on a single year of data, so `seasonal_naive` and
+  seasonal ARIMA orders are implemented and guarded but will skip every
+  sector until a second year exists.
+- **LightGBM uses its native API rather than the scikit-learn wrapper**, to
+  avoid adding scikit-learn as a project dependency for one convenience
+  class. It trains with `objective: regression_l1` so the model optimizes
+  the same loss (MAE) the harness ranks by.
+- A small hyperparameter grid showed a monotone preference for smaller,
+  shorter LightGBM models — itself evidence of how little structure there
+  is to fit. `num_leaves: 7` was chosen on that principle rather than by
+  taking the grid's minimum, because the grid was scored on the same folds
+  the result table reports; the caveat is stated in the experiment README
+  rather than left implicit.
+- **A robustness bug in `comparison.py` was found by a test, not by a run:**
+  `EvaluationResult.summary()` refuses to aggregate an empty result (correct
+  for a single candidate's headline number), which meant one candidate that
+  scored nothing would sink the entire comparison. `_candidate_row` now
+  reports NaN for such a candidate instead.
+- Concrete next step recorded in the experiment README: fit LightGBM to the
+  *deviation from each sector's mean* rather than the level. Every model
+  here spends most of its capacity re-learning a sector's level, which
+  `naive:mean` gets for free.
+- Same environment caveat as the previous entry: no `uv` in the sandbox, so
+  `uv.lock` was not regenerated after adding `lightgbm`. A human should run
+  `uv lock` before merging. Verification used a scratch virtualenv on
+  Python 3.14 with pandas 3.0.5, statsmodels 0.15.0 and lightgbm 4.7.0.
