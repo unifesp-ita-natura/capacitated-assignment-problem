@@ -20,15 +20,15 @@ Writes `outputs/comparison.csv` (the ranking table) and
 `outputs/errors_by_candidate.csv` (every scored (sector, cycle, fold) row
 for every candidate, for digging into where a candidate loses).
 
-## Result (2026-09-14) — hypothesis rejected
+## Result (2026-09-15) — hypothesis rejected
 
 | rank | candidate | MAE (common subset) | MAE (own coverage) | scored | skipped |
 |---|---|---|---|---|---|
 | 1 | **naive:mean** | **1.851** | 1.840 | 3.689 | 0 |
 | 2 | lightgbm:100x7 | 1.900 | 1.892 | 3.083 | 606 |
-| 3 | arima(1,1,1) | 2.397 | 2.397 | 3.010 | 679 |
-| 4 | naive:last_value | 2.522 | 2.514 | 3.689 | 0 |
-| 5 | arima(1,0,0) | 2.609 | 2.619 | 3.684 | 5 |
+| 3 | arima(1,0,0) + intercept | 2.019 | 2.077 | 3.684 | 5 |
+| 4 | arima(1,1,1) | 2.397 | 2.397 | 3.010 | 679 |
+| 5 | naive:last_value | 2.522 | 2.514 | 3.689 | 0 |
 
 Errors are in items. The ranking uses the **common subset**: the 3.010
 (sector, cycle, fold) points every candidate predicted. Candidates skip
@@ -47,8 +47,27 @@ consistent with what this base actually contains:
   last cycle's value chases noise.
 - **ARIMA is squeezed from both directions.** Fitting 2–3 coefficients on
   6–11 points is thin, and the fixed order applied to every sector can't be
-  right for all of them. `arima(1,1,1)` beating `arima(1,0,0)` is consistent
-  with differencing absorbing part of the level, which is most of the signal.
+  right for all of them. Once it has an intercept (see below), `arima(1,0,0)`
+  lands between the pooled model and the differenced order, but still well
+  short of simply averaging the sector's history.
+
+### The intercept trap, found after the first run
+
+The first version of this experiment scored `arima(1,0,0)` at 2.619 MAE,
+last place. That number was an artifact of configuration, not of the model:
+`ArimaParams.trend` defaults to `None` (matching statsmodels), which fits a
+**zero-mean** AR — so a series living around 4,000 items can only be
+explained by driving the AR coefficient to ~1, degenerating the model into a
+random walk. On a synthetic series centred at 5,000 the fitted coefficient
+comes out at 1.001 with `trend=None` against −0.77 with `trend="c"`, and the
+residual variance falls 12-fold.
+
+Adding `trend: c` to the undifferenced order moved it from 2.619 to 2.077 on
+its own coverage, and from 5th place to 3rd. The config now sets it
+explicitly and `build_arima`'s docstring carries the warning. `arima(1,1,1)`
+is left without it on purpose: with `d = 1` the differencing already removes
+the level, and a constant there means a *drift* term — a different modeling
+choice, not the same fix.
 
 **LightGBM's second place is real but narrow** (1.900 vs 1.851, ~3%), and it
 comes with the worst coverage of the three families that scored broadly —

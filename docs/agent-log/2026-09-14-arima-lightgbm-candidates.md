@@ -120,3 +120,36 @@ aggregates. The forecasting side has been selecting models on a harder
 metric than the optimization requires. Adding a CD-day metric to the
 comparison is now the top recommendation, ahead of any further per-sector
 modeling.
+
+## Addendum 2 (2026-09-15) — the ARIMA numbers were handicapped by a config default
+
+Explaining the `(p, d, q)` notation surfaced a concrete bug in how the
+experiment configured ARIMA, not in the candidate's code.
+
+`ArimaParams.trend` defaults to `None`, matching statsmodels — which means
+**no intercept**. For an undifferenced order (`d = 0`) on a series living
+around 4,000 items, that forces the model to explain the entire level
+through the AR coefficient, driving it to ~1 and degenerating the fit into a
+random walk. On a synthetic series centred at 5,000 the fitted coefficient
+is 1.001 with `trend=None` against −0.77 with `trend="c"`, and the residual
+variance falls twelve-fold.
+
+Setting `trend: c` on the undifferenced order moved `arima(1,0,0)` from
+2,619 to 2,077 MAE on its own coverage, and from **5th place to 3rd** —
+ahead of `arima(1,1,1)`, which it had previously trailed. The experiment
+config now sets it explicitly, with the reasoning inline, and
+`build_arima`'s docstring carries the warning so the next person
+configuring an order doesn't repeat it. `arima(1,1,1)` is deliberately left
+without it: at `d = 1` the differencing already removes the level and a
+constant becomes a drift term, which is a different modeling choice.
+
+The headline conclusion is unchanged — `naive:mean` still wins at 1,851
+against LightGBM's 1,900 — but the published comparison had been unfair to
+the ARIMA family, and both the experiment README and the shared report have
+been corrected.
+
+A useful consistency check fell out of the same investigation:
+`arima(0,0,0)` with an intercept is, by construction, "no AR, no
+differencing, no MA, just a constant" — the `naive:mean` candidate written
+in statsmodels. It scores 1,864 against `naive:mean`'s 1,840, which is the
+agreement between the two implementations one would want to see.

@@ -98,5 +98,14 @@ def build_arima(params: ArimaParams) -> ForecastCandidate:
     4.4 calls for): with 6-11 training cycles per sector, a per-sector order
     search selects noise, and it multiplies runtime by the size of the grid.
     Revisit once the base spans more than one year.
+
+    **Set `trend="c"` whenever `d` is 0.** `ArimaParams.trend` defaults to
+    `None`, matching statsmodels, which means *no intercept* — the model is
+    then forced to explain a series living around 4,000 items with the AR
+    coefficient alone, which drives it to ~1 and degenerates the model into
+    a random walk. Measured on the full base, `(1,0,0)` scores 2,619 items
+    MAE without the intercept and 2,077 with it. With `d >= 1` the
+    differencing already removes the level, and `trend="c"` becomes a drift
+    term instead — a different modeling choice, not a fix.
     """
     return per_sector(name=_candidate_name(params), fn=_arima_fn(params))

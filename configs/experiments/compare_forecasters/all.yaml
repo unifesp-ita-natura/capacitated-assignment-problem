@@ -35,8 +35,12 @@ candidates:
     strategy: last_value
   - model: naive
     strategy: mean
+  # trend "c" adds the intercept. Without it statsmodels fits a zero-mean
+  # AR, which forces the AR coefficient to ~1 (a random walk) just to
+  # explain a series living around 4,000 items — see build_arima's docstring.
   - model: arima
     order: [1, 0, 0]
+    trend: c
   - model: arima
     order: [1, 1, 1]
   - model: lightgbm
