@@ -211,6 +211,9 @@ dependencies = [
 
 [package.optional-dependencies]
 forecast = [
+    { name = "matplotlib" },
+    { name = "pandas" },
+    { name = "prophet" },
     { name = "statsmodels" },
 ]
 tracking = [
@@ -233,9 +236,12 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "gurobipy", specifier = ">=12.0.0,<13.0.0" },
+    { name = "matplotlib", marker = "extra == 'forecast'", specifier = ">=3.10.8" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.10.8" },
     { name = "mlflow", marker = "extra == 'tracking'", specifier = ">=2.14.0" },
     { name = "numpy", specifier = ">=2.0.0,<2.3" },
+    { name = "pandas", marker = "extra == 'forecast'", specifier = ">=2.2.0" },
+    { name = "prophet", marker = "extra == 'forecast'", specifier = ">=1.1.6" },
     { name = "pydantic", specifier = ">=2.11.0" },
     { name = "pyomo", specifier = ">=6.9.0" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
@@ -469,6 +475,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f0114a8d9fa1215425441bb35627b1993e5afd8111e5/cloudpickle-3.1.2.tar.gz", hash = "sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414", size = 22330, upload-time = "2025-11-03T09:25:26.604Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
+]
+
+[[package]]
+name = "cmdstanpy"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "stanio" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/40/0a/cc5cbec39155e5ab76b96cbb1acd23bd7f19a4e2203fdf9948a7cbec65b8/cmdstanpy-1.3.0.tar.gz", hash = "sha256:60b10d110993bd8345735994786b2b17782fdc5530a6adbc0cd8ec836d82c2b9", size = 122922, upload-time = "2025-10-20T19:25:08.128Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/04/7bbe85aa6abf99236cc657ceb5a629f63a82a01910a095533111ea3860f3/cmdstanpy-1.3.0-py3-none-any.whl", hash = "sha256:67d83fbb823948c3ca8a84912359d6c0a5c616a62025526dba5f43a1d970bc52", size = 99147, upload-time = "2025-10-20T19:25:06.306Z" },
 ]
 
 [[package]]
@@ -1071,6 +1092,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/01/ee/02a2c011bdab74c6fb3c75474d40b3052059d95df7e73351460c8588d963/h11-0.16.0.tar.gz", hash = "sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1", size = 101250, upload-time = "2025-04-24T03:35:25.427Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", hash = "sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", size = 37515, upload-time = "2025-04-24T03:35:24.344Z" },
+]
+
+[[package]]
+name = "holidays"
+version = "0.104"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/71/23/9d0f6c31dda49b50efecdac7b76d979fa37b6267e55bab4907a58f02e8ac/holidays-0.104.tar.gz", hash = "sha256:7e327b255dee3de3c8f7fef58f835ccb7685881ea72176697ff60269c57743b2", size = 1021650, upload-time = "2026-09-07T17:49:30.506Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/63/e6d7af3e7cd7ce095aee210204fce64b2ce5164c0c3c79d70e335837886c/holidays-0.104-py3-none-any.whl", hash = "sha256:e0db9ff1d5588e3349bf2de6a597421e39cb7299b64a015170a0a0886940c384", size = 1619592, upload-time = "2026-09-07T17:49:28.243Z" },
 ]
 
 [[package]]
@@ -2030,6 +2063,27 @@ wheels = [
 ]
 
 [[package]]
+name = "prophet"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cmdstanpy" },
+    { name = "holidays" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1d/a0/ef83a800996ef03c1302984475c4b884d606b8d9926e58a0a8f56e60b0ae/prophet-1.4.0.tar.gz", hash = "sha256:cf54064e9ad1be56cf4c6fb70f95c7b0fccc095fdb90a53b72407262d423a70d", size = 72533, upload-time = "2026-08-15T04:04:50.808Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/00/cd7c9d11aca9019833ca8f381e960e8e5eaa7213659a56b935fd7ee41423/prophet-1.4.0-py3-none-macosx_10_11_x86_64.whl", hash = "sha256:6169da7b9a15da7d117de7c144d9b2349caab3a97d0e9125e523fbfb0a867998", size = 12750149, upload-time = "2026-08-15T04:04:39.335Z" },
+    { url = "https://files.pythonhosted.org/packages/53/b8/af6e917c3659820d6d27587b486c8ee32bafeb1f5aa285df686dffbf4265/prophet-1.4.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:d2112b92a243c9d3854f1e126413cf66b5b147f0e3f5a1617b0c51027c5f2880", size = 12127325, upload-time = "2026-08-15T04:04:41.78Z" },
+    { url = "https://files.pythonhosted.org/packages/43/c9/50b11710e698283eb9000459899d15f06806df2fa39b9dfff2d04462837e/prophet-1.4.0-py3-none-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:c3dbcbf822ce47ac72148f850ce6fe6cc52c4cc1103978b4396bfd1930359a55", size = 11884682, upload-time = "2026-08-15T04:04:43.877Z" },
+    { url = "https://files.pythonhosted.org/packages/01/54/df08c37c5187bd20c5e86f269bb59d7c3a55217cdcb61afa71f431cc243f/prophet-1.4.0-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9b00d75209232958160363930b0675e9607ad52bf81e604e2776b73bfdd74bfe", size = 11886663, upload-time = "2026-08-15T04:04:46.166Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/61/8ddc4a46925ffc76efbc6b7bfc4b7045b2b1558ab5e0ab43fdf25dbcba0f/prophet-1.4.0-py3-none-win_amd64.whl", hash = "sha256:b97d817b61dcc455e46360fa197374dfc28d0cb6158b3b19fd3ca4a0b2131dd4", size = 12115447, upload-time = "2026-08-15T04:04:48.638Z" },
+]
+
+[[package]]
 name = "protobuf"
 version = "6.33.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2726,6 +2780,18 @@ wheels = [
 ]
 
 [[package]]
+name = "stanio"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2c/5b/6e376499c3f9d71e4154b031d059663598534dd038f421e8c643d61afec5/stanio-0.5.1.tar.gz", hash = "sha256:348d52f947dec431e118f4b601c4c5296929b86401d4d4dd5aa9373b0d4ae4ac", size = 11983, upload-time = "2024-07-08T19:35:48.029Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/87/37a80e4d5bd453c33262d8fb618b6840fd98d24ed08e046a4a9b10177fa3/stanio-0.5.1-py3-none-any.whl", hash = "sha256:99ad590daa5834681245c2b651716ec2e06223853661ada21430c621521c849f", size = 8065, upload-time = "2024-07-08T19:35:46.503Z" },
+]
+
+[[package]]
 name = "starlette"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2813,6 +2879,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/97/cf/fe33cf062834487d34d1559746a4a12521033c22645b6d74d4bca702e018/tornado-6.5.8-cp39-abi3-win32.whl", hash = "sha256:67832909c4779c64942380cb5f044a5c6163d00831472d80e25e115de9917836", size = 451952, upload-time = "2026-08-07T02:12:38.512Z" },
     { url = "https://files.pythonhosted.org/packages/cb/e1/468ad54333e92ccb62627e62cb88e5fc14a2171daa67ed47b1b8542d5b86/tornado-6.5.8-cp39-abi3-win_amd64.whl", hash = "sha256:11881db6b7c168494be2c2d12e65931451bdf7ee718535418ae1d8855dd5a0ee", size = 452391, upload-time = "2026-08-07T02:12:39.971Z" },
     { url = "https://files.pythonhosted.org/packages/ad/3e/cd5e4f06e34cde33b8ef66cf36aa2b5ad46354cc1af7d2136bbe365fee1d/tornado-6.5.8-cp39-abi3-win_arm64.whl", hash = "sha256:68a7468c7e289f8514d7d664101753903217eff1bb6822c6b5994a0b5f5bcb26", size = 451411, upload-time = "2026-08-07T02:12:41.469Z" },
+]
+
+[[package]]
+name = "tqdm"
+version = "4.70.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl", hash = "sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73", size = 80199, upload-time = "2026-09-11T07:25:14.599Z" },
 ]
 
 [[package]]

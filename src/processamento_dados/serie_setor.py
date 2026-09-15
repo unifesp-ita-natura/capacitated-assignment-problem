@@ -47,14 +47,18 @@ print(f"Dias sem pedidos: {len(dias_sem_pedido)}")
 #   {'dias_sem_pedidos:': dias_sem_pedido.strftime('%d/%m/%Y')})
 
 # df_ausentes.to_csv('dias_sem_pedidos.csv', index=False)
+df_demanda['total_itens_mascarado'] = pd.to_numeric(
+    df_demanda['total_itens_mascarado'], 
+    errors='coerce'
+).fillna(0)
 
 serie_volume_dia = df_demanda.groupby(
     ["cd_setor", "data_pedido"],
     as_index=False,
     dropna=False,
-)["total_volumes_mascarado"].sum()
+)["total_itens_mascarado"].sum()
 
-serie_volume_dia.to_csv("serie_volume_por_setor_e_dia.csv", index=False)
+serie_volume_dia.to_csv("serie_itens_por_setor_e_dia.csv", index=False)
 
 # tabela com total de volumes por ciclo por mês
 serie_volume_mes = df_demanda.groupby(
