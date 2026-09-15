@@ -106,11 +106,13 @@ def test_normalize_shape_rescales_shares_to_sum_to_one():
 
 
 def test_to_calendar_maps_offsets_onto_slot_start_days():
-    day_offsets = pd.DataFrame({"sector": ["S1", "S1", "S2"], "offset": [0, 1, 0]})
+    day_offsets = pd.DataFrame(
+        {"sector": ["S1", "S1", "S2"], "cycle_id": [1, 1, 1], "offset": [0, 1, 0]}
+    )
     start_day_by_sector = {"S1": 1, "S2": 6}
-    cycle_open_date = pd.Timestamp("2026-01-01")  # Thursday
+    cycle_open_dates = {1: pd.Timestamp("2026-01-01")}  # Thursday
 
-    calendar = to_calendar(day_offsets, cycle_open_date, start_day_by_sector)
+    calendar = to_calendar(day_offsets, cycle_open_dates, start_day_by_sector)
 
     assert calendar["day_in_cycle"].tolist() == [1, 2, 6]
     assert calendar["order_date"].tolist() == [
@@ -121,11 +123,11 @@ def test_to_calendar_maps_offsets_onto_slot_start_days():
 
 
 def test_to_calendar_lets_orders_land_on_a_weekend_within_a_long_window():
-    day_offsets = pd.DataFrame({"sector": ["S1"] * 4, "offset": [0, 1, 2, 3]})
+    day_offsets = pd.DataFrame({"sector": ["S1"] * 4, "cycle_id": [1] * 4, "offset": [0, 1, 2, 3]})
     start_day_by_sector = {"S1": 1}
-    cycle_open_date = pd.Timestamp("2026-01-01")  # Thursday
+    cycle_open_dates = {1: pd.Timestamp("2026-01-01")}  # Thursday
 
-    calendar = to_calendar(day_offsets, cycle_open_date, start_day_by_sector)
+    calendar = to_calendar(day_offsets, cycle_open_dates, start_day_by_sector)
 
     assert calendar["order_date"].tolist() == [
         pd.Timestamp("2026-01-01"),  # Thursday
@@ -135,15 +137,35 @@ def test_to_calendar_lets_orders_land_on_a_weekend_within_a_long_window():
     ]
 
 
+def test_to_calendar_maps_each_row_by_its_own_cycle_id():
+    day_offsets = pd.DataFrame({"sector": ["S1", "S1"], "cycle_id": [1, 2], "offset": [0, 0]})
+    start_day_by_sector = {"S1": 1}
+    cycle_open_dates = {1: pd.Timestamp("2026-01-01"), 2: pd.Timestamp("2026-02-02")}
+
+    calendar = to_calendar(day_offsets, cycle_open_dates, start_day_by_sector)
+
+    expected = [pd.Timestamp("2026-01-01"), pd.Timestamp("2026-02-02")]
+    assert calendar["order_date"].tolist() == expected
+
+
 def test_split_history_and_holdout_separates_by_cycle_id():
     demand = pd.DataFrame({"ciclo": ["1", "2", "3", "4"], "value": [10, 20, 30, 40]})
 
-    history, holdout = split_history_and_holdout(demand, holdout_cycle_id=3)
+    history, holdout = split_history_and_holdout(demand, holdout_cycle_ids={3})
 
     assert history["ciclo"].astype(int).tolist() == [1, 2]
     assert holdout["ciclo"].astype(int).tolist() == [3]
     assert (history["ciclo"].astype(int) < 3).all()
     assert 3 not in history["ciclo"].astype(int).tolist()
+
+
+def test_split_history_and_holdout_supports_a_multi_cycle_holdout_window():
+    demand = pd.DataFrame({"ciclo": ["1", "2", "3", "4"], "value": [10, 20, 30, 40]})
+
+    history, holdout = split_history_and_holdout(demand, holdout_cycle_ids={3, 4})
+
+    assert history["ciclo"].astype(int).tolist() == [1, 2]
+    assert holdout["ciclo"].astype(int).tolist() == [3, 4]
 
 
 def test_items_per_order_by_sector_computes_ratio_per_sector():

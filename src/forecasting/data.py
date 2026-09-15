@@ -44,11 +44,12 @@ def build_cycle_totals(
 
 
 def split_history_and_holdout(
-    demand: pd.DataFrame, holdout_cycle_id: int
+    demand: pd.DataFrame, holdout_cycle_ids: set[int]
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Every cycle before the holdout as training history, the holdout cycle separately."""
+    """Every cycle strictly before the holdout window as training history, the
+    (possibly multi-cycle) holdout window separately."""
     ciclo = demand["ciclo"].astype(int)
-    return demand.loc[ciclo.lt(holdout_cycle_id)], demand.loc[ciclo.eq(holdout_cycle_id)]
+    return demand.loc[ciclo.lt(min(holdout_cycle_ids))], demand.loc[ciclo.isin(holdout_cycle_ids)]
 
 
 def build_shape_observations(
@@ -77,17 +78,28 @@ def normalize_shape(shape: pd.DataFrame) -> pd.DataFrame:
 
 
 def to_calendar(
-    day_offsets: pd.DataFrame, cycle_open_date: pd.Timestamp, start_day_by_sector: dict[str, int]
+    day_offsets: pd.DataFrame,
+    cycle_open_dates: dict[int, pd.Timestamp],
+    start_day_by_sector: dict[str, int],
 ) -> pd.DataFrame:
-    """Map (sector, offset) rows onto calendar dates.
+    """Map (sector, cycle_id, offset) rows onto calendar dates.
 
     Each sector's window opens on its slot's business-day start (Mon-Fri), but
     orders within the window can land on any calendar day, weekends included.
+    `cycle_open_dates` maps each row's `cycle_id` to that cycle's own open date,
+    so rows from several future cycles can be mapped in one call.
     """
     frame = day_offsets.copy()
     starts = frame["sector"].map(start_day_by_sector)
     frame["day_in_cycle"] = starts + frame["offset"]
-    window_start = starts.apply(lambda start_day: cycle_open_date + pd.offsets.BDay(start_day - 1))
+    open_dates = frame["cycle_id"].map(cycle_open_dates)
+    window_start = pd.Series(
+        [
+            open_date + pd.offsets.BDay(start_day - 1)
+            for open_date, start_day in zip(open_dates, starts)
+        ],
+        index=frame.index,
+    )
     frame["order_date"] = window_start + pd.to_timedelta(frame["offset"], unit="D")
     return frame
 

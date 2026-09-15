@@ -39,6 +39,7 @@ def _instance(**overrides) -> dict:
         projected_demand=_DEMAND,
         current_assignment={1: 1, 2: 1},
         max_churn=2,
+        days_by_cycle={0: [1, 2]},
     )
     base.update(overrides)
     return base
@@ -108,6 +109,35 @@ def test_finds_the_optimum_across_seeds(seed):
     )
 
     assert result.objective == 0.0
+
+
+def test_objective_averages_the_range_per_cycle_instead_of_globally():
+    # Cycle 0 (days 1,2): as-is amplitude 20. Cycle 1 (days 11,12): as-is amplitude 200
+    # (much bigger, simulating demand growth). A global max-min over all 4 days would
+    # be 200 - 0 = 200; the per-cycle-averaged objective should be (20 + 200) / 2 = 110.
+    demand = {
+        (1, 1, 1): 10.0,
+        (1, 2, 1): 0.0,
+        (2, 1, 1): 10.0,
+        (2, 2, 1): 0.0,
+        (1, 11, 1): 100.0,
+        (1, 12, 1): 0.0,
+        (2, 11, 1): 100.0,
+        (2, 12, 1): 0.0,
+    }
+    instance = _instance(
+        days=[1, 2, 11, 12],
+        daily_capacity={(1, a): 1000.0 for a in [1, 2, 11, 12]},
+        projected_demand=demand,
+        current_assignment={1: 1, 2: 1},
+        max_churn=0,
+        days_by_cycle={0: [1, 2], 1: [11, 12]},
+    )
+
+    result = solve(**instance, rng=random.Random(1), params=AnnealingParams(max_iterations=10))
+
+    assert result.assignment == {1: 1, 2: 1}  # zero churn budget keeps the As-Is
+    assert result.objective == pytest.approx(110.0)
 
 
 def test_run_simulated_annealing_returns_a_solve_result():

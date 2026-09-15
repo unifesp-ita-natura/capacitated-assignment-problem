@@ -64,6 +64,28 @@ def test_forecast_cycle_total_with_applies_strategy_per_sector(historical_cycle_
     result = forecast.set_index("sector")["forecast_cycle_total"]
     assert result["S1"] == pytest.approx(50.0)
     assert result["S2"] == 0.0
+    assert forecast["cycle_id"].unique().tolist() == [5]
+
+
+def test_forecast_cycle_total_with_produces_one_row_per_sector_per_step(historical_cycle_totals):
+    forecast = forecast_cycle_total_with(
+        level_linear_trend, historical_cycle_totals, pd.DataFrame(), steps=range(1, 4)
+    )
+
+    assert len(forecast) == 2 * 3  # 2 sectors x 3 steps
+    assert sorted(forecast["cycle_id"].unique()) == [5, 6, 7]
+
+
+def test_forecast_cycle_total_with_extrapolates_further_for_a_later_step(historical_cycle_totals):
+    sector_totals = historical_cycle_totals[historical_cycle_totals["sector"].eq("S1")]
+
+    forecast = forecast_cycle_total_with(
+        level_linear_trend, sector_totals, pd.DataFrame(), steps=range(1, 3)
+    )
+
+    by_cycle = forecast.set_index("cycle_id")["forecast_cycle_total"]
+    assert by_cycle[5] == pytest.approx(50.0)
+    assert by_cycle[6] == pytest.approx(60.0)
 
 
 def test_level_holt_ets_forecasts_a_single_positive_value():

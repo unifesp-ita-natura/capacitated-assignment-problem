@@ -22,11 +22,11 @@ from src.generate.generator import (
     build_sectors,
     cycle_span_business_days,
     expected_orders,
+    future_cycle_starts,
     generate_orders,
     generate_sector_cycle_orders,
     generate_synthetic_demand,
     hump_alpha,
-    next_cycle_start,
     realize_window_shape,
     slot_start_day,
     uniform_block_distribution,
@@ -497,19 +497,34 @@ def test_build_cycle_starts_is_spaced_by_the_cycle_span():
         assert later == earlier + pd.offsets.BDay(span)
 
 
-def test_next_cycle_start_is_after_the_last_cycle_start():
+def test_future_cycle_starts_are_all_after_the_last_cycle_start():
     cycle_length = 21
     starts = build_cycle_starts(cycle_length=cycle_length, n_cycles=3)
 
-    assert next_cycle_start(starts, cycle_length) > starts[-1]
+    futures = future_cycle_starts(starts, cycle_length, n_future_cycles=3)
+
+    assert all(future > starts[-1] for future in futures)
 
 
-def test_next_cycle_start_is_spaced_by_the_cycle_span():
+def test_future_cycle_starts_returns_requested_count():
+    cycle_length = 21
+    starts = build_cycle_starts(cycle_length=cycle_length, n_cycles=3)
+
+    futures = future_cycle_starts(starts, cycle_length, n_future_cycles=4)
+
+    assert len(futures) == 4
+
+
+def test_future_cycle_starts_are_spaced_by_the_cycle_span():
     cycle_length = 21
     starts = build_cycle_starts(cycle_length=cycle_length, n_cycles=3)
     span = cycle_span_business_days(cycle_length)
 
-    assert next_cycle_start(starts, cycle_length) == starts[-1] + pd.offsets.BDay(span)
+    futures = future_cycle_starts(starts, cycle_length, n_future_cycles=3)
+
+    assert futures[0] == starts[-1] + pd.offsets.BDay(span)
+    for earlier, later in zip(futures, futures[1:]):
+        assert later == earlier + pd.offsets.BDay(span)
 
 
 @pytest.fixture

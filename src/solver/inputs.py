@@ -18,21 +18,41 @@ def build_projected_demand(
     combined_forecast: pd.DataFrame,
     sector_ids: dict[str, int],
     combo_slots: dict[int, tuple[int, int]],
+    cycle_span: int,
+    first_future_cycle_id: int,
 ) -> dict[tuple[int, int, int], float]:
-    """Every (sector, day-in-cycle, combination) forecast quantity, in itens.
+    """Every (sector, day-id, combination) forecast quantity, in itens.
 
-    A sector's forecast order-share curve is fixed; only where it *lands* in the
-    cycle shifts with the (block, sublock) combination it is assigned to (each
-    combination opens on a different day-in-cycle). This recomputes that landing
-    day for every combination so the solvers can compare all of them.
+    A sector's forecast order-share curve is fixed; only where it *lands* shifts
+    with the (block, sublock) combination it is assigned to (each combination
+    opens on a different day-in-cycle) and with which future cycle the row
+    belongs to. `day_id` extends the day-in-cycle axis by `cycle_offset *
+    cycle_span` so each future cycle gets its own non-overlapping block of days
+    (`cycle_offset = row.cycle_id - first_future_cycle_id`), letting a single
+    shared assignment be checked against every future cycle's demand at once.
     """
     projected_demand: dict[tuple[int, int, int], float] = {}
     for row in combined_forecast.itertuples(index=False):
         sector_id = sector_ids[row.sector]
+        cycle_offset = row.cycle_id - first_future_cycle_id
         for combo_id, (block, sublock) in combo_slots.items():
-            day_id = generator.slot_start_day(block, sublock) + row.offset
+            slot_day = generator.slot_start_day(block, sublock)
+            day_id = cycle_offset * cycle_span + slot_day + row.offset
             projected_demand[(sector_id, day_id, combo_id)] = float(row.forecast_items)
     return projected_demand
+
+
+def group_days_by_cycle(days: list[int], cycle_span: int) -> dict[int, list[int]]:
+    """Group extended day ids by the future cycle (0-indexed) they belong to.
+
+    Used to scope each solver's demand-balance objective to a single cycle's own
+    days, since capacity is legitimately checked per absolute day across the
+    whole horizon but "balance" should not be inflated by cycle-to-cycle trend.
+    """
+    groups: dict[int, list[int]] = {}
+    for day in days:
+        groups.setdefault((day - 1) // cycle_span, []).append(day)
+    return groups
 
 
 def build_daily_capacity(

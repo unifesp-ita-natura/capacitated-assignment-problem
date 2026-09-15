@@ -13,6 +13,7 @@ from src.solver.inputs import (
     build_daily_capacity,
     build_id_maps,
     build_projected_demand,
+    group_days_by_cycle,
 )
 
 
@@ -26,6 +27,7 @@ def combined_forecast() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "sector": ["S01", "S01", "S02"],
+            "cycle_id": [1, 1, 1],
             "offset": [0, 1, 0],
             "forecast_items": [10.0, 20.0, 30.0],
         }
@@ -50,7 +52,9 @@ def test_build_id_maps_combo_slots_match_generator_slots_order(sectors):
 def test_build_projected_demand_has_one_entry_per_row_per_combination(sectors, combined_forecast):
     sector_ids, combo_slots = build_id_maps(sectors)
 
-    projected_demand = build_projected_demand(combined_forecast, sector_ids, combo_slots)
+    projected_demand = build_projected_demand(
+        combined_forecast, sector_ids, combo_slots, cycle_span=100, first_future_cycle_id=1
+    )
 
     assert len(projected_demand) == len(combined_forecast) * len(combo_slots)
 
@@ -58,11 +62,36 @@ def test_build_projected_demand_has_one_entry_per_row_per_combination(sectors, c
 def test_build_projected_demand_day_id_uses_slot_start_day_plus_offset(sectors, combined_forecast):
     sector_ids, combo_slots = build_id_maps(sectors)
 
-    projected_demand = build_projected_demand(combined_forecast, sector_ids, combo_slots)
+    projected_demand = build_projected_demand(
+        combined_forecast, sector_ids, combo_slots, cycle_span=100, first_future_cycle_id=1
+    )
 
     for combo_id, (block, sublock) in combo_slots.items():
         expected_day = generator.slot_start_day(block, sublock) + 1  # S01's offset=1 row
         assert projected_demand[(sector_ids["S01"], expected_day, combo_id)] == 20.0
+
+
+def test_build_projected_demand_offsets_later_cycles_by_the_cycle_span(sectors):
+    sector_ids, combo_slots = build_id_maps(sectors)
+    combined_forecast = pd.DataFrame(
+        {"sector": ["S01"], "cycle_id": [3], "offset": [0], "forecast_items": [10.0]}
+    )
+
+    projected_demand = build_projected_demand(
+        combined_forecast, sector_ids, combo_slots, cycle_span=100, first_future_cycle_id=2
+    )
+
+    for combo_id, (block, sublock) in combo_slots.items():
+        expected_day = 100 + generator.slot_start_day(block, sublock)  # cycle_offset=1
+        assert projected_demand[(sector_ids["S01"], expected_day, combo_id)] == 10.0
+
+
+def test_group_days_by_cycle_buckets_days_by_cycle_span():
+    days = [1, 20, 35, 50, 60, 100]
+
+    groups = group_days_by_cycle(days, cycle_span=50)
+
+    assert groups == {0: [1, 20, 35, 50], 1: [60, 100]}
 
 
 def test_build_daily_capacity_defaults_to_real_cd_capacities():

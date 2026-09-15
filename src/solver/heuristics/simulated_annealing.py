@@ -53,6 +53,7 @@ def solve(
     projected_demand: ProjectedDemand,
     current_assignment: Mapping[int, int],
     max_churn: float,
+    days_by_cycle: Mapping[int, Iterable[int]],
     valid_combinations: Mapping[int, Iterable[int]] | None = None,
     params: AnnealingParams | None = None,
     rng: random.Random | None = None,
@@ -62,6 +63,9 @@ def solve(
     `current_assignment` mapeia setor -> combinação atual (o vetor As-Is), e também
     é o ponto de partida da busca. `valid_combinations` mapeia CD -> combinações
     permitidas (D_c); quando omitido, toda combinação vale pra todo CD.
+    `days_by_cycle` agrupa `days` por ciclo futuro (0-indexado), pra que o
+    objetivo (amplitude de demanda) seja calculado por ciclo e depois tirado a
+    média, em vez de globalmente sobre todo o horizonte.
     """
     params = params or AnnealingParams()
     rng = rng or random.Random()
@@ -74,6 +78,7 @@ def solve(
         projected_demand,
         current_assignment,
         max_churn,
+        days_by_cycle,
         valid_combinations,
     )
     return _anneal(problem, params, rng)
@@ -88,6 +93,7 @@ def run_simulated_annealing(
     projected_demand: ProjectedDemand,
     current_assignment: dict[int, int],
     max_churn: float,
+    days_by_cycle: dict[int, list[int]],
     seed: int,
 ) -> SolveResult:
     """Run the simulated-annealing heuristic, returning a timed `SolveResult`."""
@@ -101,6 +107,7 @@ def run_simulated_annealing(
         projected_demand=projected_demand,
         current_assignment=current_assignment,
         max_churn=max_churn,
+        days_by_cycle=days_by_cycle,
         rng=random.Random(seed),
     )
     wall_time_seconds = time.perf_counter() - start
@@ -124,6 +131,7 @@ class _Problem:
     max_churn: float
     sector_labels: list[int]
     combo_labels: list[int]
+    cycle_of_day: np.ndarray  # (n_dias,) índice do ciclo do horizonte (0-indexado) de cada dia
 
 
 @dataclass(frozen=True)
@@ -171,12 +179,24 @@ def _churn_penalty(problem: _Problem, assignment: np.ndarray) -> float:
     return max(0.0, 2.0 * changed - 2.0 * problem.max_churn)
 
 
+def _balance_objective(problem: _Problem, daily_totals: np.ndarray) -> float:
+    """Média, entre os ciclos do horizonte, da amplitude (máx - mín) da demanda
+    diária de cada ciclo — evita confundir tendência entre ciclos com
+    desbalanceamento dentro de um ciclo."""
+    n_cycles = int(problem.cycle_of_day.max()) + 1
+    ranges = []
+    for h in range(n_cycles):
+        cycle_totals = daily_totals[problem.cycle_of_day == h]
+        ranges.append(cycle_totals.max() - cycle_totals.min())
+    return float(np.mean(ranges))
+
+
 def _evaluate(problem: _Problem, assignment: np.ndarray, penalty_coefficient: float) -> _Evaluation:
     """Objetivo, penalidades e energia total de uma atribuição (a "caixa preta" da Seção 4.1.5)."""
     load_by_sector = _daily_load_by_sector(problem, assignment)
     daily_totals = load_by_sector.sum(axis=0)
     load_by_cd = _load_by_cd(problem, load_by_sector)
-    objective = float(daily_totals.max() - daily_totals.min())
+    objective = _balance_objective(problem, daily_totals)
     capacity_penalty = _capacity_penalty(problem, load_by_cd)
     churn_penalty = _churn_penalty(problem, assignment)
     energy = objective + penalty_coefficient * (capacity_penalty + churn_penalty)
@@ -328,6 +348,17 @@ def _build_result(
 # --- construção do problema (mapeia rótulos externos -> índices de array) ---
 
 
+def _cycle_of_day_array(
+    days_by_cycle: Mapping[int, Iterable[int]], day_ix: Mapping[int, int]
+) -> np.ndarray:
+    """(n_dias,) índice do ciclo do horizonte (0-indexado) de cada dia, na ordem de `day_ix`."""
+    cycle_of_day = np.zeros(len(day_ix), dtype=int)
+    for h, day_labels in days_by_cycle.items():
+        for a in day_labels:
+            cycle_of_day[day_ix[a]] = h
+    return cycle_of_day
+
+
 def _build_problem(
     sectors: Iterable[int],
     combinations: Iterable[int],
@@ -337,6 +368,7 @@ def _build_problem(
     projected_demand: ProjectedDemand,
     current_assignment: Mapping[int, int],
     max_churn: float,
+    days_by_cycle: Mapping[int, Iterable[int]],
     valid_combinations: Mapping[int, Iterable[int]] | None,
 ) -> _Problem:
     sector_labels = list(sectors)
@@ -359,6 +391,7 @@ def _build_problem(
         max_churn=float(max_churn),
         sector_labels=sector_labels,
         combo_labels=combo_labels,
+        cycle_of_day=_cycle_of_day_array(days_by_cycle, day_ix),
     )
 
 

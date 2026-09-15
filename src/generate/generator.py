@@ -63,10 +63,12 @@ def build_cycle_starts(cycle_length: int, n_cycles: int) -> list[pd.Timestamp]:
     return [base_date + pd.offsets.BDay(span * i) for i in range(n_cycles)]
 
 
-def next_cycle_start(cycle_starts: list[pd.Timestamp], cycle_length: int) -> pd.Timestamp:
-    """Start date of the cycle immediately following the last historical one."""
+def future_cycle_starts(
+    cycle_starts: list[pd.Timestamp], cycle_length: int, n_future_cycles: int
+) -> list[pd.Timestamp]:
+    """Start dates of the `n_future_cycles` cycles immediately following the last historical one."""
     span = cycle_span_business_days(cycle_length)
-    return cycle_starts[-1] + pd.offsets.BDay(span)
+    return [cycle_starts[-1] + pd.offsets.BDay(span * i) for i in range(1, n_future_cycles + 1)]
 
 
 CURRENT_BLOCK_WEIGHTS = {
