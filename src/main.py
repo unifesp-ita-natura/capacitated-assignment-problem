@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from src.config import load_config
@@ -15,6 +17,8 @@ from src.solver.heuristics.simulated_annealing import run_simulated_annealing
 from src.solver.mip.block_assignment import run_block_assignment_mip
 
 RESULTS_FILENAME = "main_pipeline_comparison.csv"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG = PROJECT_ROOT / "configs/default.yaml"
 
 
 def main(
@@ -24,6 +28,7 @@ def main(
     max_churn: float = 0.2,
     capacity_multiplier: float = 1.0,
     seed: int = 42,
+    config_file: str | None = None,
 ) -> None:
     """Run the full generate -> forecast -> solve pipeline and compare both solvers."""
     rng = np.random.default_rng(seed)
@@ -96,7 +101,8 @@ def main(
         seed,
     )
 
-    config = load_config("configs/default.yaml")
+    config_file = config_file or DEFAULT_CONFIG
+    config = load_config(DEFAULT_CONFIG)
     results_path = f"{config.paths.results}/{RESULTS_FILENAME}"
     write_results_csv([mip_result, sa_result], results_path)
     print(f"Wrote comparison results to {results_path}")
