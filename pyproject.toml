@@ -10,11 +10,15 @@ dependencies = [
     "pyomo>=6.9.0",
     "numpy>=2.0.0,<2.3",
     "pyyaml>=6.0,<7.0",
+    "pandas>=2.3.3",
+    "python-calamine>=0.8.2",
+    "highspy>=1.15.1",
 ]
 
 [project.optional-dependencies]
 viz = [
     "matplotlib>=3.10.8",
+    "seaborn>=0.13.2",
 ]
 tracking = [
     "mlflow>=2.14.0",
