@@ -48,3 +48,4 @@ One line per experiment, updated as status changes:
 | Experiment | Status | Goal |
 |---|---|---|
 | [compare_modeling](compare_modeling/README.md) | reference | Reference pattern for comparing solvers/formulations — not itself a research question, see its README. |
+| [tune_simulated_annealing](tune_simulated_annealing/README.md) | exploratory | Which SA hyperparameters (temperature schedule, biases, stagnation window) minimize final energy on a representative instance? |
