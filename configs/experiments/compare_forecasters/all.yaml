@@ -1,0 +1,54 @@
+experiment_name: compare_forecasters_all
+description:
+  goal: >
+    Rank every forecasting candidate implemented so far — naive, ARIMA and
+    pooled LightGBM — against each other on the real demand base, using one
+    shared harness and one shared metric, to decide which one produces
+    q_{s,a,d} for the assignment model.
+  hypothesis: >
+    Pooled LightGBM wins. With a single year of history, a per-sector model
+    (ARIMA) has 6-11 points to estimate from, while the pooled model sees
+    thousands of rows across all sectors — the cross-learning result from the
+    M5 competition cited in the spec's section 4.5. Naive is expected to be
+    the floor.
+  design_note: >
+    All candidates run through src/forecasting/evaluation.evaluate with the
+    same RollingOriginSplit(horizon=1, min_train_cycles=6, expanding) on the
+    same item panel, so nothing differs but the candidate. Candidates skip
+    different points (an ARIMA order may not fit a sector; the pooled model
+    needs enough cycles to build lag features), so the ranking uses
+    src/forecasting/comparison.compare, which scores everyone on the
+    intersection of points all of them predicted — mae_own is reported
+    alongside but is NOT comparable across rows. LightGBM's num_leaves is
+    set below its library default because the pooled training table is only
+    a few thousand rows; see the experiment README for the sensitivity run
+    behind that choice and the caveat about selecting it on these same folds.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: last_value
+  - model: naive
+    strategy: mean
+  # trend "c" adds the intercept. Without it statsmodels fits a zero-mean
+  # AR, which forces the AR coefficient to ~1 (a random walk) just to
+  # explain a series living around 4,000 items — see build_arima's docstring.
+  - model: arima
+    order: [1, 0, 0]
+    trend: c
+  - model: arima
+    order: [1, 1, 1]
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/compare_forecasters/outputs/comparison.csv
+  errors_csv: experiments/compare_forecasters/outputs/errors_by_candidate.csv
