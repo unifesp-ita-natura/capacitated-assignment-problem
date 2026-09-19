@@ -48,11 +48,6 @@ class LightGBMParams(BaseModel):
     learning_rate: float = 0.1
     num_leaves: int = 31
     lags: list[int] = [1, 2, 3, 4]
-    rolling_windows: list[int] = [3, 6]
-    # LightGBM's own default (20) leaves almost nothing to split on with this
-    # base's training-set size (~4k pooled rows, see the experiment README).
-    min_child_samples: int = 5
-    random_state: int = 0
 
 
 ForecastParams = Annotated[NaiveParams | ArimaParams | LightGBMParams, Field(discriminator="model")]
