@@ -1,0 +1,300 @@
+"""Synthetic generator for AS-IS orders (reconstruction of src/generate/generator.py)."""
+
+import numpy as np
+import pandas as pd
+
+SEED = 42
+rng = np.random.default_rng(SEED)
+
+BLOCKS = [1, 2, 3]
+SUBLOCKS = [1, 2, 3, 4, 5]
+SLOTS = [(b, sb) for b in BLOCKS for sb in SUBLOCKS]
+
+WINDOW_LENGTH = 21
+CYCLE_SPAN = len(SLOTS) + WINDOW_LENGTH - 1
+N_CYCLES = 7
+
+N_SECTORS = 800
+SECTORS = [f"S{i:02d}" for i in range(1, N_SECTORS + 1)]
+
+CURRENT_BLOCK_WEIGHTS = {1: 0.15, 2: 0.65, 3: 0.2}
+
+CD_CAPACITIES: dict[int, int] = {
+    2700: 350_000,
+    2800: 44_000,
+    5100: 1_000_000,
+    5300: 120_000,
+    5400: 350_000,
+    5500: 140_000,
+    5600: 200_000,
+    5700: 1_200_000,
+    5800: 400_000,
+}
+
+
+def build_sectors(n_sectors: int) -> list[str]:
+    return [f"S{i:02d}" for i in range(1, n_sectors + 1)]
+
+
+def cycle_span_business_days(cycle_length: int) -> int:
+    return len(SLOTS) + cycle_length - 1
+
+
+def build_cycle_starts(cycle_length: int, n_cycles: int) -> list[pd.Timestamp]:
+    base_date = pd.Timestamp("2026-01-05")
+    span = cycle_span_business_days(cycle_length)
+    return [base_date + pd.offsets.BDay(span * i) for i in range(n_cycles)]
+
+
+def future_cycle_starts(cycle_starts, cycle_length: int, n_future_cycles: int):
+    span = cycle_span_business_days(cycle_length)
+    return [cycle_starts[-1] + pd.offsets.BDay(span * i) for i in range(1, n_future_cycles + 1)]
+
+
+def slot_start_day(block: int, sublock: int) -> int:
+    return (block - 1) * len(SUBLOCKS) + sublock
+
+
+def uniform_block_distribution(blocks):
+    return {block: 1 / len(blocks) for block in blocks}
+
+
+def build_current_assignment(rng, sectors=None, block_weights=None):
+    sectors = sectors if sectors is not None else SECTORS
+    block_weights = (
+        block_weights if block_weights is not None else uniform_block_distribution(BLOCKS)
+    )
+    block_assigned = rng.choice(BLOCKS, size=len(sectors), p=[block_weights[b] for b in BLOCKS])
+    sublock_assigned = rng.choice(SUBLOCKS, size=len(sectors))
+    return {
+        sector: (int(block), int(sublock))
+        for sector, block, sublock in zip(sectors, block_assigned, sublock_assigned)
+    }
+
+
+def build_sector_cd_assignment(rng, sectors, cd_capacities=CD_CAPACITIES):
+    cd_codes = list(cd_capacities)
+    total_capacity = sum(cd_capacities.values())
+    weights = [cd_capacities[cd] / total_capacity for cd in cd_codes]
+    cd_assigned = rng.choice(cd_codes, size=len(sectors), p=weights)
+    return {sector: int(cd) for sector, cd in zip(sectors, cd_assigned)}
+
+
+def build_sector_volume_parameters(
+    rng, sectors, min_volume=20, max_volume=60, variance_percentage=0.15
+):
+    sectors = sectors if sectors is not None else SECTORS
+    baseline = dict(zip(sectors, rng.uniform(min_volume, max_volume, size=len(sectors))))
+    factor = dict(
+        zip(
+            sectors,
+            rng.uniform(1 - variance_percentage, 1 + variance_percentage, size=len(sectors)),
+        )
+    )
+    return baseline, factor
+
+
+def build_sector_metric_ratios(rng, sectors, volume_range=(1.0, 3.0), item_range=(1.5, 5.0)):
+    return {
+        sector: {
+            "volumes_per_order": rng.uniform(*volume_range),
+            "itens_per_order": rng.uniform(*item_range),
+        }
+        for sector in sectors
+    }
+
+
+def hump_alpha(window_length: int, concentration: int = 20, peak_frac: float = 0.5) -> float:
+    days = np.arange(window_length)
+    peak = peak_frac * (window_length - 1)
+    spread = max(window_length / 4, 0.75)
+    weights = np.exp(-0.5 * ((days - peak) / spread) ** 2)
+    return weights / weights.sum() * concentration
+
+
+def build_sector_shape_traits(rng, sectors, conc_range=(10, 40), peak_range=(0.3, 0.7)):
+    return {
+        sector: {
+            "peak_frac": rng.uniform(*peak_range),
+            "concentration": rng.uniform(*conc_range),
+        }
+        for sector in sectors
+    }
+
+
+def realize_window_shape(rng, trait, window_length):
+    alpha = hump_alpha(window_length, trait["concentration"], trait["peak_frac"])
+    return rng.dirichlet(alpha)
+
+
+def build_cycle_window_shapes(rng, sectors, shape_traits, window_length):
+    return {
+        sector: realize_window_shape(rng, shape_traits[sector], window_length) for sector in sectors
+    }
+
+
+def expected_orders(
+    sector, window_day_share, sector_baseline, sector_factor, cycle_factor, window_length=None
+):
+    window_length = window_length if window_length is not None else WINDOW_LENGTH
+    return sector_baseline * sector_factor * cycle_factor * window_day_share * window_length
+
+
+def generate_sector_cycle_orders(
+    rng,
+    sector,
+    cycle_id,
+    cycle_start,
+    assignment,
+    cycle_factor,
+    window_shape,
+    baseline,
+    factor,
+    metric_ratios,
+):
+    block, sublock = assignment[sector]
+    start_day = slot_start_day(block, sublock)
+    window_start = cycle_start + pd.offsets.BDay(start_day - 1)
+    rows = []
+    for offset, share in enumerate(window_shape):
+        orders = int(rng.poisson(expected_orders(sector, share, baseline, factor, cycle_factor)))
+        rows.append(
+            {
+                "order_date": window_start + pd.Timedelta(days=offset),
+                "cycle_id": cycle_id,
+                "day_in_cycle": start_day + offset,
+                "offset": offset,
+                "block": block,
+                "sublock": sublock,
+                "sector": sector,
+                "orders": orders,
+                "volumes": int(rng.poisson(orders * metric_ratios["volumes_per_order"])),
+                "itens": int(rng.poisson(orders * metric_ratios["itens_per_order"])),
+            }
+        )
+    return rows
+
+
+def generate_cycle_orders(
+    rng,
+    sectors,
+    cycle_id,
+    cycle_start,
+    assignment,
+    cycle_factor,
+    window_shapes,
+    baseline,
+    factor,
+    metric_ratios,
+):
+    return [
+        row
+        for sector in sectors
+        for row in generate_sector_cycle_orders(
+            rng,
+            sector,
+            cycle_id,
+            cycle_start,
+            assignment,
+            cycle_factor,
+            window_shapes[sector],
+            baseline[sector],
+            factor[sector],
+            metric_ratios[sector],
+        )
+    ]
+
+
+def generate_orders(
+    rng, sectors, cycle_starts, assignment, cycle_factors=None, window_lengths=None
+):
+    baseline, factor = build_sector_volume_parameters(rng, sectors)
+    metric_ratios = build_sector_metric_ratios(rng, sectors)
+    shape_traits = build_sector_shape_traits(rng, sectors)
+    cycle_factors = cycle_factors or {}
+    window_lengths = window_lengths or {}
+    rows = [
+        row
+        for cycle_id, cycle_start in enumerate(cycle_starts, start=1)
+        for row in generate_cycle_orders(
+            rng,
+            sectors,
+            cycle_id,
+            cycle_start,
+            assignment,
+            cycle_factors.get(cycle_id, 1.0),
+            build_cycle_window_shapes(
+                rng, sectors, shape_traits, window_lengths.get(cycle_id, WINDOW_LENGTH)
+            ),
+            baseline,
+            factor,
+            metric_ratios,
+        )
+    ]
+    return pd.DataFrame(rows)
+
+
+def build_demand_level(orders_df: pd.DataFrame) -> pd.DataFrame:
+    df = orders_df.rename(columns={"sector": "cd_setor"}).copy()
+    df["ciclo"] = df["cycle_id"].astype(str)
+    return (
+        df.groupby(["cd_setor", "ciclo"], as_index=False)
+        .agg(
+            date=("order_date", "min"),
+            cycle_duration=("offset", "max"),
+            total_pedidos=("orders", "sum"),
+            total_volumes=("volumes", "sum"),
+            total_itens=("itens", "sum"),
+        )
+        .assign(cycle_duration=lambda d: d["cycle_duration"] + 1)
+        .sort_values(by=["cd_setor", "date"])
+        .reset_index(drop=True)
+    )
+
+
+def build_demand_shape(orders_df: pd.DataFrame) -> pd.DataFrame:
+    df = orders_df.rename(
+        columns={
+            "sector": "cd_setor",
+            "order_date": "data_pedido",
+            "orders": "total_pedidos",
+            "volumes": "total_volumes",
+            "itens": "total_itens",
+        }
+    ).copy()
+    df["ciclo"] = df["cycle_id"].astype(str)
+    cycle_length = df.groupby(["cd_setor", "ciclo"])["offset"].transform("max") + 1
+    df["relative_date"] = df["offset"] / cycle_length
+    df[["ciclo_total_pedidos", "ciclo_total_volumes", "ciclo_total_itens"]] = df.groupby(
+        ["cd_setor", "ciclo"]
+    )[["total_pedidos", "total_volumes", "total_itens"]].transform("sum")
+    df["share_pedidos"] = df["total_pedidos"] / df["ciclo_total_pedidos"]
+    df["share_volumes"] = df["total_volumes"] / df["ciclo_total_volumes"]
+    df["share_itens"] = df["total_itens"] / df["ciclo_total_itens"]
+    return df[
+        [
+            "cd_setor",
+            "ciclo",
+            "data_pedido",
+            "relative_date",
+            "total_pedidos",
+            "total_volumes",
+            "total_itens",
+            "ciclo_total_pedidos",
+            "ciclo_total_volumes",
+            "ciclo_total_itens",
+            "share_pedidos",
+            "share_volumes",
+            "share_itens",
+        ]
+    ]
+
+
+def generate_synthetic_demand(rng, sectors, cycle_length: int, n_cycles: int):
+    assignment = build_current_assignment(rng, sectors, CURRENT_BLOCK_WEIGHTS)
+    cycle_starts = build_cycle_starts(cycle_length, n_cycles)
+    window_lengths = dict.fromkeys(range(1, n_cycles + 1), cycle_length)
+    orders = generate_orders(rng, sectors, cycle_starts, assignment, window_lengths=window_lengths)
+    demand_level = build_demand_level(orders)
+    demand_shape = build_demand_shape(orders)
+    return demand_level, demand_shape, cycle_starts, assignment
