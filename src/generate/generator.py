@@ -120,6 +120,54 @@ def build_sector_cd_assignment(
     return {sector: int(cd) for sector, cd in zip(sectors, cd_assigned)}
 
 
+SectorCDShares = dict[str, dict[int, float]]
+
+
+def _draw_one_sector_cd_shares(
+    rng,
+    primary_cd: int,
+    cd_codes: list[int],
+    n_secondary: int,
+    secondary_share_range: tuple[float, float],
+) -> dict[int, float]:
+    """One sector's {cd: share}: `n_secondary` small draws plus the primary's remainder."""
+    remaining_cds = [cd for cd in cd_codes if cd != primary_cd]
+    secondary_cds = rng.choice(remaining_cds, size=n_secondary, replace=False)
+    secondary_shares = rng.uniform(*secondary_share_range, size=n_secondary)
+    sector_shares = {int(cd): float(share) for cd, share in zip(secondary_cds, secondary_shares)}
+    sector_shares[primary_cd] = 1.0 - sum(sector_shares.values())
+    return sector_shares
+
+
+def build_sector_cd_shares(
+    rng,
+    sectors: list[str],
+    cd_capacities: dict[int, int] = CD_CAPACITIES,
+    max_secondary_cds: int = 2,
+    secondary_share_range: tuple[float, float] = (0.01, 0.3),
+) -> SectorCDShares:
+    """Each sector's historical-style order split across CDs, primary CD + a small tail.
+
+    Mirrors the real data's shape (a dominant CD plus 0-`max_secondary_cds` small
+    secondary CDs): the primary CD is drawn the same capacity-weighted way as
+    `build_sector_cd_assignment`, each secondary CD gets a share drawn uniformly
+    from `secondary_share_range`, and the primary absorbs whatever share is left
+    over so every sector's shares sum to 1.0.
+    """
+    cd_codes = list(cd_capacities)
+    total_capacity = sum(cd_capacities.values())
+    primary_weights = [cd_capacities[cd] / total_capacity for cd in cd_codes]
+    primary_cds = rng.choice(cd_codes, size=len(sectors), p=primary_weights)
+    n_secondary_choices = rng.integers(0, max_secondary_cds + 1, size=len(sectors))
+
+    return {
+        sector: _draw_one_sector_cd_shares(
+            rng, int(primary_cd), cd_codes, int(n_secondary), secondary_share_range
+        )
+        for sector, primary_cd, n_secondary in zip(sectors, primary_cds, n_secondary_choices)
+    }
+
+
 def build_sector_volume_parameters(
     rng,
     sectors: list[str],
