@@ -70,6 +70,17 @@ def build_daily_capacity(
     }
 
 
+def top_cd_per_sector(shares: dict[str, dict[int, float]]) -> dict[str, int]:
+    """Each sector's dominant CD: the one with the largest historical share.
+
+    Ties are broken by lowest CD code, for determinism.
+    """
+    return {
+        sector: min(sector_shares, key=lambda cd: (-sector_shares[cd], cd))
+        for sector, sector_shares in shares.items()
+    }
+
+
 def build_cd_sectors(
     sector_to_cd: dict[str, int], sector_ids: dict[str, int]
 ) -> dict[int, list[int]]:
@@ -78,6 +89,21 @@ def build_cd_sectors(
     for sector, cd_code in sector_to_cd.items():
         cd_sectors.setdefault(cd_code, []).append(sector_ids[sector])
     return cd_sectors
+
+
+def build_cd_sector_shares(
+    shares: dict[str, dict[int, float]], sector_ids: dict[str, int]
+) -> dict[int, dict[int, float]]:
+    """CD code -> {sector id: historical share}, inverting each sector's {cd: share} map.
+
+    Unlike `build_cd_sectors`'s hard partition, a sector id can appear under more
+    than one CD here, weighted by its historical share of that CD's demand.
+    """
+    cd_sector_shares: dict[int, dict[int, float]] = {}
+    for sector, sector_shares in shares.items():
+        for cd_code, share in sector_shares.items():
+            cd_sector_shares.setdefault(cd_code, {})[sector_ids[sector]] = share
+    return cd_sector_shares
 
 
 def build_current_assignment_mip(

@@ -76,9 +76,20 @@ def main(
     days = sorted({day for _, day, _ in projected_demand})
     days_by_cycle = solver_inputs.group_days_by_cycle(days, cycle_span)
 
-    sector_to_cd = generator.build_sector_cd_assignment(rng, sectors)
+    sector_cd_shares = generator.build_sector_cd_shares(rng, sectors)
+    cd_sector_shares = solver_inputs.build_cd_sector_shares(sector_cd_shares, sector_ids)
+    daily_capacity = solver_inputs.build_daily_capacity(
+        list(cd_sector_shares), days, capacity_multiplier
+    )
+
+    # The SA heuristic's neighbor-move logic still assumes one CD per sector,
+    # so it gets a top-CD-collapsed partition derived from the same shares, and
+    # its own daily_capacity restricted to that partition's (possibly smaller) CD set.
+    sector_to_cd = solver_inputs.top_cd_per_sector(sector_cd_shares)
     cd_sectors = solver_inputs.build_cd_sectors(sector_to_cd, sector_ids)
-    daily_capacity = solver_inputs.build_daily_capacity(list(cd_sectors), days, capacity_multiplier)
+    daily_capacity_sa = solver_inputs.build_daily_capacity(
+        list(cd_sectors), days, capacity_multiplier
+    )
 
     current_assignment_mip = solver_inputs.build_current_assignment_mip(
         assignment, sector_ids, combo_ids
@@ -92,7 +103,7 @@ def main(
         sector_ids_list,
         combo_ids_list,
         days,
-        cd_sectors,
+        cd_sector_shares,
         daily_capacity,
         projected_demand,
         current_assignment_mip,
@@ -104,7 +115,7 @@ def main(
         combo_ids_list,
         days,
         cd_sectors,
-        daily_capacity,
+        daily_capacity_sa,
         projected_demand,
         current_assignment_sa,
         max_churn_sectors,

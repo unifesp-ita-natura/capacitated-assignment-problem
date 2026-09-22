@@ -7,6 +7,7 @@ import pytest
 
 from src.generate import generator
 from src.solver.inputs import (
+    build_cd_sector_shares,
     build_cd_sectors,
     build_current_assignment_mip,
     build_current_assignment_sa,
@@ -14,6 +15,7 @@ from src.solver.inputs import (
     build_id_maps,
     build_projected_demand,
     group_days_by_cycle,
+    top_cd_per_sector,
 )
 
 
@@ -124,6 +126,30 @@ def test_build_cd_sectors_groups_sector_ids_by_cd(sectors):
     cd_sectors = build_cd_sectors(sector_to_cd, sector_ids)
 
     assert cd_sectors == {2700: [1, 2], 5300: [3]}
+
+
+def test_top_cd_per_sector_picks_the_largest_share():
+    shares = {"S01": {2700: 0.2, 5300: 0.7, 5100: 0.1}}
+
+    assert top_cd_per_sector(shares) == {"S01": 5300}
+
+
+def test_top_cd_per_sector_breaks_ties_by_lowest_cd_code():
+    shares = {"S01": {5300: 0.5, 2700: 0.5}}
+
+    assert top_cd_per_sector(shares) == {"S01": 2700}
+
+
+def test_build_cd_sector_shares_inverts_sector_to_cd_maps(sectors):
+    sector_ids, _ = build_id_maps(sectors)
+    shares = {"S01": {2700: 1.0}, "S02": {2700: 0.7, 5300: 0.3}}
+
+    cd_sector_shares = build_cd_sector_shares(shares, sector_ids)
+
+    assert cd_sector_shares == {
+        2700: {sector_ids["S01"]: 1.0, sector_ids["S02"]: 0.7},
+        5300: {sector_ids["S02"]: 0.3},
+    }
 
 
 def test_build_current_assignment_mip_produces_sparse_indicator_dict(sectors):

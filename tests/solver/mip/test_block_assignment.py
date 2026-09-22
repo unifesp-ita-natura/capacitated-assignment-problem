@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pyomo.environ as pyo
 import pytest
 
 from src.solver.mip.block_assignment import (
@@ -19,7 +20,7 @@ def toy_instance() -> dict:
         sectors=[1, 2],
         combinations=[1, 2],
         days=[1, 2],
-        cd_sectors={1: [1, 2]},
+        cd_sector_shares={1: {1: 1.0, 2: 1.0}},
         daily_capacity={(1, 1): 100.0, (1, 2): 100.0},
         projected_demand={
             (1, 1, 1): 10.0,
@@ -72,7 +73,7 @@ def test_demand_range_constraints_scope_each_cycle_to_its_own_days():
         sectors=[1, 2],
         combinations=[1, 2],
         days=[1, 2, 11, 12],
-        cd_sectors={1: [1, 2]},
+        cd_sector_shares={1: {1: 1.0, 2: 1.0}},
         daily_capacity={(1, 1): 100.0, (1, 2): 100.0, (1, 11): 100.0, (1, 12): 100.0},
         projected_demand={
             (1, 1, 1): 10.0,
@@ -97,8 +98,29 @@ def test_demand_range_constraints_scope_each_cycle_to_its_own_days():
 def test_capacity_constraint_covers_every_cd_and_day(toy_instance):
     model = build_block_assignment_model(**toy_instance)
 
-    expected = len(toy_instance["cd_sectors"]) * len(toy_instance["days"])
+    expected = len(toy_instance["cd_sector_shares"]) * len(toy_instance["days"])
     assert len(model.cd_capacity) == expected
+
+
+def test_capacity_constraint_weighs_demand_by_a_sector_split_across_two_cds():
+    instance = dict(
+        sectors=[1],
+        combinations=[1],
+        days=[1],
+        cd_sector_shares={1: {1: 0.7}, 2: {1: 0.3}},
+        daily_capacity={(1, 1): 100.0, (2, 1): 100.0},
+        projected_demand={(1, 1, 1): 10.0},
+        current_assignment={(1, 1): 1},
+        max_churn=1,
+        days_by_cycle={0: [1]},
+    )
+
+    model = build_block_assignment_model(**instance)
+
+    # Fix x[1,1]=1 to read off each CD's weighted contribution.
+    model.x[1, 1].fix(1)
+    assert pyo.value(model.cd_capacity[1, 1].body) == pytest.approx(7.0)
+    assert pyo.value(model.cd_capacity[2, 1].body) == pytest.approx(3.0)
 
 
 def test_churn_constraint_is_a_single_budget_across_all_sectors(toy_instance):
