@@ -37,6 +37,7 @@ def build_block_assignment_model(
     model = pyo.ConcreteModel()
     _add_sets(model, sectors, combinations, days, cd_sectors, days_by_cycle)
     _add_variables(model)
+    _add_share_variables(model)
     _add_objective(model)
     _add_assignment_constraint(model)
     _add_demand_range_constraints(model, projected_demand, days_by_cycle)
@@ -113,6 +114,32 @@ def _add_variables(model: pyo.ConcreteModel) -> None:
     model.x = pyo.Var(model.S, model.D, within=pyo.Binary)
     model.z_max = pyo.Var(model.H, within=pyo.Reals)
     model.z_min = pyo.Var(model.H, within=pyo.Reals)
+
+
+def _add_share_variables(model: pyo.ConcreteModel) -> None:
+    """Declara y (setor s's share de demanda atendida por cada CD c) e a
+    restrição de que os shares de cada setor somam 1.
+
+    STUB — exploração da abordagem "share como variável de decisão" (uma de
+    três, ver PR): o capacity constraint (`_add_capacity_constraints`) ainda
+    usa a partição rígida `cd_sectors` de sempre e NÃO foi generalizado pra
+    usar `y`. Fazer isso exigiria multiplicar `x[s,d] * y[s,c]` — um termo
+    bilinear binário-vezes-contínuo, já que `x` é binário — o que precisa de:
+      (a) linearização de McCormick: novas variáveis `w[s,d,c]` com
+          `w <= x`, `w <= y`, `w >= x + y - 1`, `w >= 0`, escalando como
+          |S| x |D| x |C|; ou
+      (b) uma decomposição em dois estágios: resolver a atribuição de
+          Bloco/Subloco primeiro (x fixo), depois um LP separado sobre `y`
+          dado esse x.
+    Nenhuma das duas está implementada ainda — é a questão em aberto desta
+    abordagem.
+    """
+    model.y = pyo.Var(model.S, model.C, within=pyo.UnitInterval)
+
+    def rule(m: pyo.ConcreteModel, s: int) -> bool:
+        return sum(m.y[s, c] for c in m.C) == 1
+
+    model.share_sums_to_one = pyo.Constraint(model.S, rule=rule)
 
 
 def _add_objective(model: pyo.ConcreteModel) -> None:

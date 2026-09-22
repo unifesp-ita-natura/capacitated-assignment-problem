@@ -52,6 +52,23 @@ def test_single_assignment_constraint_covers_every_sector(toy_instance):
     assert len(model.single_assignment) == len(toy_instance["sectors"])
 
 
+def test_share_variable_is_bounded_to_the_unit_interval(toy_instance):
+    model = build_block_assignment_model(**toy_instance)
+
+    for s in model.S:
+        for c in model.C:
+            assert model.y[s, c].bounds == (0, 1)
+
+
+def test_share_sums_to_one_constraint_covers_every_sector(toy_instance):
+    model = build_block_assignment_model(**toy_instance)
+
+    assert len(model.share_sums_to_one) == len(toy_instance["sectors"])
+    for s in model.S:
+        assert model.share_sums_to_one[s].upper() == 1
+        assert model.share_sums_to_one[s].lower() == 1
+
+
 def test_demand_range_constraints_cover_every_day(toy_instance):
     model = build_block_assignment_model(**toy_instance)
 
