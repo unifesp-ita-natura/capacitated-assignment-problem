@@ -76,7 +76,8 @@ def main(
     days = sorted({day for _, day, _ in projected_demand})
     days_by_cycle = solver_inputs.group_days_by_cycle(days, cycle_span)
 
-    sector_to_cd = generator.build_sector_cd_assignment(rng, sectors)
+    sector_cd_shares = generator.build_sector_cd_shares(rng, sectors)
+    sector_to_cd = solver_inputs.top_cd_per_sector(sector_cd_shares)
     cd_sectors = solver_inputs.build_cd_sectors(sector_to_cd, sector_ids)
     daily_capacity = solver_inputs.build_daily_capacity(list(cd_sectors), days, capacity_multiplier)
 

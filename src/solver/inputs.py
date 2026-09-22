@@ -70,6 +70,17 @@ def build_daily_capacity(
     }
 
 
+def top_cd_per_sector(shares: dict[str, dict[int, float]]) -> dict[str, int]:
+    """Each sector's dominant CD: the one with the largest historical share.
+
+    Ties are broken by lowest CD code, for determinism.
+    """
+    return {
+        sector: min(sector_shares, key=lambda cd: (-sector_shares[cd], cd))
+        for sector, sector_shares in shares.items()
+    }
+
+
 def build_cd_sectors(
     sector_to_cd: dict[str, int], sector_ids: dict[str, int]
 ) -> dict[int, list[int]]:
