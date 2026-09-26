@@ -1,0 +1,79 @@
+experiment_name: two_year_panel
+description:
+  goal: >
+    With a second year of history in the panel, does the pooled model beat
+    naive:mean — and does the year-ago cycle (lag 19) carry the seasonal
+    signal that one year of data could not show?
+  hypothesis: >
+    This is the only stage that adds information rather than rearranging
+    what the panel already held, so it is the best remaining chance. Every
+    earlier stage showed the same pattern: each change helped where
+    training data was plentiful and hurt where it was thin. A second year
+    makes every fold data-rich. The year-ago lag also becomes computable
+    for the first time, and seasonality is the one structure a single year
+    cannot expose.
+  design_note: >
+    The panel is rebuilt from the client's v2 workbook (Dec/2024 to
+    Sep/2026) joined to the 2024-2026 cycle calendar, by
+    experiments.two_year_panel.prepare. The client described the extended
+    period as "dados aleatorios"; that was verified to mean a random SAMPLE
+    of real orders, not fabricated numbers — a sector's mean in the old
+    period correlates 0.858 with its mean in the new one, Spearman 0.931.
+    See docs/context/natura-client-answers.md. The 2024-2025 calendar
+    extract carries no block/sub-block, which does not matter here because
+    the forecasting panel is block-independent by design. Two things are
+    varied together and reported separately: the panel (one year -> two)
+    and the feature set (with and without lag 19), so the year-ago lag's
+    own contribution is readable. min_train_cycles rises to 20 so every
+    fold can compute a year-ago lag. Known limitations: this is a DIFFERENT
+    panel (728 sectors x 32 cycles), so error levels are not comparable to
+    any earlier stage; and the 2025 monthly totals run systematically above
+    the 2026 ones for the same month, which may be a real decline or a
+    different sampling rate between periods — the ratio target absorbs a
+    constant level shift, a level target would not.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 20
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+  - model: naive
+    strategy: seasonal_naive
+    season_length: 19
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    label: "razao, sem ano anterior"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    lags: [1, 2, 3, 4, 19]
+    target: ratio
+    label: "razao + lag 19"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3, 19]
+    lags: [1, 2, 3, 4, 19]
+    target: ratio
+    label: "razao + lag 19 + media anual"
+
+paths:
+  demand_xlsx: "dados-20260922T192117Z-1-001/dados/reais/Unifesp_Demanda_v2.xlsx"
+  calendar_xlsx: "dados-20260922T192117Z-1-001/dados/reais/Calendario_ciclos.xlsx"
+  base_csv: data/processed/demand_two_years.csv
+  output_csv: experiments/two_year_panel/outputs/comparison.csv
+  errors_csv: experiments/two_year_panel/outputs/errors_by_candidate.csv
