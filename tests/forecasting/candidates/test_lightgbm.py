@@ -98,3 +98,81 @@ def test_returns_nothing_when_no_target_sector_has_any_history():
     predictions = REGISTRY.build(PARAMS).fit_predict(history, targets)
 
     assert predictions.empty
+
+
+PARAMS_WITH_COUNTS = LightGBMParams(
+    lags=[1, 2], rolling_windows=[2], n_estimators=20, num_leaves=3, companion_lags=[1, 2]
+)
+
+
+def _history_with_counts(sectors: dict[str, list[float]]) -> pd.DataFrame:
+    history = _history(sectors)
+    return history.assign(
+        orders=(history["items"] / 10).round(),
+        volumes=(history["items"] / 5).round(),
+    )
+
+
+def test_pooled_candidate_uses_order_counts_without_needing_them_for_the_target_cycle():
+    # The target cycle's own order count is as unknown as its item count, so
+    # `targets` carries neither — only the lags, which reach into observed
+    # cycles, may reach the model.
+    history = _history_with_counts({"A": [100, 120, 110, 130, 125], "B": [10, 12, 11, 13, 12]})
+    targets = _targets(["A", "B"], ["202606"], ["2026-06-01"])
+
+    predictions = REGISTRY.build(PARAMS_WITH_COUNTS).fit_predict(history, targets)
+
+    assert set(predictions["cd_setor"]) == {"A", "B"}
+    assert (predictions["items_pred"] >= 0).all()
+
+
+def test_order_counts_candidate_forecasts_a_longer_horizon_recursively():
+    history = _history_with_counts({"A": [100, 120, 110, 130, 125], "B": [10, 12, 11, 13, 12]})
+    targets = _targets(["A", "B"], ["202606", "202607"], ["2026-06-01", "2026-07-06"])
+
+    predictions = REGISTRY.build(PARAMS_WITH_COUNTS).fit_predict(history, targets)
+
+    assert len(predictions) == 4  # 2 sectors x 2 cycles
+
+
+def test_candidate_name_distinguishes_the_order_count_variant():
+    # The comparison table keys candidates by name, so the two rows of the
+    # panel_order_counts experiment have to be tellable apart.
+    assert REGISTRY.build(PARAMS_WITH_COUNTS).name == "lightgbm:20x3+orders"
+    assert REGISTRY.build(PARAMS).name == "lightgbm:20x3"
+
+
+def test_an_explicit_label_overrides_the_generated_name():
+    # Two variants can differ only in a field the generated name doesn't
+    # carry — rolling windows, say — and the comparison table keys rows by
+    # name, so the config has to be able to name them.
+    labelled = LightGBMParams(
+        lags=[1, 2], rolling_windows=[2], n_estimators=20, num_leaves=3, label="short window"
+    )
+
+    assert REGISTRY.build(labelled).name == "short window"
+
+
+RATIO_PARAMS = LightGBMParams(
+    lags=[1, 2], rolling_windows=[2], n_estimators=20, num_leaves=3, target="ratio"
+)
+
+
+def test_ratio_target_still_returns_predictions_in_items():
+    # The model fits items/level_ref, but what leaves the candidate must be
+    # an item count, or the harness would score a ratio against a level.
+    history = _history({"A": [100, 120, 110, 130, 125], "B": [10, 12, 11, 13, 12]})
+    targets = _targets(["A", "B"], ["202606"], ["2026-06-01"])
+
+    predictions = REGISTRY.build(RATIO_PARAMS).fit_predict(history, targets)
+
+    assert set(predictions["cd_setor"]) == {"A", "B"}
+    # A lives near 115 and B near 12; a ratio left untransformed would land
+    # both near 1.
+    by_sector = predictions.set_index("cd_setor")["items_pred"]
+    assert by_sector["A"] > 50
+    assert by_sector["B"] < 50
+
+
+def test_ratio_target_is_recorded_in_the_candidate_name():
+    assert REGISTRY.build(RATIO_PARAMS).name == "lightgbm:20x3:ratio"

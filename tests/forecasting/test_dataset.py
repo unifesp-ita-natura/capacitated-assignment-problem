@@ -79,3 +79,21 @@ def test_build_shape_panel_relative_position_is_in_unit_interval():
 
     assert (shape["relative_position"] > 0).all()
     assert (shape["relative_position"] <= 1).all()
+
+
+def test_build_item_panel_carries_order_and_volume_counts():
+    # Stage 1 of the forecasting roadmap: these two series used to be
+    # dropped at aggregation, and the previous cycle's order count predicts
+    # the next cycle's items better than the item count itself does.
+    raw = load_demand_base(FIXTURE_PATH)
+    panel = build_item_panel(raw)
+
+    expected = (
+        raw[raw["CICLOS"] != "202614"]
+        .groupby(["cd_setor", "CICLOS"])["total_pedidos_mascarado"]
+        .sum()
+    )
+    actual = panel.set_index(["cd_setor", "CICLOS"])["orders"]
+
+    assert actual.sort_index().equals(expected.sort_index().astype(actual.dtype))
+    assert "volumes" in panel.columns

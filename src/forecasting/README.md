@@ -38,7 +38,9 @@ Nothing in `evaluation.py` or `model.py` changes.
 
 - `dataset.py` — loads the raw demand base and aggregates it into the
   panels forecasting uses: `build_item_panel` (one row per sector per
-  cycle: total items, dated by the cycle's opening date, block-independent)
+  cycle: total items, orders and volumes, dated by the cycle's opening
+  date, block-independent — only `items` is ever a target, the other two
+  are predictors through their lags)
   and `build_shape_panel` (intra-cycle distribution, for the separate shape
   problem — not consumed here). Drops cycles the base only partially
   observed (see `cycle_calendar`'s docstring).
@@ -69,7 +71,10 @@ Nothing in `evaluation.py` or `model.py` changes.
     than through `per_sector`, because it needs the whole panel.
 - `features.py` — the lag / rolling-mean / calendar feature table the pooled
   candidate trains on. The rolling means are shifted by one cycle so a row
-  can never see the value it is being asked to predict.
+  can never see the value it is being asked to predict. `companion_lags`
+  optionally adds lagged order counts, volume counts and the
+  items-per-order ratio; it is empty by default, so the table is unchanged
+  unless a config asks for them.
 
 ## Running the baseline against the real base
 

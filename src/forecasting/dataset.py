@@ -15,6 +15,8 @@ REQUIRED_COLUMNS = [
     "nm_ciclo",
     "aa_ciclo",
     "CICLOS",
+    "total_pedidos_mascarado",
+    "total_volumes_mascarado",
     "total_itens_mascarado",
     "Dt Abertura",
     "Dt Fechamento",
@@ -59,14 +61,17 @@ def cycle_calendar(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_item_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Aggregate the raw base into one row per (sector, cycle): total items and cycle opening date.
+    """Aggregate the raw base into one row per (sector, cycle): items, orders, volumes, date.
 
-    This is L_{s,k} in the paper's notation, in items (the unit the CD
-    daily-capacity figures were given in — see docs/agent-log). Cycles the
-    base only partially observed (per `cycle_calendar`) are dropped: keeping
-    them would teach every forecasting candidate a demand collapse that is
-    an artifact of the export window, not real. Days keep no block/sub-block
-    information here on purpose — see `cycle_calendar`.
+    `items` is L_{s,k} in the paper's notation, in items (the unit the CD
+    daily-capacity figures were given in — see docs/agent-log), and stays
+    the forecast target. `orders` and `volumes` ride along as predictors,
+    never as targets: a cycle's own order count isn't known when its volume
+    is forecast, so only their lags are usable (see `features.py`). Cycles
+    the base only partially observed (per `cycle_calendar`) are dropped:
+    keeping them would teach every forecasting candidate a demand collapse
+    that is an artifact of the export window, not real. Days keep no
+    block/sub-block information here on purpose — see `cycle_calendar`.
     """
     calendar = cycle_calendar(raw) if calendar is None else calendar
     complete_cycles = set(calendar.loc[calendar["is_complete"], "CICLOS"])
@@ -74,7 +79,11 @@ def build_item_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) ->
     panel = (
         raw[raw["CICLOS"].isin(complete_cycles)]
         .groupby(["cd_setor", "CICLOS"], as_index=False)
-        .agg(items=("total_itens_mascarado", "sum"))
+        .agg(
+            items=("total_itens_mascarado", "sum"),
+            orders=("total_pedidos_mascarado", "sum"),
+            volumes=("total_volumes_mascarado", "sum"),
+        )
     )
     panel = panel.merge(calendar[["CICLOS", "opening_date"]], on="CICLOS", how="left")
     return panel.sort_values(["cd_setor", "opening_date"]).reset_index(drop=True)
