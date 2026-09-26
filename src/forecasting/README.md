@@ -51,6 +51,10 @@ Nothing in `evaluation.py` or `model.py` changes.
   slices history by cycle, hands a candidate only the past, and scores its
   predictions against what actually happened. A candidate never sees or
   computes its own training cutoff.
+- `daily.py` — spreads a cycle forecast over the days of the sector's window
+  (`uniform` or per-sector `curve`) and over its CDs, and scores it per
+  sector-day and per CD-day. Switched on by passing `dataset.build_daily_base`
+  to `evaluate()`; see `experiments/daily_output/`.
 - `comparison.py` — ranks several `EvaluationResult`s against each other on
   the (sector, cycle, fold) points *all* of them scored. Candidates skip
   different points, so their own headline errors aren't comparable; this is.
