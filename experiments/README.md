@@ -50,3 +50,12 @@ One line per experiment, updated as status changes:
 | [compare_modeling](compare_modeling/README.md) | reference | Reference pattern for comparing solvers/formulations — not itself a research question, see its README. |
 | [forecast_baseline](forecast_baseline/README.md) | exploratory | Run the naive candidate end-to-end through the shared forecasting harness against the real demand base. |
 | [compare_forecasters](compare_forecasters/README.md) | confirmed | Rank naive, ARIMA and pooled LightGBM against each other on the real demand base through one shared harness. |
+| [panel_order_counts](panel_order_counts/README.md) | confirmed | Does feeding the pooled LightGBM the order/volume counts of earlier cycles — series the panel used to discard — beat the items-only baseline? |
+| [lightgbm_short_window](lightgbm_short_window/README.md) | confirmed | Does shortening the rolling-mean windows recover the fold the pooled model cannot predict, without costing accuracy? |
+| [relative_target](relative_target/README.md) | confirmed | Does fitting items divided by the sector's running mean beat fitting the level itself? |
+| [cycle_factor](cycle_factor/README.md) | confirmed | Does a factor shared by every sector in a cycle carry usable signal? (No — it has no memory.) |
+| [lightgbm_tuning](lightgbm_tuning/README.md) | confirmed | How much of the gap to naive:mean is hyperparameters? (Mostly early stopping — and it beats the benchmark.) |
+| [two_year_panel](two_year_panel/README.md) | confirmed | With a second year of history, does the pooled model beat naive:mean, and does the year-ago cycle help? (Yes to both.) |
+| [tuned_two_year](tuned_two_year/README.md) | confirmed | Do the stage 4 tuning and the stage 6 two-year panel compose? (No — tuning costs 38 items there; early stopping overshoots the round budget tenfold.) |
+| [target_x_tuning](target_x_tuning/README.md) | confirmed | Do the stage 3 ratio target and the stage 4 tuning compose? (They interact — 38 of the 53 items exist only when both are present, and tuning alone loses to naive:mean.) |
+| [daily_output](daily_output/README.md) | confirmed | Score forecasts per CD-day instead of per cycle: does the candidate ranking hold, and does a per-sector curve beat a flat spread? (Ranking holds; the curve cuts CD-day error 5.4%.) |
