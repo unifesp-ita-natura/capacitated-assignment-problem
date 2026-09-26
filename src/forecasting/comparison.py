@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from src.forecasting import daily as daily_module
 from src.forecasting.evaluation import EvaluationResult, equal_weight_mae
 from src.forecasting.metrics import PRIMARY_METRIC
 
@@ -39,6 +40,18 @@ def _restrict(scored: pd.DataFrame, keys: set[tuple[str, str, str]]) -> pd.DataF
     return scored.loc[in_common]
 
 
+def _daily_columns(result: EvaluationResult, keys: set[tuple[str, str, str]]) -> dict[str, float]:
+    """Per-day errors on the common subset; empty when the run had no daily base."""
+    daily = _restrict(result.daily, keys)
+    if daily.empty:
+        return {}
+    return {
+        "mae_cd_day_common": daily_module.cd_day_mae(daily),
+        "wape_cd_day_common": daily_module.cd_day_wape(daily),
+        "mae_sector_day_common": daily_module.sector_day_mae(daily),
+    }
+
+
 def _candidate_row(
     result: EvaluationResult, keys: set[tuple[str, str, str]]
 ) -> dict[str, float | int | str]:
@@ -52,6 +65,7 @@ def _candidate_row(
     scored = result.scored
     restricted = _restrict(scored, keys)
     return {
+        **_daily_columns(result, keys),
         "candidate": result.candidate_name,
         "mae_own": equal_weight_mae(scored) if not scored.empty else float("nan"),
         "n_scored_own": len(scored),
@@ -62,7 +76,10 @@ def _candidate_row(
 
 
 def compare(results: list[EvaluationResult]) -> pd.DataFrame:
-    """One row per candidate, sorted best-first by the primary metric on the common subset.
+    """One row per candidate, sorted best-first on the common subset.
+
+    Ranks by the CD-day error when the results carry daily forecasts (the
+    level the capacity constraint acts on), else by `PRIMARY_METRIC` per cycle.
 
     `mae_own` is each candidate's error over everything it managed to
     predict; `mae_common` is its error over the points every candidate
@@ -75,4 +92,5 @@ def compare(results: list[EvaluationResult]) -> pd.DataFrame:
 
     keys = common_scored_keys(results)
     table = pd.DataFrame([_candidate_row(result, keys) for result in results])
-    return table.sort_values(f"{PRIMARY_METRIC}_common").reset_index(drop=True)
+    rank_by = "mae_cd_day_common" if "mae_cd_day_common" in table else f"{PRIMARY_METRIC}_common"
+    return table.sort_values(rank_by).reset_index(drop=True)

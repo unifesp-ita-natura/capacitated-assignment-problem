@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import numpy as np
 import pandas as pd
 
+from src.forecasting import daily as daily_module
+from src.forecasting.dataset import DailyBase
 from src.forecasting.metrics import PRIMARY_METRIC, mase, rmse
 from src.forecasting.model import ForecastCandidate
 
@@ -45,6 +47,8 @@ class OriginResult:
     naive_in_sample_mae: (
         float  # one-cycle-ahead naive error on this fold's training window, for MASE
     )
+    # Per-(sector, CD, cycle, date) actual vs pred; empty unless `evaluate` got a `daily_base`.
+    daily: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,11 @@ class EvaluationResult:
             return pd.DataFrame(columns=["cd_setor", "CICLOS", "origin_cycle"])
         return pd.concat([o.missing for o in self.origins], ignore_index=True)
 
+    @property
+    def daily(self) -> pd.DataFrame:
+        frames = [o.daily for o in self.origins if not o.daily.empty]
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
     def summary(self) -> dict[str, float | int]:
         """Aggregate error per the spec's rule: equal weight per sector, plus p90/worst fold."""
         scored = self.scored
@@ -82,6 +91,7 @@ class EvaluationResult:
             if not o.scored.empty
         ]
         return {
+            **self._daily_summary(),
             "mae": equal_weight_mae(scored),
             "rmse": rmse(scored["actual"], scored["items_pred"]),
             "mase": float(np.mean(per_origin_mase)) if per_origin_mase else float("nan"),
@@ -91,6 +101,17 @@ class EvaluationResult:
             "n_missing": len(self.missing),
             "n_sectors_scored": scored["cd_setor"].nunique(),
             "n_origins": len(self.origins),
+        }
+
+    def _daily_summary(self) -> dict[str, float]:
+        """Per-day errors; empty unless the run was given a daily base."""
+        daily = self.daily
+        if daily.empty:
+            return {}
+        return {
+            "mae_sector_day": daily_module.sector_day_mae(daily),
+            "mae_cd_day": daily_module.cd_day_mae(daily),
+            "wape_cd_day": daily_module.cd_day_wape(daily),
         }
 
     @property
@@ -151,6 +172,8 @@ def _score_origin(
     panel: pd.DataFrame,
     train_cycles: list[str],
     target_cycles: list[str],
+    daily_base: DailyBase | None = None,
+    curve: daily_module.Curve = "sector",
 ) -> OriginResult:
     history = panel[panel["CICLOS"].isin(train_cycles)]
     assert (
@@ -174,17 +197,28 @@ def _score_origin(
     missing = merged.loc[is_missing, ["cd_setor", "CICLOS"]].copy()
     missing["origin_cycle"] = train_cycles[-1]
 
+    daily = pd.DataFrame()
+    if daily_base is not None:
+        daily = daily_module.score_daily(
+            scored[["cd_setor", "CICLOS", "items_pred"]], daily_base, train_cycles, curve
+        ).assign(origin_cycle=train_cycles[-1])
+
     return OriginResult(
         origin_cycle=train_cycles[-1],
         target_cycles=tuple(target_cycles),
         scored=scored,
         missing=missing,
         naive_in_sample_mae=_naive_in_sample_mae(history),
+        daily=daily,
     )
 
 
 def evaluate(
-    candidate: ForecastCandidate, panel: pd.DataFrame, split: RollingOriginSplit
+    candidate: ForecastCandidate,
+    panel: pd.DataFrame,
+    split: RollingOriginSplit,
+    daily_base: DailyBase | None = None,
+    curve: daily_module.Curve = "sector",
 ) -> EvaluationResult:
     """Run rolling-origin evaluation of `candidate` against `panel` (`build_item_panel`'s shape).
 
@@ -195,6 +229,11 @@ def evaluate(
     own cutoff (see `model.ForecastCandidate`). `candidate` is a Strategy
     (any `ForecastCandidate`); this function is its context and behaves
     identically regardless of which technique is plugged in.
+
+    Given a `daily_base` (`dataset.build_daily_base`), each fold's cycle
+    forecast is also spread over the days of its window with `curve` and
+    scored per sector-day and per CD-day (see `daily.py`); the per-cycle
+    numbers are unchanged.
     """
     cycles = _cycle_order(panel)
     origins = [
@@ -203,6 +242,8 @@ def evaluate(
             panel,
             train_cycles=_training_cycles(cycles, origin_idx, split),
             target_cycles=cycles[origin_idx : origin_idx + split.horizon],
+            daily_base=daily_base,
+            curve=curve,
         )
         for origin_idx in range(split.min_train_cycles, len(cycles) - split.horizon + 1)
     ]

@@ -12,6 +12,7 @@ from src.forecasting.dataset import (
     build_item_panel,
     load_demand_base,
 )
+from src.forecasting.evaluation import RollingOriginSplit, evaluate
 
 FIXTURE_PATH = "tests/fixtures/demand_sample.csv"
 
@@ -115,3 +116,22 @@ def test_the_curve_never_reads_the_target_cycle():
     ]
 
     pd.testing.assert_series_equal(*forecast)
+
+
+class _Constant:
+    name = "constant"
+
+    def fit_predict(self, history, targets):
+        return targets[["cd_setor", "CICLOS"]].assign(items_pred=100.0)
+
+
+def test_evaluate_reports_daily_errors_only_when_given_a_daily_base():
+    raw = load_demand_base(FIXTURE_PATH)
+    panel, split = build_item_panel(raw), RollingOriginSplit(horizon=1, min_train_cycles=6)
+
+    plain = evaluate(_Constant(), panel, split).summary()
+    with_days = evaluate(_Constant(), panel, split, build_daily_base(raw)).summary()
+
+    assert "mae_cd_day" not in plain
+    assert with_days["mae_cd_day"] > 0
+    assert with_days["mae"] == plain["mae"]  # the per-cycle number is untouched

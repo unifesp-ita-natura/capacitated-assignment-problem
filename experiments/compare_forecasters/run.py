@@ -12,7 +12,12 @@ from pydantic import TypeAdapter
 from src.config.schema import ForecastParams
 from src.forecasting.candidates import arima, lightgbm, naive  # noqa: F401 - populate REGISTRY
 from src.forecasting.comparison import compare
-from src.forecasting.dataset import build_item_panel, load_demand_base
+from src.forecasting.dataset import (
+    DailyBase,
+    build_daily_base,
+    build_item_panel,
+    load_demand_base,
+)
 from src.forecasting.evaluation import EvaluationResult, RollingOriginSplit, evaluate
 from src.forecasting.model import REGISTRY
 
@@ -26,13 +31,16 @@ def _load_config(path: str | Path) -> dict:
         return yaml.safe_load(f)
 
 
-def _evaluate_all(config: dict, panel: pd.DataFrame) -> list[EvaluationResult]:
+def _evaluate_all(
+    config: dict, panel: pd.DataFrame, daily_base: DailyBase | None = None
+) -> list[EvaluationResult]:
     split = RollingOriginSplit(**config["split"])
+    curve = config.get("daily", {}).get("curve", "sector")
     results = []
     for entry in config["candidates"]:
         candidate = REGISTRY.build(_PARAMS_ADAPTER.validate_python(entry))
         print(f"  running {candidate.name} ...", flush=True)
-        results.append(evaluate(candidate, panel, split))
+        results.append(evaluate(candidate, panel, split, daily_base, curve))
     return results
 
 
@@ -51,7 +59,9 @@ def run(config_path: str | Path = DEFAULT_CONFIG_PATH) -> pd.DataFrame:
         f"{panel['CICLOS'].nunique()} cycles"
     )
 
-    results = _evaluate_all(config, panel)
+    # A `daily:` block in the config turns on per-day scoring (see src/forecasting/daily.py).
+    daily_base = build_daily_base(raw) if "daily" in config else None
+    results = _evaluate_all(config, panel, daily_base)
     table = compare(results)
 
     _write(table, config["paths"]["output_csv"])

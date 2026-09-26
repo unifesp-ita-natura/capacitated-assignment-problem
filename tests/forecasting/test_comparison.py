@@ -85,3 +85,24 @@ def test_a_candidate_that_scored_nothing_gets_a_nan_common_error():
     table = compare([wide, scored_nothing]).set_index("candidate")
 
     assert pd.isna(table.loc["empty", "mae_common"])
+
+
+def _with_daily(result: EvaluationResult, cd_day_error: float) -> EvaluationResult:
+    """Attach one CD-day row per scored point, off by `cd_day_error` items."""
+    origin = result.origins[0]
+    daily = origin.scored[["cd_setor", "CICLOS", "origin_cycle"]].assign(
+        cd_cd="1", date=pd.Timestamp("2026-01-01"), actual=100.0, pred=100.0 - cd_day_error
+    )
+    replaced = OriginResult(**{**origin.__dict__, "daily": daily})
+    return EvaluationResult(candidate_name=result.candidate_name, origins=[replaced])
+
+
+def test_comparison_ranks_by_cd_day_error_when_results_carry_daily_forecasts():
+    # `cycle_better` wins per cycle but loses per CD-day: the ranking follows the CD-day number.
+    cycle_better = _with_daily(_result("cycle_better", [("A", "c1", 100, 99)]), 50.0)
+    day_better = _with_daily(_result("day_better", [("A", "c1", 100, 80)]), 5.0)
+
+    table = compare([cycle_better, day_better])
+
+    assert table["candidate"].tolist() == ["day_better", "cycle_better"]
+    assert table["mae_cd_day_common"].tolist() == [5.0, 50.0]
