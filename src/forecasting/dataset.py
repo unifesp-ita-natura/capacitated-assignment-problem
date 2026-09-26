@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import NamedTuple
 
 import pandas as pd
 
@@ -101,3 +102,37 @@ def build_shape_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -
     cycle_totals = daily.groupby(["cd_setor", "CICLOS"])["items"].transform("sum")
     daily["share"] = daily["items"] / cycle_totals
     return daily.sort_values(["cd_setor", "CICLOS", "relative_position"]).reset_index(drop=True)
+
+
+class DailyBase(NamedTuple):
+    """What the daily harness needs: real items per (sector, CD, cycle, date), and each window."""
+
+    actuals: pd.DataFrame  # cd_setor, cd_cd, CICLOS, date, items — only days with an order
+    windows: pd.DataFrame  # cd_setor, CICLOS, window_start, n_days — the sector's own window
+
+
+def build_daily_base(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> DailyBase:
+    """Split the raw base into per-day actuals and per-(sector, cycle) windows (complete cycles).
+
+    Days without orders have no row in `actuals`: the base only records days
+    that sold something, so the zeros are recovered from `windows` (a sector's
+    window is its own `Dt Abertura`..`Dt Fechamento`, which is where the
+    block-dependent start lives — it is used only to place a forecast on the
+    calendar, never as a predictor).
+    """
+    if "cd_cd" not in raw.columns:
+        raise ValueError("the daily harness needs a `cd_cd` column in the demand base")
+    calendar = cycle_calendar(raw) if calendar is None else calendar
+    complete = raw[raw["CICLOS"].isin(set(calendar.loc[calendar["is_complete"], "CICLOS"]))]
+
+    actuals = complete.groupby(["cd_setor", "cd_cd", "CICLOS", "data_pedido"], as_index=False).agg(
+        items=("total_itens_mascarado", "sum")
+    )
+    windows = complete.groupby(["cd_setor", "CICLOS"], as_index=False).agg(
+        window_start=("Dt Abertura", "min"), window_end=("Dt Fechamento", "max")
+    )
+    windows["n_days"] = (windows["window_end"] - windows["window_start"]).dt.days + 1
+    return DailyBase(
+        actuals=actuals.rename(columns={"data_pedido": "date"}),
+        windows=windows.drop(columns="window_end"),
+    )
