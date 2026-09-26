@@ -53,3 +53,7 @@ paper.log
 # experiment outputs (keep experiment scripts/configs, drop their run artifacts)
 experiments/**/outputs/
 experiments/**/results/
+
+# Raw Google Drive drops pasted directly into the repo root (client comms + data)
+/comunicações-*/
+/dados-*/
