@@ -1,0 +1,105 @@
+experiment_name: sa_calibration_smoke
+description:
+  goal: >
+    Smoke test do pipeline (minutos, não conclui nada).
+    Quais valores de T0, T_min, beta, gama e rho minimizam o gap do SA contra o
+    ótimo do MIP (HiGHS) com orçamento fixo de 200 mil iterações?
+  hypothesis: >
+    Com alfa derivado do orçamento, o cooling deixa de dominar; T_min muito
+    baixo desperdiça o fim da busca, então T_min em 1-10 ganha de 0.001. beta,
+    gama e rho só importam nas instâncias apertadas, e rho alto (1e6) atrapalha
+    ao proibir travessias por regiões inviáveis.
+  design_note: >
+    Fase 1 LHS (60 configs x 5 seeds x base40/tight40/base80), fase 2 TPE do
+    Optuna (3 lotes x 12 x 5 seeds x base40/tight40), fase 3 revalidação dos
+    finalistas + default_repo com seeds 101-108 em base40/tight40/tight80
+    (nunca vista). Estagnação desligada, max_iterations 200k, alfa derivado de
+    (T0, T_min). Instâncias sintéticas de 40/80 setores (o problema real tem
+    ~800); o MIP pode não fechar nas de 80 (aí o denominador é o limite inferior).
+  status: exploratory
+
+output_dir: experiments/sa_calibration/outputs/smoke
+n_workers: 0  # 0 = todos os núcleos
+
+# null = seleção automática do forecasting (muda se o statsmodels não estiver
+# instalado: Holt/ARIMA são pulados). A escolha efetiva vai para mip_optima/*.json.
+level_strategy: null
+shape_strategy: null
+
+budget:
+  max_iterations: 3000
+  trace_every: 100
+
+mip:
+  solver: appsi_highs
+  mip_rel_gap: 0.01
+
+instances:
+  base40: {n_sectors: 12, n_cycles_horizon: 2, seed: 42, mip_time_limit: 30}
+  base80: {n_sectors: 16, n_cycles_horizon: 3, seed: 7, mip_time_limit: 60}
+  # capacity_multiplier = 1.15 x o mínimo viável achado por `run tighten`
+  # (2026-09-28: tight40 0.002337, tight80 0.006994).
+  tight40: {n_sectors: 12, n_cycles_horizon: 2, seed: 42, capacity_multiplier: 0.01, tight: true, mip_time_limit: 30}
+  tight80: {n_sectors: 16, n_cycles_horizon: 3, seed: 7, capacity_multiplier: 0.01, tight: true, mip_time_limit: 60}
+
+# Energia E(X) está em itens; um movimento típico muda E em ~13-220 (mediana 74)
+# em base40, então T0 cobre de "quase só descida" a "passeio aleatório".
+search_space:
+  initial_temperature: {low: 20.0, high: 20000.0, log: true}
+  min_temperature: {low: 0.001, high: 10.0, log: true}
+  sector_bias: {low: 0.0, high: 1.0}
+  destination_bias: {low: 0.0, high: 1.0}
+  penalty_coefficient: {low: 1.0, high: 10000000.0, log: true}
+
+tie_tolerance: 0.5  # pontos percentuais de gap
+
+named_configs:
+  default_repo:      # AnnealingParams() do repositório (só a estagnação desligada)
+    {initial_temperature: 1000.0, cooling_rate: 0.99, min_temperature: 0.01, sector_bias: 0.8, destination_bias: 0.7, penalty_coefficient: 1000000.0}
+  default_budget:    # default do repositório com alfa derivado do orçamento
+    {initial_temperature: 1000.0, min_temperature: 0.01, sector_bias: 0.8, destination_bias: 0.7, penalty_coefficient: 1000000.0}
+  prev_no_bias:      # finalistas do relatório anterior (BKV), alfa original
+    {initial_temperature: 622.0, cooling_rate: 0.999, min_temperature: 0.0129, sector_bias: 0.5, destination_bias: 0.5, penalty_coefficient: 10000000.0}
+  prev_T0_5000:
+    {initial_temperature: 5000.0, cooling_rate: 0.999, min_temperature: 0.001, sector_bias: 0.8, destination_bias: 0.8, penalty_coefficient: 1000000.0}
+  prev_T0_500:
+    {initial_temperature: 500.0, cooling_rate: 0.999, min_temperature: 0.001, sector_bias: 0.65, destination_bias: 0.8, penalty_coefficient: 1000000.0}
+  cal_long:          # prev_T0_5000 com alfa derivado: gasta as 200 mil iterações
+    {initial_temperature: 5000.0, min_temperature: 0.001, sector_bias: 0.8, destination_bias: 0.8, penalty_coefficient: 1000000.0}
+
+screen:
+  n_configs: 4
+  seeds: [1, 2]
+  instances: [base40, tight40, base80]
+  sampler_seed: 2026
+
+tpe:
+  batches: 2
+  batch_size: 2
+  seeds: [1, 2]
+  instances: [base40, tight40]
+  sampler_seed: 2026
+
+validate:
+  n_finalists: 2
+  seeds: [101, 102]
+  instances: [base40, tight40, tight80]
+  reference_configs: [default_repo, default_budget]
+
+extras:
+  min_temperatures: [0.01, 5.0]
+  seeds: [101]
+  instances: [base40, tight40]
+  named_configs: [prev_no_bias, prev_T0_5000, prev_T0_500, cal_long]
+
+tighten:
+  low: 0.0005
+  high: 0.01
+  steps: 9
+  probe_time_limit: 60
+  headroom: 1.15
+
+report:
+  convergence_instance: tight40
+  convergence_seed: 101
+  convergence_configs: [best, default_repo, default_budget]
