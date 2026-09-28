@@ -42,6 +42,54 @@ class ArimaParams(BaseModel):
     trend: Literal["n", "c", "t", "ct"] | None = None
 
 
+class ETSParams(BaseModel):
+    model: Literal["ets"] = "ets"
+    # ETS(error, trend, seasonal) in Hyndman's taxonomy. The defaults give
+    # ETS(A,N,N) — simple exponential smoothing, a weighted mean that sits
+    # between naive:last_value (alpha = 1) and naive:mean (alpha -> 0).
+    error: Literal["add", "mul"] = "add"
+    trend: Literal["add", "mul"] | None = None
+    damped_trend: bool = False
+    seasonal: Literal["add", "mul"] | None = None
+    seasonal_periods: int | None = None
+    # One smoothing weight shared by every sector instead of one fitted per
+    # sector: a number fixes it, "pooled" picks the one that minimises the
+    # one-step-ahead error summed over every sector's training history.
+    # Only for ETS(A,N,N), where the point forecast depends on alpha alone.
+    alpha: float | Literal["pooled"] | None = None
+
+    @model_validator(mode="after")
+    def _components_valid(self):
+        for check in (_trend_problem, _alpha_model_problem, _alpha_range_problem, _season_problem):
+            if problem := check(self):
+                raise ValueError(problem)
+        return self
+
+
+def _trend_problem(params: ETSParams) -> str | None:
+    if params.damped_trend and params.trend is None:
+        return "damped_trend needs a trend"
+    return None
+
+
+def _alpha_model_problem(params: ETSParams) -> str | None:
+    if params.alpha is not None and (params.trend or params.seasonal or params.error != "add"):
+        return "a shared alpha is only supported for ETS(A,N,N)"
+    return None
+
+
+def _alpha_range_problem(params: ETSParams) -> str | None:
+    if isinstance(params.alpha, float) and not 0 < params.alpha <= 1:
+        return "alpha must be in (0, 1]"
+    return None
+
+
+def _season_problem(params: ETSParams) -> str | None:
+    if params.seasonal is not None and (params.seasonal_periods or 0) < 2:
+        return "seasonal_periods must be >= 2 when seasonal is set"
+    return None
+
+
 class LightGBMParams(BaseModel):
     model: Literal["lightgbm"] = "lightgbm"
     n_estimators: int = 100
@@ -90,7 +138,7 @@ class CycleFactorParams(BaseModel):
 
 
 ForecastParams = Annotated[
-    NaiveParams | ArimaParams | LightGBMParams | CycleFactorParams,
+    NaiveParams | ArimaParams | ETSParams | LightGBMParams | CycleFactorParams,
     Field(discriminator="model"),
 ]
 

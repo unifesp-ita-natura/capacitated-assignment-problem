@@ -9,8 +9,8 @@ import pandas as pd
 import yaml
 from pydantic import TypeAdapter
 
+import src.forecasting.candidates  # noqa: F401 - populate REGISTRY
 from src.config.schema import ForecastParams
-from src.forecasting.candidates import arima, lightgbm, naive  # noqa: F401 - populate REGISTRY
 from src.forecasting.comparison import compare
 from src.forecasting.dataset import (
     DailyBase,
