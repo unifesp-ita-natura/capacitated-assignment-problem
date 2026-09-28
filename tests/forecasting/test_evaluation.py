@@ -22,7 +22,7 @@ def _panel() -> pd.DataFrame:
     for cycle, date, a, b in zip(CYCLES, OPENING_DATES, ITEMS_A, ITEMS_B, strict=True):
         rows.append({"cd_setor": "A", "CICLOS": cycle, "items": a, "opening_date": date})
         rows.append({"cd_setor": "B", "CICLOS": cycle, "items": b, "opening_date": date})
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).assign(window_start=lambda p: p["opening_date"], cycle_days=21)
 
 
 class _ConstantCandidate:
@@ -104,6 +104,13 @@ def test_evaluate_computes_exact_mae_for_a_constant_candidate():
     assert summary["mae"] == pytest.approx(65.0)
     assert summary["n_scored"] == 6
     assert summary["n_missing"] == 0
+
+
+def test_evaluate_computes_rmse_and_p90_from_the_scored_errors():
+    split = RollingOriginSplit(horizon=1, min_train_cycles=3, window="expanding")
+
+    result = evaluate(_ConstantCandidate(value=100), _panel(), split)
+    summary = result.summary()
 
     scored = result.scored
     expected_rmse = np.sqrt(np.mean(scored["abs_error"] ** 2))

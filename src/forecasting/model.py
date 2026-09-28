@@ -36,6 +36,7 @@ from src.forecasting.data import (
     build_shape_observations,
     to_calendar,
 )
+from src.forecasting.dataset import CYCLE_KEYS
 from src.forecasting.level import LEVEL_STRATEGIES, forecast_cycle_total_with
 from src.forecasting.shape import SHAPE_STRATEGIES
 from src.generate.generator import future_cycle_starts, slot_start_day
@@ -45,6 +46,11 @@ from src.generate.generator import future_cycle_starts, slot_start_day
 # can join predictions back onto actuals without per-candidate glue.
 PANEL_COLUMNS = ["cd_setor", "CICLOS", "items", "opening_date"]
 PREDICTION_COLUMNS = ["cd_setor", "CICLOS", "items_pred"]
+# A query is one scenario: "sector s, in cycle k, with its window opening on
+# `window_start` and lasting `cycle_days` days". One (sector, cycle) can carry
+# several queries, one per opening date the optimizer wants to compare.
+SCENARIO_COLUMNS = ["window_start", "cycle_days"]
+QUERY_KEYS = ["cd_setor", "CICLOS", *SCENARIO_COLUMNS]
 
 
 def forecast_with_shape(shape: pd.DataFrame, forecast_cycle_totals: pd.DataFrame) -> pd.DataFrame:
@@ -121,13 +127,16 @@ class ForecastCandidate(Protocol):
     name: str
 
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
-        """Predict items for each (sector, cycle) in `targets` using only `history`.
+        """Predict items for each query in `targets` using only `history`.
 
         `history` and `targets` both have the shape of `build_item_panel`'s
-        output (`targets` carries `CICLOS` and `opening_date` but no `items`
-        column, since that's what's being predicted). Returns a DataFrame
-        with columns `cd_setor`, `CICLOS`, `items_pred` — one row per
-        (sector, cycle) this candidate could predict for; a candidate is
+        output (`targets` carries `CICLOS`, `opening_date`, `window_start` and
+        `cycle_days` but no `items` column, since that's what's being
+        predicted). A (sector, cycle) may appear in several target rows, one
+        per scenario window. Returns `cd_setor`, `CICLOS`, `items_pred`, plus
+        `window_start` and `cycle_days` if the candidate tells scenarios
+        apart; without them, its prediction for a (sector, cycle) applies to
+        every scenario of it (see `align_predictions`). A candidate is
         allowed to skip a sector it can't handle (e.g. too little history)
         rather than fabricate a value, and the harness accounts for the gap.
         """
@@ -148,7 +157,11 @@ class _PerSectorCandidate:
             # A sector present in `history` isn't necessarily active in every
             # target cycle (not every sector orders every cycle) — skip it
             # here rather than call `self._fn` for nothing to score against.
-            sector_targets = targets[targets["cd_setor"] == sector].sort_values("opening_date")
+            sector_targets = (
+                targets[targets["cd_setor"] == sector]
+                .sort_values("opening_date")
+                .drop_duplicates("CICLOS")  # scenarios of one cycle share its forecast
+            )
             if sector_targets.empty:
                 continue
 
@@ -170,6 +183,40 @@ def per_sector(name: str, fn: Callable[[pd.Series, int], pd.Series]) -> Forecast
     series of that length.
     """
     return _PerSectorCandidate(name=name, fn=fn)
+
+
+def align_predictions(targets: pd.DataFrame, predictions: pd.DataFrame) -> pd.Series:
+    """`items_pred` for each row of `targets`, in its order; NaN where the candidate skipped.
+
+    Predictions keyed by the full query match their own scenario. Predictions
+    keyed by (sector, cycle) alone come from a candidate that ignores the
+    window, so each one is copied onto every scenario of that cycle.
+    """
+    keys = QUERY_KEYS if set(SCENARIO_COLUMNS) <= set(predictions.columns) else CYCLE_KEYS
+    unique = predictions.drop_duplicates(keys)[[*keys, "items_pred"]]
+    return targets[keys].merge(unique, on=keys, how="left")["items_pred"].set_axis(targets.index)
+
+
+def forecast(
+    candidate: ForecastCandidate, history: pd.DataFrame, queries: pd.DataFrame
+) -> pd.DataFrame:
+    """Answer scenario queries `(cd_setor, window_start, cycle_days)` from all of `history`.
+
+    This is f(sector, opening day, cycle length) = expected items for the
+    cycle, the call the optimizer makes for every opening date it weighs.
+    Without `CICLOS`/`opening_date`, every query is taken as a scenario of
+    the cycle right after `history`, dated by its earliest window start;
+    pass them to ask about cycles further ahead. Returns `queries` with an
+    `items_pred` column, NaN where the candidate could not answer.
+    """
+    queries = queries.copy()
+    if "CICLOS" not in queries.columns:
+        queries["CICLOS"] = "next"
+        queries["opening_date"] = queries["window_start"].min()
+    if history["opening_date"].max() >= queries["opening_date"].min():
+        raise ValueError("every query must be for a cycle after the end of `history`")
+    queries["items_pred"] = align_predictions(queries, candidate.fit_predict(history, queries))
+    return queries
 
 
 class CandidateRegistry:

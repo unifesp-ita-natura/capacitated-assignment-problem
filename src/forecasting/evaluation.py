@@ -11,7 +11,7 @@ import pandas as pd
 from src.forecasting import daily as daily_module
 from src.forecasting.dataset import DailyBase
 from src.forecasting.metrics import PRIMARY_METRIC, mase, rmse
-from src.forecasting.model import ForecastCandidate
+from src.forecasting.model import SCENARIO_COLUMNS, ForecastCandidate, align_predictions
 
 
 @dataclass(frozen=True)
@@ -181,13 +181,12 @@ def _score_origin(
         < panel[panel["CICLOS"].isin(target_cycles)]["opening_date"].min()
     ), "leakage: training history reaches into or past the target cycles"
 
-    targets = panel[panel["CICLOS"].isin(target_cycles)][["cd_setor", "CICLOS", "opening_date"]]
-    predictions = candidate.fit_predict(history, targets)
-
-    actuals = panel[panel["CICLOS"].isin(target_cycles)][["cd_setor", "CICLOS", "items"]].rename(
-        columns={"items": "actual"}
-    )
-    merged = actuals.merge(predictions, on=["cd_setor", "CICLOS"], how="left")
+    # Each target is queried with the window the sector actually had, so the
+    # actual it is scored against is the outcome of that very scenario.
+    target_rows = panel[panel["CICLOS"].isin(target_cycles)]
+    targets = target_rows[["cd_setor", "CICLOS", "opening_date", *SCENARIO_COLUMNS]]
+    merged = target_rows[["cd_setor", "CICLOS", "items"]].rename(columns={"items": "actual"})
+    merged["items_pred"] = align_predictions(targets, candidate.fit_predict(history, targets))
     is_missing = merged["items_pred"].isna()
 
     scored = merged.loc[~is_missing].copy()

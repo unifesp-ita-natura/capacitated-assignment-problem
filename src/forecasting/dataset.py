@@ -7,6 +7,8 @@ from typing import NamedTuple
 
 import pandas as pd
 
+CYCLE_KEYS = ["cd_setor", "CICLOS"]
+
 # Columns the raw demand base must have. Anything else is ignored by the
 # loader, so upstream schema changes that only add columns don't break it.
 REQUIRED_COLUMNS = [
@@ -20,9 +22,12 @@ REQUIRED_COLUMNS = [
     "total_itens_mascarado",
     "Dt Abertura",
     "Dt Fechamento",
-    "Qtde dias",
     "dia_ciclo",
 ]
+
+# base_tratada_v2 repeats an order once per opening date its sector had in the
+# cycle; the copies differ only in these columns (see `_drop_fanned_out_rows`).
+_OPENING_DEPENDENT = ("Dt Abertura", "dia_ciclo", "Qtde dias")
 
 
 def load_demand_base(path: str | Path) -> pd.DataFrame:
@@ -34,7 +39,23 @@ def load_demand_base(path: str | Path) -> pd.DataFrame:
 
     for column in ["data_pedido", "Dt Abertura", "Dt Fechamento"]:
         raw[column] = pd.to_datetime(raw[column])
-    return raw
+    if "Qtde dias" not in raw.columns:  # dropped in base_tratada_v2
+        raw["Qtde dias"] = (raw["Dt Fechamento"] - raw["Dt Abertura"]).dt.days + 1
+    return _drop_fanned_out_rows(raw)
+
+
+def _drop_fanned_out_rows(raw: pd.DataFrame) -> pd.DataFrame:
+    """Keep one copy of an order that the base repeats under several opening dates.
+
+    In base_tratada_v2 an order can appear once per opening date its sector
+    had in that cycle (1,190 rows, 0.17% of items), identical apart from
+    `Dt Abertura` and the columns derived from it. Counting every copy
+    would double those items. The latest opening date is kept, so a sector's window (the earliest
+    opening among its kept rows) starts where its first order was placed.
+    """
+    order_keys = [c for c in raw.columns if c not in _OPENING_DEPENDENT]
+    latest_last = raw.sort_values("Dt Abertura", kind="stable")
+    return latest_last.drop_duplicates(order_keys, keep="last").sort_index()
 
 
 def cycle_calendar(raw: pd.DataFrame) -> pd.DataFrame:
@@ -70,22 +91,23 @@ def build_item_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) ->
     is forecast, so only their lags are usable (see `features.py`). Cycles
     the base only partially observed (per `cycle_calendar`) are dropped:
     keeping them would teach every forecasting candidate a demand collapse
-    that is an artifact of the export window, not real. Days keep no
-    block/sub-block information here on purpose — see `cycle_calendar`.
+    that is an artifact of the export window, not real.
+
+    `opening_date` is the cycle's, shared by every sector (see
+    `cycle_calendar`), and orders the series. `window_start` and
+    `cycle_days` are the sector's own window, the scenario inputs a
+    candidate may use (see `model.forecast`).
     """
     calendar = cycle_calendar(raw) if calendar is None else calendar
-    complete_cycles = set(calendar.loc[calendar["is_complete"], "CICLOS"])
+    complete = raw[raw["CICLOS"].isin(set(calendar.loc[calendar["is_complete"], "CICLOS"]))]
 
-    panel = (
-        raw[raw["CICLOS"].isin(complete_cycles)]
-        .groupby(["cd_setor", "CICLOS"], as_index=False)
-        .agg(
-            items=("total_itens_mascarado", "sum"),
-            orders=("total_pedidos_mascarado", "sum"),
-            volumes=("total_volumes_mascarado", "sum"),
-        )
+    panel = complete.groupby(CYCLE_KEYS, as_index=False).agg(
+        items=("total_itens_mascarado", "sum"),
+        orders=("total_pedidos_mascarado", "sum"),
+        volumes=("total_volumes_mascarado", "sum"),
     )
     panel = panel.merge(calendar[["CICLOS", "opening_date"]], on="CICLOS", how="left")
+    panel = panel.merge(_sector_windows(complete), on=CYCLE_KEYS)
     return panel.sort_values(["cd_setor", "opening_date"]).reset_index(drop=True)
 
 
@@ -125,9 +147,7 @@ def build_daily_base(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) ->
 
     Days without orders have no row in `actuals`: the base only records days
     that sold something, so the zeros are recovered from `windows` (a sector's
-    window is its own `Dt Abertura`..`Dt Fechamento`, which is where the
-    block-dependent start lives — it is used only to place a forecast on the
-    calendar, never as a predictor).
+    window is its own `Dt Abertura`..`Dt Fechamento`, see `_sector_windows`).
     """
     if "cd_cd" not in raw.columns:
         raise ValueError("the daily harness needs a `cd_cd` column in the demand base")
@@ -137,11 +157,21 @@ def build_daily_base(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) ->
     actuals = complete.groupby(["cd_setor", "cd_cd", "CICLOS", "data_pedido"], as_index=False).agg(
         items=("total_itens_mascarado", "sum")
     )
-    windows = complete.groupby(["cd_setor", "CICLOS"], as_index=False).agg(
-        window_start=("Dt Abertura", "min"), window_end=("Dt Fechamento", "max")
-    )
-    windows["n_days"] = (windows["window_end"] - windows["window_start"]).dt.days + 1
     return DailyBase(
         actuals=actuals.rename(columns={"data_pedido": "date"}),
-        windows=windows.drop(columns="window_end"),
+        windows=_sector_windows(complete).rename(columns={"cycle_days": "n_days"}),
     )
+
+
+def _sector_windows(raw: pd.DataFrame) -> pd.DataFrame:
+    """Each (sector, cycle)'s own sales window: its first day and its length in days.
+
+    This is where the block-dependent start lives. It is what a scenario
+    query asks about ("what if this sector opened on day d for n days?"),
+    never a stand-in for the block itself.
+    """
+    windows = raw.groupby(CYCLE_KEYS, as_index=False).agg(
+        window_start=("Dt Abertura", "min"), window_end=("Dt Fechamento", "max")
+    )
+    windows["cycle_days"] = (windows["window_end"] - windows["window_start"]).dt.days + 1
+    return windows.drop(columns="window_end")
