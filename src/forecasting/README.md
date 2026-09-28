@@ -4,7 +4,8 @@ Predicts `L_{s,k}` — total items per (sector, cycle) — the demand figure
 the block/sub-block assignment MIP needs as input. See
 `docs/papers/forecasting-volume-spec.tex` for the formal definition and
 `docs/agent-log/` for how the target's unit and dating were decided against
-the real demand base (`data/base_tratada.csv`).
+the real demand base (`data/base_tratada.csv`; `data/base_tratada_v2.csv`
+covers two years, see `experiments/v2_baseline/`).
 
 ## How a technique plugs in
 
@@ -29,6 +30,27 @@ harness:
   `candidates/__init__.py` imports every shipped module so registration
   runs on import.
 
+## Scenario queries: f(sector, opening day, cycle length)
+
+The optimizer compares opening dates, so it asks the forecast "how many
+items would sector s order in a cycle of n days opening on day d?" once per
+date it weighs. That question is a **query**: a `targets` row carrying
+`window_start` (d) and `cycle_days` (n) next to `cd_setor` and `CICLOS`.
+One (sector, cycle) can carry several queries, one per scenario.
+
+- `model.forecast(candidate, history, queries)` answers queries from the
+  whole history: the call the optimizer makes. Without `CICLOS`, every
+  query is a scenario of the cycle right after the history.
+- In `evaluate()`, each target is queried with the window the sector
+  actually had, so the backtest scores the one scenario that happened.
+- Turning (sector, d, n) into a model's own inputs (last cycles, a year
+  ago, calendar variables) is the candidate's job, inside `fit_predict`;
+  the history rows carry each past cycle's `window_start` and `cycle_days`
+  to learn from. A candidate that returns predictions keyed only by
+  (sector, cycle) ignores the window: `model.align_predictions` copies its
+  value onto every scenario of that cycle. Every candidate shipped so far
+  does this, so for them f is flat across opening days.
+
 To add a technique: create `candidates/<name>.py`, register a
 `ForecastParams -> ForecastCandidate` builder under the `model` literal its
 params class uses, and import the module from `candidates/__init__.py`.
@@ -43,9 +65,12 @@ Nothing in `evaluation.py` or `model.py` changes.
   are predictors through their lags)
   and `build_shape_panel` (intra-cycle distribution, for the separate shape
   problem — not consumed here). Drops cycles the base only partially
-  observed (see `cycle_calendar`'s docstring).
-- `model.py` — the Strategy interface, the Adapter, and the Registry/Factory
-  described above.
+  observed (see `cycle_calendar`'s docstring). The item panel also carries
+  each sector's own window (`window_start`, `cycle_days`), the scenario
+  inputs. The loader drops the rows base_tratada_v2 repeats under several
+  opening dates.
+- `model.py` — the Strategy interface, the Adapter, the Registry/Factory
+  described above, and the scenario entry point `forecast`.
 - `metrics.py` — `mae`, `rmse`, `mase`. `PRIMARY_METRIC` fixes which one
   ranks candidates, in one place, rather than leaving it up to whichever
   candidate is being compared.
@@ -66,6 +91,10 @@ Nothing in `evaluation.py` or `model.py` changes.
   - `arima.py` — ARIMA/SARIMA per sector via statsmodels' SARIMAX, through
     the Adapter. Skips a sector whose history is too short for the requested
     order, or that SARIMAX can't fit, instead of failing the run.
+  - `ets.py` — exponential smoothing (ETS) per sector via statsmodels'
+    ETSModel, through the Adapter. The error/trend/seasonal components come
+    from the config; the default ETS(A,N,N) is a weighted mean between
+    `last_value` and `mean`. See `experiments/ets_level/`.
   - `lightgbm.py` — gradient boosting pooled across every sector at once.
     The one candidate that implements `ForecastCandidate` directly rather
     than through `per_sector`, because it needs the whole panel.
