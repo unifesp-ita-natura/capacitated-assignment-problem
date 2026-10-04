@@ -43,7 +43,14 @@ diagrams, and hold the **Result** section.
 
 ## Index
 
-One line per experiment, updated as status changes:
+One line per experiment, updated as status changes.
+
+**Forecasting results before 2026-10-04 come from window-blind models.**
+Since then every candidate reads the scenario window and there is no switch
+to turn that off, so rerunning an older forecasting experiment gives
+different numbers from its README. See
+`docs/agent-log/2026-10-04-every-candidate-reads-the-window.md` for the
+size of the change on `v2_baseline`.
 
 | Experiment | Status | Goal |
 |---|---|---|
@@ -61,3 +68,4 @@ One line per experiment, updated as status changes:
 | [daily_output](daily_output/README.md) | confirmed | Score forecasts per CD-day instead of per cycle: does the candidate ranking hold, and does a per-sector curve beat a flat spread? (Ranking holds; the curve cuts CD-day error 5.4%.) |
 | [ets_level](ets_level/README.md) | confirmed | Where does exponential smoothing land as a level forecaster? (On two years it beats naive:mean by 4.4% and LightGBM beats it by 7.0%. On one year it loses per cycle but wins per CD-day through lower bias. One alpha shared by every sector is 1.5% better on two years; averaging it with LightGBM cuts bias sixfold.) |
 | [v2_baseline](v2_baseline/README.md) | confirmed | Reference scores on base_tratada_v2 (two years, daily base) for the scenario harness. (LightGBM leads the pooled ETS by 1.1% per cycle and 0.4% per CD-day; their average beats both by 2.3% per cycle.) |
+| [window_aware](window_aware/README.md) | confirmed | Does telling the ETS and LightGBM the scenario window improve the forecast? (A little: −0.7% per cycle for LightGBM, −0.3% for the ETS, all of it on short windows, −3.5%/−2.1% there. Items scale with length as days^0.2, not per day; the opening day itself moves nothing.) |

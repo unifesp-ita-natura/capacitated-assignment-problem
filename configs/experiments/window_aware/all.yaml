@@ -1,0 +1,47 @@
+experiment_name: window_aware
+description:
+  goal: Does telling the ETS and LightGBM the scenario's window (length, gap since
+    the sector's last opening, day of the month) improve the forecast of the window
+    that actually happened, on base_tratada_v2?
+  hypothesis: '(1) The pooled cycle-length exponent lands at 0.2 or below, because
+    14-day cycles sell about 97% of a sector''s mean, not the 67% a per-day rate implies;
+    the ETS with it lands within 0.5% of the plain pooled ETS, per cycle and per CD-day.
+    (2) Forcing the exponent to 1 ("items per day times days") is more than 5% worse
+    per cycle than the plain pooled ETS. (3) LightGBM with the window features lands
+    within 2% of LightGBM without them per cycle: the gap since the last opening carries
+    some signal, but most window variation is cycle-wide and the calendar features
+    already see it.'
+  design_note: 'Same split, base and reference candidates as v2_baseline, so the reference
+    rows must reproduce its numbers. Each target is queried with the window the sector
+    actually had; the backtest cannot score an opening day that never happened, so
+    a win here says the window features are not noise, not that the counterfactual
+    answers are right. The offset from the cycle''s opening is left out on purpose:
+    it is the sub-block. One LightGBM seed. Since 2026-10-04 every candidate reads
+    the window, so the window-blind rows were dropped from this config; the README
+    keeps their numbers.'
+  status: confirmed
+split:
+  horizon: 1
+  min_train_cycles: 20
+  window: expanding
+daily:
+  curve: sector
+candidates:
+- model: ets
+  alpha: pooled
+- model: ets
+  alpha: pooled
+  cycle_days_exponent: 1.0
+- model: lightgbm
+  num_leaves: 7
+  n_estimators: 100
+  learning_rate: 0.05
+  companion_lags: [1, 2, 3, 4]
+  rolling_windows: [2, 3, 19]
+  lags: [1, 2, 3, 4, 19]
+  target: ratio
+  label: razao + lag 19 + media anual
+paths:
+  base_csv: data/base_tratada_v2.csv
+  output_csv: experiments/window_aware/outputs/comparison.csv
+  errors_csv: experiments/window_aware/outputs/errors.csv

@@ -41,6 +41,12 @@ The loader changes two things for v2:
 
 ## Result (2026-09-28)
 
+> **Rerun since 2026-10-04 gives different numbers.** Every candidate now
+> reads the window. The rerun gives LightGBM 5,384 / 264.6 / 1,802 and the
+> pooled ETS 5,413 / 284.6 / 1,829, which are the `window_aware` rows with
+> the window. `naive:mean` gives 5,840 / 296.4 / 1,909 (CD-day / sector-day /
+> cycle). The table below is the window-blind original.
+
 The table covers 11 folds and 6,736 points, one cycle ahead.
 
 | candidate | MAE per CD-day | WAPE CD-day | MAE per sector-day | MAE per cycle | mean bias per cycle |
