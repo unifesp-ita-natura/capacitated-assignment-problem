@@ -6,14 +6,16 @@ import math
 import random
 import time
 from collections import deque
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
 from src.persistence import SolveResult
 
 ProjectedDemand = Mapping[tuple[int, int, int], float]  # (setor, dia, combinação) -> qtd
+# chamado a cada iteração com iteration=, energy=, temperature=, assignment=
+IterationCallback = Callable[..., None]
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,15 @@ class AnnealingResult:
     churn_penalty: float
     iterations: int
     stop_reason: str  # "min_temperature" | "stagnation" | "max_iterations"
+    zmax: float = 0.0  # média, entre os ciclos, do pico de demanda diária da melhor solução
+    zmin: float = 0.0  # média, entre os ciclos, do vale diário (zmax - zmin == objective)
+    std_load: float = 0.0  # média, entre os ciclos, do desvio-padrão da demanda diária
+    time: float = 0.0  # segundos de busca gastos por `solve`
+
+    @property
+    def feasible(self) -> bool:
+        """Se a melhor solução respeita capacidade e churn (P_cap = P_churn = 0)."""
+        return self.capacity_penalty == 0.0 and self.churn_penalty == 0.0
 
 
 def solve(
@@ -57,6 +68,7 @@ def solve(
     valid_combinations: Mapping[int, Iterable[int]] | None = None,
     params: AnnealingParams | None = None,
     rng: random.Random | None = None,
+    callback: IterationCallback | None = None,
 ) -> AnnealingResult:
     """Roda o Simulated Annealing (Seção 4) e devolve a melhor atribuição encontrada.
 
@@ -65,7 +77,9 @@ def solve(
     permitidas (D_c); quando omitido, toda combinação vale pra todo CD.
     `days_by_cycle` agrupa `days` por ciclo futuro (0-indexado), pra que o
     objetivo (amplitude de demanda) seja calculado por ciclo e depois tirado a
-    média, em vez de globalmente sobre todo o horizonte.
+    média, em vez de globalmente sobre todo o horizonte. `callback`, se dado, é
+    chamado ao fim de cada iteração com `iteration`, `energy` (energia corrente),
+    `temperature` e `assignment` (índices internos; não modifique o array).
     """
     params = params or AnnealingParams()
     rng = rng or random.Random()
@@ -81,7 +95,32 @@ def solve(
         days_by_cycle,
         valid_combinations,
     )
-    return _anneal(problem, params, rng)
+    start = time.perf_counter()
+    result = _anneal(problem, params, rng, callback)
+    return replace(result, time=time.perf_counter() - start)
+
+
+def cooling_rate_for_budget(
+    budget: int, initial_temperature: float, min_temperature: float
+) -> float:
+    """O alfa que leva T de `initial_temperature` a `min_temperature` em `budget` iterações.
+
+    Separa o orçamento de iterações do esquema de resfriamento: com esse alfa o
+    resfriamento geométrico gasta o orçamento inteiro (a menos de 1 iteração de
+    arredondamento), em vez de parar em `min_temperature` muito antes dele.
+    """
+    return math.exp(math.log(min_temperature / initial_temperature) / budget)
+
+
+def iterations_for_schedule(
+    initial_temperature: float, min_temperature: float, cooling_rate: float
+) -> int:
+    """Iterações do resfriamento geométrico até T <= `min_temperature`.
+
+    É `ceil(ln(T_min / T0) / ln(alfa))`, sem o teto de `max_iterations` — o
+    número real de iterações de uma execução é o menor dos dois.
+    """
+    return math.ceil(math.log(min_temperature / initial_temperature) / math.log(cooling_rate))
 
 
 def run_simulated_annealing(
@@ -183,12 +222,16 @@ def _balance_objective(problem: _Problem, daily_totals: np.ndarray) -> float:
     """Média, entre os ciclos do horizonte, da amplitude (máx - mín) da demanda
     diária de cada ciclo — evita confundir tendência entre ciclos com
     desbalanceamento dentro de um ciclo."""
+    return _per_cycle_mean(problem, daily_totals, np.ptp)
+
+
+def _per_cycle_mean(
+    problem: _Problem, daily_totals: np.ndarray, reducer: Callable[[np.ndarray], float]
+) -> float:
+    """Aplica `reducer` à demanda diária de cada ciclo do horizonte e tira a média."""
     n_cycles = int(problem.cycle_of_day.max()) + 1
-    ranges = []
-    for h in range(n_cycles):
-        cycle_totals = daily_totals[problem.cycle_of_day == h]
-        ranges.append(cycle_totals.max() - cycle_totals.min())
-    return float(np.mean(ranges))
+    values = [reducer(daily_totals[problem.cycle_of_day == h]) for h in range(n_cycles)]
+    return float(np.mean(values))
 
 
 def _evaluate(problem: _Problem, assignment: np.ndarray, penalty_coefficient: float) -> _Evaluation:
@@ -307,7 +350,25 @@ def _step(
     return _accept(state, candidate, candidate_eval)
 
 
-def _anneal(problem: _Problem, params: AnnealingParams, rng: random.Random) -> AnnealingResult:
+def _notify(
+    callback: IterationCallback | None, iteration: int, state: _SearchState, temperature: float
+) -> None:
+    """Repassa a iteração corrente ao callback de instrumentação, se houver um."""
+    if callback is not None:
+        callback(
+            iteration=iteration,
+            energy=state.current_eval.energy,
+            temperature=temperature,
+            assignment=state.current,
+        )
+
+
+def _anneal(
+    problem: _Problem,
+    params: AnnealingParams,
+    rng: random.Random,
+    callback: IterationCallback | None = None,
+) -> AnnealingResult:
     initial = _evaluate(problem, problem.as_is, params.penalty_coefficient)
     state = _SearchState(
         current=problem.as_is.copy(),
@@ -321,6 +382,7 @@ def _anneal(problem: _Problem, params: AnnealingParams, rng: random.Random) -> A
         if temperature <= params.min_temperature:
             return _build_result(problem, state, iteration, "min_temperature")
         state = _step(problem, state, params, rng, temperature)
+        _notify(callback, iteration, state, temperature)
         if _stagnated(state.energy_window, params):
             return _build_result(problem, state, iteration + 1, "stagnation")
         temperature *= params.cooling_rate
@@ -334,6 +396,7 @@ def _build_result(
         problem.sector_labels[i]: problem.combo_labels[int(d)] for i, d in enumerate(state.best)
     }
     ev = state.best_eval
+    zmax, zmin, std_load = _load_profile(problem, state.best)
     return AnnealingResult(
         assignment=assignment,
         energy=ev.energy,
@@ -342,6 +405,19 @@ def _build_result(
         churn_penalty=ev.churn_penalty,
         iterations=iterations,
         stop_reason=stop_reason,
+        zmax=zmax,
+        zmin=zmin,
+        std_load=std_load,
+    )
+
+
+def _load_profile(problem: _Problem, assignment: np.ndarray) -> tuple[float, float, float]:
+    """(z_max, z_min, desvio-padrão) da demanda diária, cada um em média entre os ciclos."""
+    daily_totals = _daily_load_by_sector(problem, assignment).sum(axis=0)
+    return (
+        _per_cycle_mean(problem, daily_totals, np.max),
+        _per_cycle_mean(problem, daily_totals, np.min),
+        _per_cycle_mean(problem, daily_totals, np.std),
     )
 
 

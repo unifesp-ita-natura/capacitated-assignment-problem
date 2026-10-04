@@ -16,6 +16,7 @@ from src.generate.generator import (
     build_demand_level,
     build_demand_shape,
     build_sector_cd_assignment,
+    build_sector_cd_shares,
     build_sector_metric_ratios,
     build_sector_shape_traits,
     build_sector_volume_parameters,
@@ -133,6 +134,51 @@ def test_build_sector_cd_assignment_tracks_capacity_shares(cd_capacities):
     for cd, capacity in cd_capacities.items():
         expected_share = capacity / total_capacity
         assert counts[cd] == pytest.approx(expected_share, abs=0.03)
+
+
+def test_build_sector_cd_shares_covers_every_sector(rng, cd_capacities):
+    sectors = [f"S{i}" for i in range(20)]
+
+    shares = build_sector_cd_shares(rng, sectors, cd_capacities)
+
+    assert set(shares) == set(sectors)
+
+
+def test_build_sector_cd_shares_use_valid_cd_codes(rng, cd_capacities):
+    sectors = [f"S{i}" for i in range(20)]
+
+    shares = build_sector_cd_shares(rng, sectors, cd_capacities)
+
+    for sector_shares in shares.values():
+        assert set(sector_shares) <= set(cd_capacities)
+
+
+def test_build_sector_cd_shares_sum_to_one_per_sector(rng, cd_capacities):
+    sectors = [f"S{i}" for i in range(20)]
+
+    shares = build_sector_cd_shares(rng, sectors, cd_capacities)
+
+    for sector_shares in shares.values():
+        assert sum(sector_shares.values()) == pytest.approx(1.0)
+
+
+def test_build_sector_cd_shares_primary_cd_has_the_largest_share(rng, cd_capacities):
+    sectors = [f"S{i}" for i in range(20)]
+
+    shares = build_sector_cd_shares(rng, sectors, cd_capacities)
+
+    for sector_shares in shares.values():
+        largest_share = max(sector_shares.values())
+        assert largest_share >= 1.0 / len(sector_shares)
+
+
+def test_build_sector_cd_shares_is_deterministic_for_a_given_rng_state(cd_capacities):
+    sectors = ["S1", "S2", "S3"]
+
+    first = build_sector_cd_shares(np.random.default_rng(0), sectors, cd_capacities)
+    second = build_sector_cd_shares(np.random.default_rng(0), sectors, cd_capacities)
+
+    assert first == second
 
 
 @pytest.fixture
