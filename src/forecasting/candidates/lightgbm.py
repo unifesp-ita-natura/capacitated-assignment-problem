@@ -10,16 +10,24 @@ from src.forecasting.features import (
     COMPANION_SERIES,
     LEVEL_REFERENCE,
     SECTOR_FEATURE,
+    add_window_features,
     build_features,
     complete_feature_frame,
     feature_columns,
     lag_columns,
 )
-from src.forecasting.model import PREDICTION_COLUMNS, REGISTRY, ForecastCandidate
+from src.forecasting.model import (
+    CYCLE_KEYS,
+    QUERY_KEYS,
+    REGISTRY,
+    SCENARIO_COLUMNS,
+    ForecastCandidate,
+)
 
 # What the recursive forecast has to carry forward cycle by cycle, before
 # any companion series the configuration adds.
-_BASE_PANEL_COLUMNS = ("cd_setor", "CICLOS", "items", "opening_date")
+_BASE_PANEL_COLUMNS = ("cd_setor", "CICLOS", "items", "opening_date", *SCENARIO_COLUMNS)
+_OUTPUT_COLUMNS = [*QUERY_KEYS, "items_pred"]
 
 
 class _PooledLightGBMCandidate:
@@ -40,15 +48,18 @@ class _PooledLightGBMCandidate:
     @property
     def _columns(self) -> list[str]:
         return feature_columns(
-            self._params.lags, self._params.rolling_windows, self._params.companion_lags
+            self._params.lags,
+            self._params.rolling_windows,
+            self._params.companion_lags,
         )
 
     @property
     def _panel_columns(self) -> list[str]:
         """Panel columns the recursive forecast carries forward, not just the target series."""
-        if not self._params.companion_lags:
-            return list(_BASE_PANEL_COLUMNS)
-        return [*_BASE_PANEL_COLUMNS, *COMPANION_SERIES]
+        columns = list(_BASE_PANEL_COLUMNS)
+        if self._params.companion_lags:
+            columns += COMPANION_SERIES
+        return columns
 
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
         complete = _trainable_rows(
@@ -64,7 +75,7 @@ class _PooledLightGBMCandidate:
             # Not enough cycles in the training window to build a single
             # complete lag row — the harness counts every target as missing
             # rather than this candidate inventing values.
-            return pd.DataFrame(columns=PREDICTION_COLUMNS)
+            return pd.DataFrame(columns=_OUTPUT_COLUMNS)
 
         sectors = pd.CategoricalDtype(sorted(history[SECTOR_FEATURE].unique()))
         model = self._fit(complete, sectors)
@@ -169,22 +180,31 @@ class _PooledLightGBMCandidate:
             if rows.empty:
                 continue
 
+            rows = self._scenario_rows(rows, targets, cycle)
             predicted = model.predict(_as_model_frame(rows[self._columns], sectors))
-            values = np.clip(self._to_items(predicted, rows), 0, None)
-            predicted_frames.append(
-                pd.DataFrame(
-                    {
-                        "cd_setor": rows["cd_setor"].to_numpy(),
-                        "CICLOS": cycle,
-                        "items_pred": values,
-                    }
-                )
+            frame = rows[QUERY_KEYS].assign(
+                items_pred=np.clip(self._to_items(predicted, rows), 0, None)
             )
-            working = _fill_predictions(working, cycle, rows["cd_setor"], values)
+            predicted_frames.append(frame)
+            # ponytail: a later cycle's lag is the mean over this cycle's
+            # scenarios; a per-scenario path only matters at horizon > 1.
+            working = _fill_predictions(
+                working, cycle, frame.groupby("cd_setor")["items_pred"].mean()
+            )
 
         if not predicted_frames:
-            return pd.DataFrame(columns=PREDICTION_COLUMNS)
-        return pd.concat(predicted_frames, ignore_index=True)[PREDICTION_COLUMNS]
+            return pd.DataFrame(columns=_OUTPUT_COLUMNS)
+        return pd.concat(predicted_frames, ignore_index=True)
+
+    def _scenario_rows(self, rows: pd.DataFrame, targets: pd.DataFrame, cycle: str) -> pd.DataFrame:
+        """One row per scenario window: the sector's lags, with the window being asked about.
+
+        Lags come from the history and are shared by every scenario of a
+        sector; only the window features change between them.
+        """
+        scenarios = targets.loc[targets["CICLOS"] == cycle, QUERY_KEYS]
+        shared = rows.drop(columns=SCENARIO_COLUMNS)
+        return add_window_features(shared.merge(scenarios, on=CYCLE_KEYS))
 
     def _predictable_rows(self, working: pd.DataFrame, cycle: str) -> pd.DataFrame:
         """Rows for `cycle` that have at least one usable lag.
@@ -229,16 +249,18 @@ def _pending_rows(targets: pd.DataFrame, cycle: str, panel_columns: list[str]) -
     the item count itself, so they stay `NaN` and only their lags, which
     reach back into observed cycles, ever reach the model.
     """
-    rows = targets[targets["CICLOS"] == cycle][["cd_setor", "CICLOS", "opening_date"]].copy()
-    blank = [column for column in panel_columns if column not in rows.columns]
-    return rows.assign(**dict.fromkeys(blank, np.nan))
+    rows = targets[targets["CICLOS"] == cycle][["cd_setor", "CICLOS", "opening_date"]]
+    rows = rows.drop_duplicates(CYCLE_KEYS)  # one per sector: scenarios share its lags
+    blank = dict.fromkeys(
+        [column for column in panel_columns if column not in rows.columns], np.nan
+    )
+    if "window_start" in blank:  # keeps the column a datetime once concatenated
+        blank["window_start"] = pd.NaT
+    return rows.assign(**blank)
 
 
-def _fill_predictions(
-    working: pd.DataFrame, cycle: str, sectors: pd.Series, values: np.ndarray
-) -> pd.DataFrame:
+def _fill_predictions(working: pd.DataFrame, cycle: str, predicted: pd.Series) -> pd.DataFrame:
     """Write this cycle's predictions into the working panel, so the next cycle's lags see them."""
-    predicted = pd.Series(values, index=sectors.to_numpy())
     is_cycle = working["CICLOS"] == cycle
     working.loc[is_cycle, "items"] = working.loc[is_cycle, "cd_setor"].map(predicted)
     return working

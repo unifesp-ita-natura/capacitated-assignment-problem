@@ -61,7 +61,10 @@ def test_registry_builds_the_ets_candidate_from_config():
     assert REGISTRY.build(ETSParams()).name == "ets(A,N,N)"
 
 
-def _panel(series_by_sector: dict[str, list[float]]) -> pd.DataFrame:
+def _panel(
+    series_by_sector: dict[str, list[float]], days: dict[str, list[int]] | None = None
+) -> pd.DataFrame:
+    days = days or {}
     return pd.DataFrame(
         [
             {
@@ -69,15 +72,24 @@ def _panel(series_by_sector: dict[str, list[float]]) -> pd.DataFrame:
                 "CICLOS": f"2026{n:02d}",
                 "items": value,
                 "opening_date": pd.Timestamp("2026-01-05") + pd.Timedelta(days=21 * n),
+                "cycle_days": days.get(sector, [21] * len(values))[n],
             }
             for sector, values in series_by_sector.items()
             for n, value in enumerate(values)
         ]
+    ).assign(window_start=lambda frame: frame["opening_date"])
+
+
+def _next_cycle(sectors: list[str], days: list[int] | None = None) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "cd_setor": sectors,
+            "CICLOS": "202699",
+            "window_start": pd.Timestamp("2026-12-01"),
+            "opening_date": pd.Timestamp("2026-12-01"),
+            "cycle_days": days or [21] * len(sectors),
+        }
     )
-
-
-def _next_cycle(sectors: list[str]) -> pd.DataFrame:
-    return pd.DataFrame({"cd_setor": sectors, "CICLOS": ["202699"] * len(sectors)})
 
 
 def test_smoothing_by_hand():
@@ -101,7 +113,8 @@ def test_shared_alpha_forecasts_every_sector_with_its_own_level():
         _panel({"A": [100.0, 200.0], "B": [10.0, 30.0]}), _next_cycle(["A", "B"])
     )
 
-    assert predictions.set_index("cd_setor")["items_pred"].to_dict() == {"A": 150.0, "B": 20.0}
+    by_sector = predictions.set_index("cd_setor")["items_pred"]
+    assert by_sector.to_dict() == pytest.approx({"A": 150.0, "B": 20.0})
 
 
 def test_pooled_alpha_is_high_when_demand_shifts_and_stays():
@@ -129,3 +142,38 @@ def test_pooled_alpha_is_low_when_demand_bounces_around_a_mean():
 def test_shared_alpha_is_rejected_on_a_model_with_a_trend():
     with pytest.raises(ValidationError, match="shared alpha"):
         ETSParams(trend="add", alpha=0.3)
+
+
+def test_exponent_one_scales_the_forecast_to_the_queried_window():
+    # 210 items in 21 days is 10 a day, so a 14-day window gets 140.
+    candidate = REGISTRY.build(ETSParams(alpha=0.5, cycle_days_exponent=1.0))
+
+    predictions = candidate.fit_predict(
+        _panel({"A": [210.0, 210.0]}), _next_cycle(["A", "A"], [21, 14])
+    )
+
+    assert predictions["items_pred"].tolist() == pytest.approx([210.0, 140.0])
+    assert {"window_start", "cycle_days"} <= set(predictions.columns)
+
+
+def test_pooled_exponent_is_one_when_items_follow_the_window_length():
+    days = [21, 14, 21, 14, 21, 14]
+    candidate = REGISTRY.build(ETSParams(alpha="pooled", cycle_days_exponent="pooled"))
+
+    candidate.fit_predict(_panel({"A": [10.0 * d for d in days]}, {"A": days}), _next_cycle(["A"]))
+
+    assert candidate.chosen_exponent == 1.0
+
+
+def test_pooled_exponent_is_zero_when_items_ignore_the_window_length():
+    days = [21, 14, 21, 14, 21, 14]
+    candidate = REGISTRY.build(ETSParams(alpha="pooled", cycle_days_exponent="pooled"))
+
+    candidate.fit_predict(_panel({"A": [200.0] * 6}, {"A": days}), _next_cycle(["A"]))
+
+    assert candidate.chosen_exponent == 0.0
+
+
+def test_a_fixed_exponent_is_rejected_without_a_shared_alpha():
+    with pytest.raises(ValidationError, match="needs a shared alpha"):
+        ETSParams(cycle_days_exponent=1.0)

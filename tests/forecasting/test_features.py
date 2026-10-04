@@ -23,7 +23,7 @@ PANEL = pd.DataFrame(
             ["2026-01-05", "2026-02-02", "2026-03-02", "2026-04-02"] * 2
         ),
     }
-)
+).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
 
 
 def test_lags_come_from_the_same_sector_only():

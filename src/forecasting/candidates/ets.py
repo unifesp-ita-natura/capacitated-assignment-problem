@@ -9,7 +9,14 @@ import numpy as np
 import pandas as pd
 
 from src.config.schema import ETSParams
-from src.forecasting.model import REGISTRY, ForecastCandidate, InsufficientHistoryError, per_sector
+from src.forecasting.model import (
+    QUERY_KEYS,
+    REGISTRY,
+    ForecastCandidate,
+    InsufficientHistoryError,
+    opening_adjusted,
+    per_sector,
+)
 
 # Same contract as the ARIMA candidate: statsmodels declining a sector (a
 # multiplicative component on a series with zeros, a singular fit) skips
@@ -84,28 +91,38 @@ def _candidate_name(params: ETSParams) -> str:
 
 
 _ALPHA_GRID = np.round(np.arange(0.01, 1.001, 0.01), 2)
+_EXPONENT_GRID = np.round(np.arange(0.0, 1.001, 0.1), 1)
 
 
-def _smooth(matrix: np.ndarray, alpha: float) -> tuple[np.ndarray, float]:
+def _smooth(
+    matrix: np.ndarray, alpha: float, scale: np.ndarray | None = None
+) -> tuple[np.ndarray, float]:
     """Run simple exponential smoothing down every row (sector) of a sectors x cycles matrix.
 
     A missing cycle (NaN) leaves the level untouched. The level starts at
     the sector's first observation, not its mean: a mean over the whole
     history already contains the cycles being "predicted" in-sample, which
     drags the pooled alpha to ~0 (measured in experiments/ets_level).
-    Returns each sector's final level and the sum of absolute
-    one-step-ahead errors over every cycle after the first.
+    With `scale`, each cycle is divided by its own scale before smoothing
+    and the one-step forecast is multiplied back, so the errors stay in
+    items. Returns each sector's final level (per unit of scale) and the
+    sum of absolute one-step-ahead errors over every cycle after the first.
     """
+    scale = np.ones_like(matrix) if scale is None else scale
     level = np.full(matrix.shape[0], np.nan)
     error = 0.0
-    for observed in matrix.T:
+    for observed, factor in zip((matrix / scale).T, scale.T, strict=True):
         seen = ~np.isnan(observed)
         both = seen & ~np.isnan(level)
-        error += np.abs(observed[both] - level[both]).sum()
+        error += (np.abs(observed[both] - level[both]) * factor[both]).sum()
         level[both] += alpha * (observed[both] - level[both])
         fresh = seen & ~both
         level[fresh] = observed[fresh]
     return level, error
+
+
+def _grid(value: float | str, pooled_grid: np.ndarray) -> np.ndarray:
+    return pooled_grid if value == "pooled" else np.array([float(value)])
 
 
 class _SharedAlphaCandidate:
@@ -113,36 +130,54 @@ class _SharedAlphaCandidate:
 
     Fitting alpha per sector from 6-11 cycles mostly fits noise (see
     experiments/ets_level). A single alpha is estimated from every sector's
-    history together, so it is far more stable.
+    history together, so it is far more stable. A cycle's items are taken
+    to scale with its length as cycle_days ** exponent, the exponent picked
+    with alpha unless the config fixes it: the level is smoothed per unit of
+    that scale, and each scenario query gets the level times its own window
+    length to the exponent. Its own estimate rather than `window_scaled`'s,
+    because here the exponent can be chosen by forecast error.
     """
 
-    def __init__(self, alpha: float | str) -> None:
+    def __init__(self, alpha: float | str, exponent: float | str = "pooled") -> None:
         self.name = f"ets(A,N,N) alpha={alpha}"
+        if exponent != "pooled":
+            self.name += f" days^{exponent}"
         self._alpha = alpha
+        self._exponent = exponent
         self.chosen_alpha: float | None = None
+        self.chosen_exponent: float | None = None
 
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
-        matrix = history.pivot_table(
-            index="cd_setor", columns="opening_date", values="items", aggfunc="sum"
-        ).sort_index(axis=1)
-        values = matrix.to_numpy(dtype=float)
-        if self._alpha == "pooled":
-            # ponytail: grid of 100 alphas; a scalar optimiser only if the
-            # optimum turns out to sit between grid points in a way that matters.
-            errors = [_smooth(values, alpha)[1] for alpha in _ALPHA_GRID]
-            self.chosen_alpha = float(_ALPHA_GRID[int(np.argmin(errors))])
-        else:
-            self.chosen_alpha = float(self._alpha)
-        levels = pd.Series(_smooth(values, self.chosen_alpha)[0], index=matrix.index)
+        items = _by_sector_and_cycle(history, "items")
+        days = _by_sector_and_cycle(history, "cycle_days").reindex_like(items)
+        levels = pd.Series(self._fit(items.to_numpy(float), days.to_numpy(float)), items.index)
 
         rows = targets[targets["cd_setor"].isin(levels.index)]
-        return pd.DataFrame(
-            {
-                "cd_setor": rows["cd_setor"].to_numpy(),
-                "CICLOS": rows["CICLOS"].to_numpy(),
-                "items_pred": np.clip(rows["cd_setor"].map(levels).to_numpy(), 0, None),
-            }
+        predicted = rows["cd_setor"].map(levels).to_numpy()
+        predicted = predicted * rows["cycle_days"].to_numpy(float) ** self.chosen_exponent
+        return (
+            rows[QUERY_KEYS].assign(items_pred=np.clip(predicted, 0, None)).reset_index(drop=True)
         )
+
+    def _fit(self, items: np.ndarray, days: np.ndarray) -> np.ndarray:
+        """Pick alpha and the exponent with the lowest in-sample error; return the final levels."""
+        # ponytail: exhaustive grid, 100 alphas x 11 exponents; a scalar
+        # optimiser only if the optimum sits between grid points in a way
+        # that matters.
+        settings = [
+            (a, e)
+            for a in _grid(self._alpha, _ALPHA_GRID)
+            for e in _grid(self._exponent, _EXPONENT_GRID)
+        ]
+        errors = [_smooth(items, a, days**e)[1] for a, e in settings]
+        self.chosen_alpha, self.chosen_exponent = map(float, settings[int(np.argmin(errors))])
+        return _smooth(items, self.chosen_alpha, days**self.chosen_exponent)[0]
+
+
+def _by_sector_and_cycle(history: pd.DataFrame, column: str) -> pd.DataFrame:
+    return history.pivot_table(
+        index="cd_setor", columns="opening_date", values=column, aggfunc="sum"
+    ).sort_index(axis=1)
 
 
 @REGISTRY.register("ets")
@@ -155,7 +190,9 @@ def build_ets(params: ETSParams) -> ForecastCandidate:
     per-sector search selects noise. To compare model forms, list several
     `ets` entries in one experiment instead. Setting `alpha` swaps in the
     pooled ETS(A,N,N), which shares one smoothing weight across sectors.
+    Either way the forecast is scaled to each scenario's window length and
+    adjusted for the day it opens (`model.opening_adjusted`).
     """
     if params.alpha is not None:
-        return _SharedAlphaCandidate(params.alpha)
+        return opening_adjusted(_SharedAlphaCandidate(params.alpha, params.cycle_days_exponent))
     return per_sector(name=_candidate_name(params), fn=_ets_fn(params))

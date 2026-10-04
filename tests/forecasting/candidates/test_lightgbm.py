@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 import src.forecasting.candidates  # noqa: F401 - registers candidates into REGISTRY
 from src.config.schema import LightGBMParams
-from src.forecasting.model import REGISTRY
+from src.forecasting.model import QUERY_KEYS, REGISTRY
 
 PARAMS = LightGBMParams(lags=[1, 2], rolling_windows=[2], n_estimators=20, num_leaves=3)
 
@@ -19,7 +20,9 @@ def _history(sectors: dict[str, list[float]]) -> pd.DataFrame:
     for sector, values in sectors.items():
         for cycle, date, value in zip(CYCLES[: len(values)], DATES, values, strict=False):
             rows.append({"cd_setor": sector, "CICLOS": cycle, "items": value, "opening_date": date})
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).assign(
+        window_start=lambda frame: frame["opening_date"], cycle_days=21
+    )
 
 
 def _targets(sectors: list[str], cycles: list[str], dates: list[str]) -> pd.DataFrame:
@@ -28,7 +31,9 @@ def _targets(sectors: list[str], cycles: list[str], dates: list[str]) -> pd.Data
         for cycle, date in zip(cycles, dates, strict=True)
         for sector in sectors
     ]
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).assign(
+        window_start=lambda frame: frame["opening_date"], cycle_days=21
+    )
 
 
 def test_pooled_candidate_predicts_every_sector_with_history():
@@ -62,7 +67,7 @@ def test_returns_nothing_when_history_is_too_short_to_build_one_complete_row():
     predictions = REGISTRY.build(PARAMS).fit_predict(history, targets)
 
     assert predictions.empty
-    assert list(predictions.columns) == ["cd_setor", "CICLOS", "items_pred"]
+    assert list(predictions.columns) == [*QUERY_KEYS, "items_pred"]
 
 
 def test_a_sector_with_no_prior_cycle_is_skipped_not_guessed():
@@ -176,3 +181,49 @@ def test_ratio_target_still_returns_predictions_in_items():
 
 def test_ratio_target_is_recorded_in_the_candidate_name():
     assert REGISTRY.build(RATIO_PARAMS).name == "lightgbm:20x3:ratio"
+
+
+def test_scenarios_of_one_cycle_differ_by_their_window():
+    # 20 sectors whose items depend only on the window: 21-day cycles sell
+    # 100, 14-day ones sell 50. Asked about both lengths for the next cycle,
+    # the model must tell them apart.
+    # The lengths are random, so no lag can anticipate them.
+    lengths = np.random.default_rng(0).choice([14, 21], size=(20, 12))
+    rows = []
+    for s in range(20):
+        for n in range(12):
+            days = int(lengths[s, n])
+            start = pd.Timestamp("2025-01-06") + pd.Timedelta(days=21 * n)
+            rows.append(
+                {
+                    "cd_setor": f"S{s}",
+                    "CICLOS": f"2025{n:02d}",
+                    "items": 100.0 if days == 21 else 50.0,
+                    "opening_date": start,
+                    "window_start": start,
+                    "cycle_days": days,
+                }
+            )
+    params = LightGBMParams(
+        lags=[1],
+        rolling_windows=[2],
+        n_estimators=50,
+        num_leaves=3,
+        learning_rate=0.3,
+        min_child_samples=2,
+    )
+    next_start = pd.Timestamp("2025-01-06") + pd.Timedelta(days=21 * 12)
+    targets = pd.DataFrame(
+        {
+            "cd_setor": ["S0", "S0"],
+            "CICLOS": "202599",
+            "opening_date": next_start,
+            "window_start": next_start,
+            "cycle_days": [21, 14],
+        }
+    )
+
+    predictions = REGISTRY.build(params).fit_predict(pd.DataFrame(rows), targets)
+
+    by_days = predictions.set_index("cycle_days")["items_pred"]
+    assert by_days[21] > by_days[14] + 25

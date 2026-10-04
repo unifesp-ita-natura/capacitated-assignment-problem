@@ -107,10 +107,10 @@ def test_arima_predicts_through_the_per_sector_adapter():
                 ["2026-01-05", "2026-02-02", "2026-03-02", "2026-04-02", "2026-05-04", "2026-06-01"]
             ),
         }
-    )
+    ).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
     targets = pd.DataFrame(
         {"cd_setor": ["A"], "CICLOS": ["202607"], "opening_date": pd.to_datetime(["2026-07-06"])}
-    )
+    ).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
     candidate = REGISTRY.build(ArimaParams(order=(1, 0, 0)))
 
     predictions = candidate.fit_predict(history, targets)

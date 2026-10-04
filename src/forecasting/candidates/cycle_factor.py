@@ -6,7 +6,13 @@ import numpy as np
 import pandas as pd
 
 from src.config.schema import CycleFactorParams
-from src.forecasting.model import PREDICTION_COLUMNS, REGISTRY, ForecastCandidate
+from src.forecasting.model import (
+    PREDICTION_COLUMNS,
+    REGISTRY,
+    ForecastCandidate,
+    opening_adjusted,
+    window_scaled,
+)
 
 
 class _CycleFactorCandidate:
@@ -95,5 +101,5 @@ def _observed_factors(history: pd.DataFrame) -> pd.Series:
 
 @REGISTRY.register("cycle_factor")
 def build_cycle_factor(params: CycleFactorParams) -> ForecastCandidate:
-    """Build the level-times-factor candidate the config selects."""
-    return _CycleFactorCandidate(params)
+    """Build the level-times-factor candidate the config selects, answering each scenario."""
+    return opening_adjusted(window_scaled(_CycleFactorCandidate(params)))

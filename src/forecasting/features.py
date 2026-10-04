@@ -26,6 +26,15 @@ ITEMS_PER_ORDER_FEATURE = "items_per_order"
 # predicting a correction on top of that benchmark.
 LEVEL_REFERENCE = "level_ref"
 
+# The scenario's own window, for a candidate that tells opening days apart
+# (see model.forecast). How far the window starts after the cycle's opening
+# is deliberately absent: that offset is the sub-block itself, and a model
+# keyed on it would learn "sectors that sat in late sub-blocks" rather than
+# what moving a sector does. The gap since the sector's previous opening and
+# the day of the month are consequences of the date, not of who sat there.
+PREVIOUS_WINDOW_START = "previous_window_start"
+WINDOW_FEATURES = ("cycle_days", "days_since_previous_opening", "opening_day_of_month")
+
 
 def lag_columns(lags: Sequence[int]) -> list[str]:
     return [f"lag_{lag}" for lag in lags]
@@ -48,7 +57,9 @@ def companion_columns(lags: Sequence[int]) -> list[str]:
 
 
 def feature_columns(
-    lags: Sequence[int], windows: Sequence[int], companion_lags: Sequence[int] = ()
+    lags: Sequence[int],
+    windows: Sequence[int],
+    companion_lags: Sequence[int] = (),
 ) -> list[str]:
     """Every column `build_features` produces, in the order the model sees them."""
     return [
@@ -58,7 +69,21 @@ def feature_columns(
         *lag_columns(lags),
         *rolling_columns(windows),
         *companion_columns(companion_lags),
+        *WINDOW_FEATURES,
     ]
+
+
+def add_window_features(frame: pd.DataFrame) -> pd.DataFrame:
+    """Window features from a row's `window_start`/`cycle_days` and its sector's previous opening.
+
+    Split from `build_features` because a scenario row gets them from the
+    window being asked about, after its lags were built from the history.
+    """
+    featured = frame.copy()
+    gap = featured["window_start"] - featured[PREVIOUS_WINDOW_START]
+    featured["days_since_previous_opening"] = gap.dt.days
+    featured["opening_day_of_month"] = featured["window_start"].dt.day
+    return featured
 
 
 def _calendar_features(panel: pd.DataFrame) -> pd.DataFrame:
@@ -148,6 +173,9 @@ def build_features(
         .reset_index(drop=True)
     )
     featured = _add_level_reference(_add_rolling_means(_add_lags(featured, lags), windows))
+    if "window_start" in featured.columns:
+        featured[PREVIOUS_WINDOW_START] = featured.groupby(SECTOR_FEATURE)["window_start"].shift(1)
+        featured = add_window_features(featured)
     if not companion_lags:
         return featured
     return _add_companion_lags(featured, companion_lags)
@@ -172,4 +200,9 @@ def complete_feature_frame(
     from the same rows the features came from.
     """
     featured = build_features(panel, lags, windows, companion_lags)
-    return featured.dropna(subset=feature_columns(lags, windows, companion_lags))
+    # Window features stay out of the required set: a sector's first cycle
+    # has no previous opening, and LightGBM takes that gap as missing.
+    required = [
+        c for c in feature_columns(lags, windows, companion_lags) if c not in WINDOW_FEATURES
+    ]
+    return featured.dropna(subset=required)

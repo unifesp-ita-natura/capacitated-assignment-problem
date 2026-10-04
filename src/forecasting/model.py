@@ -14,6 +14,10 @@ Three design patterns do the work here, each solving a specific piece of
   plumbing; a technique that pools across sectors (LightGBM — see
   docs/papers/forecasting-volume-spec.tex section 4.5) implements
   `ForecastCandidate` directly instead, since it needs the whole panel.
+  `window_scaled` adapts a candidate that only knows (sector, cycle) to
+  answer each scenario window, and `opening_adjusted` makes its forecast
+  depend on the day the window opens, so every candidate is keyed by
+  (sector, cycle, opening date). `opening_scenarios` builds those queries.
 - **Registry/Factory** (`CandidateRegistry`) — maps a `ForecastParams`
   config's `model` discriminator to the builder that constructs the matching
   Strategy. Each technique registers itself from its own module
@@ -23,7 +27,7 @@ Three design patterns do the work here, each solving a specific piece of
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Protocol
 
 import numpy as np
@@ -51,6 +55,10 @@ PREDICTION_COLUMNS = ["cd_setor", "CICLOS", "items_pred"]
 # several queries, one per opening date the optimizer wants to compare.
 SCENARIO_COLUMNS = ["window_start", "cycle_days"]
 QUERY_KEYS = ["cd_setor", "CICLOS", *SCENARIO_COLUMNS]
+# How many past cycles at one opening day it takes for that day's measured
+# effect to count half: a day seen this often keeps half its raw effect, a
+# day seen rarely stays near "no effect" (see `opening_factors`).
+OPENING_DAY_PRIOR = 100
 
 
 def forecast_with_shape(shape: pd.DataFrame, forecast_cycle_totals: pd.DataFrame) -> pd.DataFrame:
@@ -178,45 +186,184 @@ class _PerSectorCandidate:
 def per_sector(name: str, fn: Callable[[pd.Series, int], pd.Series]) -> ForecastCandidate:
     """Adapter: lift a per-sector forecast function to the panel-shaped Strategy interface.
 
-    `fn` receives one sector's `items` series (indexed by `opening_date`,
-    sorted ascending) and the number of steps to forecast, and returns a
-    series of that length.
+    `fn` receives one sector's series (indexed by `opening_date`, sorted
+    ascending) and the number of steps to forecast, and returns a series of
+    that length. The series is items per unit of window length (see
+    `window_scaled`), so `fn` forecasts a level and each scenario scales it.
     """
-    return _PerSectorCandidate(name=name, fn=fn)
+    return opening_adjusted(window_scaled(_PerSectorCandidate(name=name, fn=fn)))
+
+
+def cycle_days_exponent(history: pd.DataFrame) -> float:
+    """How a sector's items scale with its window length: the β in items ~ cycle_days ** β.
+
+    The slope of log items on log cycle_days, both taken relative to the
+    sector's own mean, pooled over every sector. Clipped to [0, 1]: 0 is
+    "the length doesn't matter", 1 is "items per day times days". 0 when the
+    history never varied the length, since there is nothing to learn from.
+    """
+    # ponytail: sector effects only; a cycle-wide shock that coincides with
+    # short windows leaks into β. Add cycle effects if β drifts between folds.
+    usable = history[(history["items"] > 0) & (history["cycle_days"] > 0)]
+    by_sector = usable["cd_setor"]
+    days = np.log(usable["cycle_days"].astype(float))
+    items = np.log(usable["items"].astype(float))
+    days = days - days.groupby(by_sector).transform("mean")
+    items = items - items.groupby(by_sector).transform("mean")
+    spread = float((days * days).sum())
+    if spread == 0:
+        return 0.0
+    return float(np.clip((days * items).sum() / spread, 0.0, 1.0))
+
+
+class _WindowScaledCandidate:
+    """Adapter: answers each scenario window with a candidate that forecasts per (sector, cycle).
+
+    The wrapped candidate sees every past cycle's items divided by
+    cycle_days ** β, so what it forecasts is a level per unit of window.
+    Each scenario gets that level times its own cycle_days ** β, so two
+    opening dates that give the sector windows of different length get
+    different forecasts. β comes from the same history (`cycle_days_exponent`).
+    """
+
+    def __init__(self, inner: ForecastCandidate) -> None:
+        self.name = inner.name
+        self._inner = inner
+        self.chosen_exponent: float | None = None
+
+    def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
+        self.chosen_exponent = cycle_days_exponent(history)
+        scale = history["cycle_days"].astype(float) ** self.chosen_exponent
+        levels = self._inner.fit_predict(history.assign(items=history["items"] / scale), targets)
+        levels = levels.drop_duplicates(CYCLE_KEYS)[[*CYCLE_KEYS, "items_pred"]]
+        rows = targets[QUERY_KEYS].merge(levels, on=CYCLE_KEYS)
+        rows["items_pred"] = rows["items_pred"] * rows["cycle_days"] ** self.chosen_exponent
+        return rows
+
+
+def window_scaled(candidate: ForecastCandidate) -> ForecastCandidate:
+    """Adapter: make a candidate that forecasts per (sector, cycle) answer each scenario window."""
+    return _WindowScaledCandidate(candidate)
+
+
+def opening_scenarios(cycles: pd.DataFrame, days: Iterable[int]) -> pd.DataFrame:
+    """Queries for the same cycle opening on different dates: one per (sector, cycle) and day.
+
+    `cycles` has one row per (sector, cycle): `cd_setor`, `CICLOS`, the
+    cycle's `opening_date` and the sector's `cycle_days`. Day `d` is the
+    scenario where the sector's window opens `d` days after the cycle does.
+    The window keeps its length and only moves.
+    """
+    offsets = pd.DataFrame({"opening_day": list(days)})
+    scenarios = cycles[["cd_setor", "CICLOS", "opening_date", "cycle_days"]].merge(
+        offsets, how="cross"
+    )
+    scenarios["window_start"] = scenarios["opening_date"] + pd.to_timedelta(
+        scenarios.pop("opening_day"), unit="D"
+    )
+    return scenarios[[*QUERY_KEYS, "opening_date"]]
+
+
+def opening_day(frame: pd.DataFrame) -> pd.Series:
+    """How many days after its cycle opens each row's window opens."""
+    return (frame["window_start"] - frame["opening_date"]).dt.days
+
+
+def opening_factors(history: pd.DataFrame) -> pd.Series:
+    """Multiplicative effect on items of opening `d` days after the cycle opens, indexed by d.
+
+    Each past cycle's log items are taken relative to its sector (what the
+    sector usually sells) and to its cycle (what everyone sold that cycle),
+    so what is left compares a sector with itself when it opened on another
+    day. The mean of that by opening day is shrunk toward 0 by
+    `OPENING_DAY_PRIOR`, then exponentiated. A day never seen has no entry,
+    which callers read as a factor of 1.
+    """
+    usable = history[history["items"] > 0]
+    residual = np.log(usable["items"].astype(float))
+    # ponytail: fixed 10 alternating passes for the two-way demeaning;
+    # converge on a tolerance if the panel grows much more unbalanced.
+    for _ in range(10):
+        residual = residual - residual.groupby(usable["cd_setor"]).transform("mean")
+        residual = residual - residual.groupby(usable["CICLOS"]).transform("mean")
+    by_day = residual.groupby(opening_day(usable))
+    return np.exp(by_day.sum() / (by_day.size() + OPENING_DAY_PRIOR))
+
+
+class _OpeningAdjustedCandidate:
+    """Adapter: makes a candidate's forecast depend on the day the scenario opens.
+
+    The wrapped candidate sees every past cycle's items divided by the
+    factor of the day it opened on (`opening_factors`), so it forecasts the
+    sector's level as if the opening day didn't matter. Each scenario gets
+    that forecast times its own day's factor. The wrapped candidate must
+    already answer per scenario (see `window_scaled`).
+    """
+
+    def __init__(self, inner: ForecastCandidate) -> None:
+        self._inner = inner
+        self.name = inner.name
+        self.opening_factors = pd.Series(dtype=float)
+
+    def __getattr__(self, attribute: str):
+        # What the wrapped candidate chose (alpha, exponent) stays readable.
+        return getattr(self._inner, attribute)
+
+    def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
+        self.opening_factors = opening_factors(history)
+        level_history = history.assign(items=history["items"] / self._factor(history))
+        predictions = self._inner.fit_predict(level_history, targets)
+        predictions = predictions.drop_duplicates(QUERY_KEYS)[[*QUERY_KEYS, "items_pred"]]
+        rows = targets[[*QUERY_KEYS, "opening_date"]].merge(predictions, on=QUERY_KEYS)
+        rows["items_pred"] = rows["items_pred"] * self._factor(rows)
+        return rows[[*QUERY_KEYS, "items_pred"]]
+
+    def _factor(self, frame: pd.DataFrame) -> np.ndarray:
+        return opening_day(frame).map(self.opening_factors).fillna(1.0).to_numpy()
+
+
+def opening_adjusted(candidate: ForecastCandidate) -> ForecastCandidate:
+    """Adapter: make a scenario-answering candidate's forecast depend on the opening day."""
+    return _OpeningAdjustedCandidate(candidate)
 
 
 def align_predictions(targets: pd.DataFrame, predictions: pd.DataFrame) -> pd.Series:
     """`items_pred` for each row of `targets`, in its order; NaN where the candidate skipped.
 
-    Predictions keyed by the full query match their own scenario. Predictions
-    keyed by (sector, cycle) alone come from a candidate that ignores the
-    window, so each one is copied onto every scenario of that cycle.
+    Every prediction is keyed by its full query, so each scenario window gets
+    its own value. A candidate that returns only (sector, cycle) is a bug:
+    wrap it in `window_scaled`.
     """
-    keys = QUERY_KEYS if set(SCENARIO_COLUMNS) <= set(predictions.columns) else CYCLE_KEYS
-    unique = predictions.drop_duplicates(keys)[[*keys, "items_pred"]]
-    return targets[keys].merge(unique, on=keys, how="left")["items_pred"].set_axis(targets.index)
+    missing = set(SCENARIO_COLUMNS) - set(predictions.columns)
+    if missing:
+        raise ValueError(f"predictions are missing {sorted(missing)}; wrap it in window_scaled")
+    unique = predictions.drop_duplicates(QUERY_KEYS)[[*QUERY_KEYS, "items_pred"]]
+    merged = targets[QUERY_KEYS].merge(unique, on=QUERY_KEYS, how="left")
+    return merged["items_pred"].set_axis(targets.index)
 
 
 def forecast(
     candidate: ForecastCandidate, history: pd.DataFrame, queries: pd.DataFrame
 ) -> pd.DataFrame:
-    """Answer scenario queries `(cd_setor, window_start, cycle_days)` from all of `history`.
+    """Answer scenario queries from all of `history`: one expected cycle total per query.
 
     This is f(sector, opening day, cycle length) = expected items for the
     cycle, the call the optimizer makes for every opening date it weighs.
-    Without `CICLOS`/`opening_date`, every query is taken as a scenario of
-    the cycle right after `history`, dated by its earliest window start;
-    pass them to ask about cycles further ahead. Returns `queries` with an
-    `items_pred` column, NaN where the candidate could not answer.
+    Each query names its sector (`cd_setor`), the cycle it schedules
+    (`CICLOS`, with the cycle's `opening_date`) and the scenario window
+    (`window_start`, `cycle_days`). The cycle is required rather than
+    guessed: candidates read its code (LightGBM's cycle number) and order
+    horizons by its date. Returns `queries` with an `items_pred` column, NaN
+    where the candidate could not answer.
     """
-    queries = queries.copy()
-    if "CICLOS" not in queries.columns:
-        queries["CICLOS"] = "next"
-        queries["opening_date"] = queries["window_start"].min()
+    missing = set(QUERY_KEYS + ["opening_date"]) - set(queries.columns)
+    if missing:
+        raise ValueError(f"queries are missing {sorted(missing)}")
     if history["opening_date"].max() >= queries["opening_date"].min():
         raise ValueError("every query must be for a cycle after the end of `history`")
-    queries["items_pred"] = align_predictions(queries, candidate.fit_predict(history, queries))
-    return queries
+    answered = queries.copy()
+    answered["items_pred"] = align_predictions(queries, candidate.fit_predict(history, queries))
+    return answered
 
 
 class CandidateRegistry:

@@ -18,7 +18,9 @@ def _history(sectors: dict[str, list[float]]) -> pd.DataFrame:
         for sector, values in sectors.items()
         for cycle, date, value in zip(CYCLES, DATES, values, strict=True)
     ]
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).assign(
+        window_start=lambda frame: frame["opening_date"], cycle_days=21
+    )
 
 
 def _targets(sectors: list[str]) -> pd.DataFrame:
@@ -27,7 +29,7 @@ def _targets(sectors: list[str]) -> pd.DataFrame:
             {"cd_setor": s, "CICLOS": "202605", "opening_date": pd.Timestamp("2026-05-04")}
             for s in sectors
         ]
-    )
+    ).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
 
 
 def test_a_flat_panel_reproduces_the_sector_mean():

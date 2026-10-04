@@ -95,14 +95,14 @@ HISTORY = pd.DataFrame(
         "items": [100, 200, 10, 20],
         "opening_date": pd.to_datetime(["2026-01-01", "2026-01-22", "2026-01-01", "2026-01-22"]),
     }
-)
+).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
 TARGETS = pd.DataFrame(
     {
         "cd_setor": ["A", "B"],
         "CICLOS": ["3", "3"],
         "opening_date": pd.to_datetime(["2026-02-12", "2026-02-12"]),
     }
-)
+).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
 
 
 def test_per_sector_applies_fn_independently_to_each_sector():

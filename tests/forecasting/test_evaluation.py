@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from src.forecasting.evaluation import RollingOriginSplit, evaluate
-from src.forecasting.model import ForecastCandidate
+from src.forecasting.model import QUERY_KEYS, ForecastCandidate
 
 CYCLES = ["1", "2", "3", "4", "5", "6"]
 OPENING_DATES = pd.to_datetime(
@@ -36,9 +36,7 @@ class _ConstantCandidate:
 
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
         keep = targets[~targets["cd_setor"].isin(self._skip)]
-        return pd.DataFrame(
-            {"cd_setor": keep["cd_setor"], "CICLOS": keep["CICLOS"], "items_pred": self._value}
-        )
+        return keep[QUERY_KEYS].assign(items_pred=self._value)
 
 
 class _SpyCandidate:
@@ -51,9 +49,7 @@ class _SpyCandidate:
 
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
         self.calls.append((history.copy(), targets.copy()))
-        return pd.DataFrame(
-            {"cd_setor": targets["cd_setor"], "CICLOS": targets["CICLOS"], "items_pred": 0.0}
-        )
+        return targets[QUERY_KEYS].assign(items_pred=0.0)
 
 
 def test_split_rejects_non_positive_horizon():

@@ -57,10 +57,21 @@ class ETSParams(BaseModel):
     # one-step-ahead error summed over every sector's training history.
     # Only for ETS(A,N,N), where the point forecast depends on alpha alone.
     alpha: float | Literal["pooled"] | None = None
+    # How a cycle's items scale with its length, items ~ cycle_days ** exponent:
+    # 1 is "items per day times days". "pooled" picks it with alpha from the
+    # training history. Fixing it needs a shared alpha; the per-sector ETS
+    # always estimates it (model.window_scaled).
+    cycle_days_exponent: float | Literal["pooled"] = "pooled"
 
     @model_validator(mode="after")
     def _components_valid(self):
-        for check in (_trend_problem, _alpha_model_problem, _alpha_range_problem, _season_problem):
+        for check in (
+            _trend_problem,
+            _alpha_model_problem,
+            _alpha_range_problem,
+            _exponent_problem,
+            _season_problem,
+        ):
             if problem := check(self):
                 raise ValueError(problem)
         return self
@@ -81,6 +92,12 @@ def _alpha_model_problem(params: ETSParams) -> str | None:
 def _alpha_range_problem(params: ETSParams) -> str | None:
     if isinstance(params.alpha, float) and not 0 < params.alpha <= 1:
         return "alpha must be in (0, 1]"
+    return None
+
+
+def _exponent_problem(params: ETSParams) -> str | None:
+    if params.cycle_days_exponent != "pooled" and params.alpha is None:
+        return "a fixed cycle_days_exponent needs a shared alpha"
     return None
 
 

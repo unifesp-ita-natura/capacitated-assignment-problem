@@ -13,6 +13,7 @@ from src.forecasting.dataset import (
     load_demand_base,
 )
 from src.forecasting.evaluation import RollingOriginSplit, evaluate
+from src.forecasting.model import QUERY_KEYS
 
 FIXTURE_PATH = "tests/fixtures/demand_sample.csv"
 
@@ -122,7 +123,7 @@ class _Constant:
     name = "constant"
 
     def fit_predict(self, history, targets):
-        return targets[["cd_setor", "CICLOS"]].assign(items_pred=100.0)
+        return targets[QUERY_KEYS].assign(items_pred=100.0)
 
 
 def test_evaluate_reports_daily_errors_only_when_given_a_daily_base():
