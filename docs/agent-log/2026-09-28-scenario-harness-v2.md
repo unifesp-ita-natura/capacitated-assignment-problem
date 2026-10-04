@@ -56,3 +56,27 @@ the harness side and the move to `data/base_tratada_v2.csv`.
   forecast items per window day, then multiply by the queried `cycle_days`.
   After that, try calendar variables for the opening date. Score both
   against `v2_baseline`.
+
+## Follow-up: window-aware ETS and LightGBM (same day)
+
+The team chose the models: the scenario forecast is the ETS and LightGBM
+already in the harness, made to read the window.
+
+- **The data changed the plan.** 14-day windows sell 0.97 of a sector's mean,
+  not the 0.67 that "items per day × days" implies. So the ETS got an
+  exponent, `items ∝ cycle_days ** β`, with β estimated alongside α instead of
+  fixed at 1. The pooled β came out at 0.1 to 0.2.
+- **LightGBM got three window features:** the length, the days since the
+  sector's previous opening, and the day of the month. The offset from the
+  cycle's opening was left out, because it encodes the sub-block.
+- **Result (`experiments/window_aware/`):** LightGBM improved by 0.7% per cycle
+  and the ETS by 0.3%. All of the gain is on short windows, where they
+  improved by 3.5% and 2.1%. Across ±2 opening days, neither model's answer
+  moves; only the length does.
+- **`model.forecast` now requires `CICLOS` and `opening_date` in each query.**
+  The earlier default label `"next"` broke LightGBM, which reads the cycle
+  number from the code, and it would have misled any model that does the
+  same.
+- **The first LightGBM window test** alternated lengths in a fixed pattern.
+  The lags learned that pattern, so the model never needed `cycle_days` and
+  both scenarios came out equal. Random lengths fixed the test.

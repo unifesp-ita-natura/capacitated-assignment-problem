@@ -5,7 +5,8 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
-- [2026-09-28 scenario queries in the forecasting harness, on base_tratada_v2](2026-09-28-scenario-harness-v2.md) — f(sector, opening day, cycle length) through `model.forecast`, existing candidates unchanged and reproduced exactly, the v2 fan-out rows dropped, and the v2 reference scores
+- [2026-10-04 every forecasting candidate answers (sector, cycle, opening date)](2026-10-04-every-candidate-reads-the-window.md) — `opening_scenarios` builds one scenario per day the cycle could open, and every model answers each one through an opening-day factor and a window-length law; the data barely measures the opening day, so scenarios vary about ±5% (ETS) and ±0.5% (LightGBM)
+- [2026-09-28 scenario queries in the forecasting harness, on base_tratada_v2](2026-09-28-scenario-harness-v2.md) — f(sector, opening day, cycle length) through `model.forecast`, the v2 fan-out rows dropped, the v2 reference scores, and a window-aware ETS and LightGBM (small gains, all on short windows; the opening day itself moves nothing)
 - [2026-09-26 ETS as a level forecasting candidate](2026-09-26-ets-level-candidate.md) — exponential smoothing implemented; on two years it beats naive:mean by 4.4% and trails LightGBM by 7.0%; on one year it loses per cycle but wins per CD-day through lower bias
 - [2026-09-26 daily output for the forecasting harness](2026-09-26-daily-output-harness.md) — cycle forecasts are spread over each window's days and scored per CD-day; the candidate ranking holds, and a per-sector curve cuts CD-day error 5.4%
 - [2026-09-22 roadmap stages 3 to 6](2026-09-22-roadmap-stages-3-to-6.md) — the pooled model finally beats naive:mean on both panels; early stopping was the single biggest gain, the shared cycle factor is rejected as unpredictable, and the year-ago lag pays off

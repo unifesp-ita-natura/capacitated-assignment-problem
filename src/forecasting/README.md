@@ -22,7 +22,9 @@ harness:
   raises `model.InsufficientHistoryError` to say "skip this sector" rather
   than fabricate a value. A technique that pools across sectors (LightGBM —
   see the spec's section 4.5) implements `ForecastCandidate` directly
-  instead, since it needs the whole panel at once.
+  instead, since it needs the whole panel at once. `model.window_scaled`
+  adapts a candidate that forecasts per (sector, cycle) so it answers each
+  scenario window (see below); `per_sector` applies it for you.
 - **Registry/Factory** — `model.REGISTRY` maps a `ForecastParams.model`
   discriminator (`src/config/schema.py`) to the builder that constructs the
   matching Strategy. Each technique registers itself from its own module
@@ -30,7 +32,7 @@ harness:
   `candidates/__init__.py` imports every shipped module so registration
   runs on import.
 
-## Scenario queries: f(sector, opening day, cycle length)
+## Scenario queries: f(sector, cycle, opening date)
 
 The optimizer compares opening dates, so it asks the forecast "how many
 items would sector s order in a cycle of n days opening on day d?" once per
@@ -38,23 +40,53 @@ date it weighs. That question is a **query**: a `targets` row carrying
 `window_start` (d) and `cycle_days` (n) next to `cd_setor` and `CICLOS`.
 One (sector, cycle) can carry several queries, one per scenario.
 
+- `model.opening_scenarios(cycles, days)` builds the queries: for each
+  (sector, cycle), one scenario per day `d` in `days`, with the window
+  opening `d` days after the cycle does. The window keeps the sector's
+  `cycle_days` and only moves.
 - `model.forecast(candidate, history, queries)` answers queries from the
-  whole history: the call the optimizer makes. Without `CICLOS`, every
-  query is a scenario of the cycle right after the history.
+  whole history: the call the optimizer makes. Each query names the cycle
+  it schedules (`CICLOS`, `opening_date`) as well as the window.
+
+  ```python
+  cycles = ...  # cd_setor, CICLOS, opening_date, cycle_days: one row per (sector, cycle)
+  scenarios = forecast(candidate, panel, opening_scenarios(cycles, range(30)))
+  ```
 - In `evaluate()`, each target is queried with the window the sector
   actually had, so the backtest scores the one scenario that happened.
-- Turning (sector, d, n) into a model's own inputs (last cycles, a year
-  ago, calendar variables) is the candidate's job, inside `fit_predict`;
-  the history rows carry each past cycle's `window_start` and `cycle_days`
-  to learn from. A candidate that returns predictions keyed only by
-  (sector, cycle) ignores the window: `model.align_predictions` copies its
-  value onto every scenario of that cycle. Every candidate shipped so far
-  does this, so for them f is flat across opening days.
+- Every candidate is keyed by (sector, cycle, opening date). It returns one
+  row per scenario, with `window_start` and `cycle_days`, and
+  `model.align_predictions` refuses predictions without them. There is no
+  switch to turn this off.
+- Turning (sector, d, n) into a model's own inputs is the candidate's job,
+  inside `fit_predict`. The history rows carry each past cycle's
+  `window_start` and `cycle_days` to learn from. How each candidate does it:
+  - **naive, ARIMA, both ETS and cycle_factor**, through two adapters:
+    - `model.opening_adjusted` handles the opening day. It applies a
+      factor per day `d` after the cycle's opening (`model.opening_factors`).
+      That factor is what a sector sold when it opened on day `d`, compared
+      with its own usual and with its cycle's, and shrunk toward "no effect"
+      for days seen rarely. A day never seen gets a factor of 1. The model
+      forecasts the level with the factor taken out, and each scenario
+      multiplies it by its own day's factor.
+    - The window length: items ~ `cycle_days ** β`. `model.window_scaled`
+      does it for the per-series models, with β the pooled within-sector
+      slope of log items on log length (0.18 to 0.33 on base_tratada_v2).
+      The pooled ETS picks β together with α.
+  - **LightGBM**: three window features, always on: the length, the days
+    since the sector's previous opening, and the day of the month.
+- What the data allows: a sector almost never changes its opening day
+  (±1.7 days within a sector on base_tratada_v2). So the effect of a day
+  far from the sector's usual one is mostly not measured, and the
+  shrinkage keeps it close to 1. See
+  `docs/agent-log/2026-10-04-every-candidate-reads-the-window.md`.
 
 To add a technique: create `candidates/<name>.py`, register a
 `ForecastParams -> ForecastCandidate` builder under the `model` literal its
 params class uses, and import the module from `candidates/__init__.py`.
-Nothing in `evaluation.py` or `model.py` changes.
+If it forecasts per (sector, cycle), wrap it in
+`opening_adjusted(window_scaled(...))`. Nothing in
+`evaluation.py` or `model.py` changes.
 
 ## Modules
 
