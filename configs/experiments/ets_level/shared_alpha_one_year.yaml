@@ -1,0 +1,54 @@
+experiment_name: ets_level_shared_alpha_one_year
+description:
+  goal: Does one smoothing weight shared by every sector fix the per-sector ETS's
+    loss per cycle on the one-year panel?
+  hypothesis: '(1) The pooled alpha lands low, between 0.1 and 0.3: sectors bounce
+    around a level more than they shift. (2) Sharing one alpha removes most of the
+    per-sector ETS''s 9.9% per-cycle loss to naive:mean, landing within 3% of it,
+    while keeping its CD-day edge (MAE per CD-day at or below the per-sector ETS''s).
+    (3) The pooled alpha lands within 0.1 of the best fixed alpha in hindsight, so
+    choosing it from training history costs little.'
+  design_note: 'Only alpha changes against ets_level: the per-sector ETS(A,N,N) is
+    kept as the reference. Fixed alphas 0.1/0.2/0.3 are reported to locate the optimum,
+    but picking among them on these folds would be selecting on the test set; only
+    alpha: pooled is chosen from training history alone. The level starts at each
+    sector''s first observation.'
+  status: confirmed
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+daily:
+  curve: sector
+candidates:
+- model: naive
+  strategy: last_value
+- model: naive
+  strategy: mean
+- model: ets
+- model: lightgbm
+  num_leaves: 7
+  n_estimators: 100
+  learning_rate: 0.05
+  companion_lags:
+  - 1
+  - 2
+  - 3
+  - 4
+  rolling_windows:
+  - 2
+  - 3
+  target: ratio
+  label: razao (etapa 3)
+- model: ets
+  alpha: pooled
+- model: ets
+  alpha: 0.1
+- model: ets
+  alpha: 0.2
+- model: ets
+  alpha: 0.3
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/ets_level/outputs/comparison_shared_alpha_one_year.csv
+  errors_csv: experiments/ets_level/outputs/errors_shared_alpha_one_year.csv

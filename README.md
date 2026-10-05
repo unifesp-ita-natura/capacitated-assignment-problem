@@ -48,6 +48,8 @@ again after cloning or creating a new worktree.
   testing/mocking conventions
 - `docs/literature/` — one file per paper/source read for the project, plus
   an index; see `docs/literature/README.md`
+- `docs/papers/` — formal write-ups (definitions, model specs) meant to feed
+  the team's Overleaf paper, one `.tex` per topic; see `docs/papers/README.md`
 - `formal/` — optional Lean 4 / Mathlib scaffold for formalizing paper
   theorems (delete if unused)
 - `configs/` — `default.yaml` (project defaults) and `experiments/<name>/`

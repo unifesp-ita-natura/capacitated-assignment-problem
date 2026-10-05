@@ -37,6 +37,13 @@ uv run python -m src.cli.main
 
 Cross-cutting references:
 
+- `docs/context/natura-client-answers.md` — o que o cliente (Natura) já
+  respondeu sobre regras de negócio, capacidade dos CDs e os dados, mais as
+  dúvidas ainda em aberto. Consulte antes de assumir qualquer premissa de
+  negócio.
+- `docs/plans/forecasting-feature-roadmap.md` — plano incremental de testes de
+  novas features para a previsão de demanda, com o protocolo de avaliação que
+  toda etapa precisa respeitar.
 - `docs/architecture/` — put runtime-output layout and repository conventions here as the project grows
 - `docs/conventions/` — commit format, module headers, function design, testing
 

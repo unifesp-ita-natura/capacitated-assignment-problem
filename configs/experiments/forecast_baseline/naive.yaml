@@ -1,0 +1,38 @@
+experiment_name: forecast_baseline_naive
+description:
+  goal: >
+    Run the required baseline forecasting candidate (naive) end-to-end
+    through the shared evaluation harness against the real demand base, and
+    report its rolling-origin MAE per sector — item 3 of the forecasting
+    kickoff plan (see docs/agent-log).
+  hypothesis: >
+    last_value will not be competitive (each cycle differs meaningfully
+    from the previous one at the per-sector level), but it should beat the
+    within-cycle noise floor for most sectors and gives every future
+    candidate a concrete number to beat.
+  design_note: >
+    Uses data/base_tratada.csv directly (not committed — see data/README.md).
+    Item volume is the target (total_itens_mascarado summed per sector per
+    cycle), dated by each cycle's opening date, independent of block/
+    sub-block (see docs/agent-log). Cycles the base only partially observed
+    (202613, 202614 as of this base's export date) are dropped by
+    build_item_panel before evaluation. Only 202601-202612 (12 cycles) are
+    usable, and the base spans a single year, so seasonal_naive cannot be
+    evaluated yet and RollingOriginSplit uses window="expanding" with
+    min_train_cycles=6, horizon=1 — leaving only 6 rolling-origin folds,
+    which is thin; treat the reported error as a first read, not a
+    settled number.
+  status: exploratory
+
+candidate:
+  model: naive
+  strategy: last_value
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/forecast_baseline/outputs/naive_errors.csv

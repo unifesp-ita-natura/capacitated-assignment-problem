@@ -43,8 +43,29 @@ diagrams, and hold the **Result** section.
 
 ## Index
 
-One line per experiment, updated as status changes:
+One line per experiment, updated as status changes.
+
+**Forecasting results before 2026-10-04 come from window-blind models.**
+Since then every candidate reads the scenario window and there is no switch
+to turn that off, so rerunning an older forecasting experiment gives
+different numbers from its README. See
+`docs/agent-log/2026-10-04-every-candidate-reads-the-window.md` for the
+size of the change on `v2_baseline`.
 
 | Experiment | Status | Goal |
 |---|---|---|
 | [compare_modeling](compare_modeling/README.md) | reference | Reference pattern for comparing solvers/formulations — not itself a research question, see its README. |
+| [forecast_baseline](forecast_baseline/README.md) | exploratory | Run the naive candidate end-to-end through the shared forecasting harness against the real demand base. |
+| [compare_forecasters](compare_forecasters/README.md) | confirmed | Rank naive, ARIMA and pooled LightGBM against each other on the real demand base through one shared harness. |
+| [panel_order_counts](panel_order_counts/README.md) | confirmed | Does feeding the pooled LightGBM the order/volume counts of earlier cycles — series the panel used to discard — beat the items-only baseline? |
+| [lightgbm_short_window](lightgbm_short_window/README.md) | confirmed | Does shortening the rolling-mean windows recover the fold the pooled model cannot predict, without costing accuracy? |
+| [relative_target](relative_target/README.md) | confirmed | Does fitting items divided by the sector's running mean beat fitting the level itself? |
+| [cycle_factor](cycle_factor/README.md) | confirmed | Does a factor shared by every sector in a cycle carry usable signal? (No — it has no memory.) |
+| [lightgbm_tuning](lightgbm_tuning/README.md) | confirmed | How much of the gap to naive:mean is hyperparameters? (Mostly early stopping — and it beats the benchmark.) |
+| [two_year_panel](two_year_panel/README.md) | confirmed | With a second year of history, does the pooled model beat naive:mean, and does the year-ago cycle help? (Yes to both.) |
+| [tuned_two_year](tuned_two_year/README.md) | confirmed | Do the stage 4 tuning and the stage 6 two-year panel compose? (No — tuning costs 38 items there; early stopping overshoots the round budget tenfold.) |
+| [target_x_tuning](target_x_tuning/README.md) | confirmed | Do the stage 3 ratio target and the stage 4 tuning compose? (They interact — 38 of the 53 items exist only when both are present, and tuning alone loses to naive:mean.) |
+| [daily_output](daily_output/README.md) | confirmed | Score forecasts per CD-day instead of per cycle: does the candidate ranking hold, and does a per-sector curve beat a flat spread? (Ranking holds; the curve cuts CD-day error 5.4%.) |
+| [ets_level](ets_level/README.md) | confirmed | Where does exponential smoothing land as a level forecaster? (On two years it beats naive:mean by 4.4% and LightGBM beats it by 7.0%. On one year it loses per cycle but wins per CD-day through lower bias. One alpha shared by every sector is 1.5% better on two years; averaging it with LightGBM cuts bias sixfold.) |
+| [v2_baseline](v2_baseline/README.md) | confirmed | Reference scores on base_tratada_v2 (two years, daily base) for the scenario harness. (LightGBM leads the pooled ETS by 1.1% per cycle and 0.4% per CD-day; their average beats both by 2.3% per cycle.) |
+| [window_aware](window_aware/README.md) | confirmed | Does telling the ETS and LightGBM the scenario window improve the forecast? (A little: −0.7% per cycle for LightGBM, −0.3% for the ETS, all of it on short windows, −3.5%/−2.1% there. Items scale with length as days^0.2, not per day; the opening day itself moves nothing.) |

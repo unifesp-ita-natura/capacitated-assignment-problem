@@ -1,0 +1,138 @@
+experiment_name: tuned_two_year
+description:
+  goal: >
+    Do stages 4 and 6 add up? Stage 6 ran the UNTUNED stage-3 configuration
+    on the two-year panel, so the tuning that broke the benchmark on the
+    one-year panel has never met the extra history. This asks whether the
+    two gains compose or overlap.
+  hypothesis: >
+    They compose, but not fully. Stage 4's gain came almost entirely from
+    early stopping — the old 100-round budget was simply too short — and a
+    panel with 32 cycles instead of 12 gives a pooled model more rows per
+    fold, which is exactly the regime where a longer boosting budget should
+    pay off more, not less. Against that, part of stage 6's margin over
+    naive:mean is recency rather than structure, and tuning cannot add to
+    that part.
+  design_note: >
+    Two factors crossed on the two-year panel: the configuration (untuned
+    stage-3 settings vs the stage-4 winner) and the year-ago features (lag
+    19 plus the annual rolling mean, present or absent). The untuned rows
+    reproduce stage 6 exactly, so its numbers are the control. The tuned
+    rows run 3 seeds each, because feature_fraction 0.7 makes random_state
+    live and a single seed would not separate a real gain from boosting
+    noise; 3 rather than 5 because each fit on this panel is far more
+    expensive than on the one-year one. Known limitations, inherited: this
+    panel is 728 sectors x 32 cycles so its error levels compare to nothing
+    outside this table, and everything here is still scored on folds
+    earlier stages selected on.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 20
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+
+  # Control: exactly the stage 6 rows, untuned.
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    label: "sem afinar, sem ano anterior"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3, 19]
+    lags: [1, 2, 3, 4, 19]
+    target: ratio
+    label: "sem afinar + ano anterior (etapa 6)"
+
+  # Stage 4's winning configuration, with and without the year-ago features.
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    random_state: 0
+    label: "afinado, sem ano anterior (s0)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    random_state: 1
+    label: "afinado, sem ano anterior (s1)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    random_state: 2
+    label: "afinado, sem ano anterior (s2)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3, 19]
+    lags: [1, 2, 3, 4, 19]
+    target: ratio
+    random_state: 0
+    label: "afinado + ano anterior (s0)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3, 19]
+    lags: [1, 2, 3, 4, 19]
+    target: ratio
+    random_state: 1
+    label: "afinado + ano anterior (s1)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3, 19]
+    lags: [1, 2, 3, 4, 19]
+    target: ratio
+    random_state: 2
+    label: "afinado + ano anterior (s2)"
+
+paths:
+  base_csv: data/processed/demand_two_years.csv
+  output_csv: experiments/tuned_two_year/outputs/comparison.csv
+  errors_csv: experiments/tuned_two_year/outputs/errors_by_candidate.csv
