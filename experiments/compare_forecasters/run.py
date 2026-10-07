@@ -10,6 +10,7 @@ import yaml
 from pydantic import TypeAdapter
 
 import src.forecasting.candidates  # noqa: F401 - populate REGISTRY
+from experiments.compare_forecasters.records import prepare_record, update_record
 from src.config.schema import ForecastParams
 from src.forecasting.comparison import compare
 from src.forecasting.dataset import (
@@ -27,7 +28,7 @@ _PARAMS_ADAPTER = TypeAdapter(ForecastParams)
 
 
 def _load_config(path: str | Path) -> dict:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -51,6 +52,19 @@ def _errors_by_candidate(results: list[EvaluationResult]) -> pd.DataFrame:
 
 def run(config_path: str | Path = DEFAULT_CONFIG_PATH) -> pd.DataFrame:
     config = _load_config(config_path)
+    directory, manifest = prepare_record(config_path, config)
+    print(f"[compare_forecasters] run directory: {directory.resolve()}", flush=True)
+    try:
+        table, predictions = _execute(config)
+        _save_outputs(config, directory, table, predictions)
+        update_record(directory, manifest, "complete", n_predictions=len(predictions))
+    except Exception as error:
+        update_record(directory, manifest, "failed", error=str(error))
+        raise
+    return table
+
+
+def _execute(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     raw = load_demand_base(config["paths"]["base_csv"])
     panel = build_item_panel(raw)
@@ -64,12 +78,22 @@ def run(config_path: str | Path = DEFAULT_CONFIG_PATH) -> pd.DataFrame:
     results = _evaluate_all(config, panel, daily_base)
     table = compare(results)
 
-    _write(table, config["paths"]["output_csv"])
-    _write(_errors_by_candidate(results), config["paths"]["errors_csv"])
-    return table
+    return table, _errors_by_candidate(results)
 
 
-def _write(frame: pd.DataFrame, path: str) -> None:
+def _save_outputs(
+    config: dict, directory: Path, table: pd.DataFrame, predictions: pd.DataFrame
+) -> None:
+    """Archive results and retain explicitly configured legacy CSV destinations."""
+    _write(table, directory / "comparison.csv")
+    _write(predictions, directory / "predictions.csv")
+    paths = config["paths"]
+    for key, frame in (("output_csv", table), ("errors_csv", predictions)):
+        if key in paths:
+            _write(frame, paths[key])
+
+
+def _write(frame: pd.DataFrame, path: str | Path) -> None:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)

@@ -26,6 +26,32 @@ def rmse(actual: npt.ArrayLike, predicted: npt.ArrayLike) -> float:
     return float(np.sqrt(np.mean((actual - predicted) ** 2)))
 
 
+def bias(actual: npt.ArrayLike, predicted: npt.ArrayLike) -> float:
+    """Mean predicted-minus-actual error in items; positive means overforecasting."""
+    actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    return float(np.mean(predicted - actual))
+
+
+def _relative_error(actual: npt.ArrayLike, errors: npt.ArrayLike) -> float:
+    """Divide total error by actual volume; undefined at zero total demand."""
+    total = float(np.sum(actual))
+    if total == 0:
+        return float("nan")
+    return float(np.sum(errors) / total)
+
+
+def bias_pct(actual: npt.ArrayLike, predicted: npt.ArrayLike) -> float:
+    """Net predicted-minus-actual error as a percentage of actual volume."""
+    actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    return 100 * _relative_error(actual, predicted - actual)
+
+
+def wmape(actual: npt.ArrayLike, predicted: npt.ArrayLike) -> float:
+    """Absolute error divided by actual volume, as a ratio (0.1 means 10%)."""
+    actual, predicted = np.asarray(actual, dtype=float), np.asarray(predicted, dtype=float)
+    return _relative_error(actual, np.abs(predicted - actual))
+
+
 def mase(actual: npt.ArrayLike, predicted: npt.ArrayLike, in_sample_naive_mae: float) -> float:
     """Mean absolute scaled error: `mae` divided by a naive one-step benchmark's in-sample MAE.
 
@@ -44,7 +70,7 @@ def mae_wmape(comparison: pd.DataFrame, forecast_col: str, actual_col: str) -> t
     """Mean absolute error and weighted MAPE between a forecast and actual column."""
     error = comparison[forecast_col] - comparison[actual_col]
     mae_val = float(error.abs().mean())
-    wmape_val = float(error.abs().sum() / comparison[actual_col].sum())
+    wmape_val = wmape(comparison[actual_col], comparison[forecast_col])
     return mae_val, wmape_val
 
 

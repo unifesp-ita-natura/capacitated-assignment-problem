@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from src.forecasting.dataset import (
@@ -97,3 +98,28 @@ def test_build_item_panel_carries_order_and_volume_counts():
 
     assert actual.sort_index().equals(expected.sort_index().astype(actual.dtype))
     assert "volumes" in panel.columns
+
+
+def test_loader_preserves_organization_codes_as_identifiers(tmp_path):
+    raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01", CD_GV="007")
+    path = tmp_path / "organization.csv"
+    raw.to_csv(path, index=False)
+    panel = build_item_panel(load_demand_base(path))
+    assert panel.CD_RE.eq("01").all()
+    assert panel.CD_GV.eq("007").all()
+
+
+def test_organization_can_change_between_cycles():
+    raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01", CD_GV="007")
+    raw.loc[raw.CICLOS == "202601", "CD_GV"] = "008"
+    panel = build_item_panel(raw)
+    assert panel.loc[panel.CICLOS == "202601", "CD_GV"].eq("008").all()
+
+
+def test_panel_rejects_conflicting_organization_within_sector_cycle():
+    raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01", CD_GV="007")
+    first = raw.iloc[0].copy()
+    first["CD_RE"] = "02"
+    conflicting = pd.concat([raw, first.to_frame().T], ignore_index=True)
+    with pytest.raises(ValueError, match="conflicting"):
+        build_item_panel(conflicting)

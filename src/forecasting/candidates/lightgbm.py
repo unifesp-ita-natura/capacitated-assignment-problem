@@ -51,12 +51,14 @@ class _PooledLightGBMCandidate:
             self._params.lags,
             self._params.rolling_windows,
             self._params.companion_lags,
+            self._params.categorical_features,
         )
 
     @property
     def _panel_columns(self) -> list[str]:
         """Panel columns the recursive forecast carries forward, not just the target series."""
         columns = list(_BASE_PANEL_COLUMNS)
+        columns += self._params.categorical_features
         if self._params.companion_lags:
             columns += COMPANION_SERIES
         return columns
@@ -68,6 +70,7 @@ class _PooledLightGBMCandidate:
                 self._params.lags,
                 self._params.rolling_windows,
                 self._params.companion_lags,
+                self._params.categorical_features,
             ),
             self._params.target,
         )
@@ -77,7 +80,7 @@ class _PooledLightGBMCandidate:
             # rather than this candidate inventing values.
             return pd.DataFrame(columns=_OUTPUT_COLUMNS)
 
-        sectors = pd.CategoricalDtype(sorted(history[SECTOR_FEATURE].unique()))
+        sectors = _category_types(history, [SECTOR_FEATURE, *self._params.categorical_features])
         model = self._fit(complete, sectors)
         return self._forecast(model, history, targets, sectors)
 
@@ -110,7 +113,7 @@ class _PooledLightGBMCandidate:
             "verbosity": -1,
         }
 
-    def _fit(self, complete: pd.DataFrame, sectors: pd.CategoricalDtype):
+    def _fit(self, complete: pd.DataFrame, sectors: dict[str, pd.CategoricalDtype]):
         """Train on the complete rows, holding out the training window's last cycles if asked."""
         # LightGBM's native API rather than its scikit-learn wrapper: the
         # wrapper requires scikit-learn, a heavy dependency this project
@@ -129,11 +132,11 @@ class _PooledLightGBMCandidate:
             callbacks=[lgb.early_stopping(self._params.early_stopping_rounds, verbose=False)],
         )
 
-    def _dataset(self, lgb, rows: pd.DataFrame, sectors: pd.CategoricalDtype):
+    def _dataset(self, lgb, rows: pd.DataFrame, sectors: dict[str, pd.CategoricalDtype]):
         return lgb.Dataset(
             _as_model_frame(rows[self._columns], sectors),
             label=self._target_of(rows),
-            categorical_feature=[SECTOR_FEATURE],
+            categorical_feature=list(sectors),
             free_raw_data=False,
         )
 
@@ -162,7 +165,7 @@ class _PooledLightGBMCandidate:
         model,
         history: pd.DataFrame,
         targets: pd.DataFrame,
-        sectors: pd.CategoricalDtype,
+        sectors: dict[str, pd.CategoricalDtype],
     ) -> pd.DataFrame:
         """Predict each target cycle in turn, feeding each prediction back in as the next lag.
 
@@ -175,6 +178,7 @@ class _PooledLightGBMCandidate:
 
         for cycle in _chronological_cycles(targets):
             pending = _pending_rows(targets, cycle, self._panel_columns)
+            pending = _carry_organization(pending, working, self._params.categorical_features)
             working = pd.concat([working, pending], ignore_index=True)
             rows = self._predictable_rows(working, cycle)
             if rows.empty:
@@ -231,11 +235,33 @@ def _trainable_rows(frame: pd.DataFrame, target: str) -> pd.DataFrame:
     return frame[frame[LEVEL_REFERENCE] > 0]
 
 
-def _as_model_frame(features: pd.DataFrame, sectors: pd.CategoricalDtype) -> pd.DataFrame:
-    """Cast the sector id to a fixed categorical so train and predict share one encoding."""
+def _category_types(history: pd.DataFrame, columns: list[str]) -> dict[str, pd.CategoricalDtype]:
+    """Learn category vocabularies from the training history only."""
+    return {
+        column: pd.CategoricalDtype(sorted(history[column].dropna().astype(str).unique()))
+        for column in columns
+    }
+
+
+def _as_model_frame(
+    features: pd.DataFrame, sectors: dict[str, pd.CategoricalDtype]
+) -> pd.DataFrame:
+    """Apply identical training category vocabularies during fitting and prediction."""
     frame = features.copy()
-    frame[SECTOR_FEATURE] = frame[SECTOR_FEATURE].astype(sectors)
+    for column, dtype in sectors.items():
+        values = frame[column].astype("string")
+        frame[column] = values.where(values.isin(dtype.categories)).astype(dtype)
     return frame
+
+
+def _carry_organization(
+    pending: pd.DataFrame, history: pd.DataFrame, columns: list[str]
+) -> pd.DataFrame:
+    """Use each sector's latest recorded organization without reading target-cycle metadata."""
+    if not columns:
+        return pending
+    latest = history.sort_values("opening_date").groupby(SECTOR_FEATURE)[columns].last()
+    return pending.drop(columns=columns).merge(latest, on=SECTOR_FEATURE, how="left")
 
 
 def _chronological_cycles(targets: pd.DataFrame) -> list[str]:
@@ -273,6 +299,8 @@ def _candidate_name(params: LightGBMParams) -> str:
     shape = f"lightgbm:{params.n_estimators}x{params.num_leaves}"
     if params.companion_lags:
         shape += "+orders"
+    if params.categorical_features:
+        shape += "+" + "+".join(params.categorical_features)
     return f"{shape}:ratio" if params.target == "ratio" else shape
 
 

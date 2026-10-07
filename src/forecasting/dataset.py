@@ -8,6 +8,7 @@ from typing import NamedTuple
 import pandas as pd
 
 CYCLE_KEYS = ["cd_setor", "CICLOS"]
+ORGANIZATION_COLUMNS = ("CD_RE", "CD_GV")
 
 # Columns the raw demand base must have. Anything else is ignored by the
 # loader, so upstream schema changes that only add columns don't break it.
@@ -32,7 +33,7 @@ _OPENING_DEPENDENT = ("Dt Abertura", "dia_ciclo", "Qtde dias")
 
 def load_demand_base(path: str | Path) -> pd.DataFrame:
     """Read the raw demand CSV and validate it has the columns forecasting needs."""
-    raw = pd.read_csv(path, dtype={"cd_setor": str, "CICLOS": str})
+    raw = pd.read_csv(path, dtype=dict.fromkeys([*CYCLE_KEYS, *ORGANIZATION_COLUMNS], str))
     missing = set(REQUIRED_COLUMNS) - set(raw.columns)
     if missing:
         raise ValueError(f"demand base at {path} is missing required columns: {sorted(missing)}")
@@ -108,7 +109,21 @@ def build_item_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) ->
     )
     panel = panel.merge(calendar[["CICLOS", "opening_date"]], on="CICLOS", how="left")
     panel = panel.merge(_sector_windows(complete), on=CYCLE_KEYS)
+    panel = _attach_organization(panel, complete)
     return panel.sort_values(["cd_setor", "opening_date"]).reset_index(drop=True)
+
+
+def _attach_organization(panel: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame:
+    """Keep optional organization codes, rejecting conflicting sector-cycle assignments."""
+    columns = [column for column in ORGANIZATION_COLUMNS if column in raw.columns]
+    if not columns:
+        return panel
+    grouped = raw.groupby(CYCLE_KEYS)[columns]
+    if grouped.nunique().gt(1).any().any():
+        raise ValueError("conflicting CD_RE/CD_GV assignments within a sector-cycle")
+    organization = grouped.first().reset_index()
+    organization[columns] = organization[columns].astype("string")
+    return panel.merge(organization, on=CYCLE_KEYS, validate="one_to_one")
 
 
 def build_shape_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> pd.DataFrame:

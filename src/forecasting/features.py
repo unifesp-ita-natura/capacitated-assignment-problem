@@ -60,10 +60,12 @@ def feature_columns(
     lags: Sequence[int],
     windows: Sequence[int],
     companion_lags: Sequence[int] = (),
+    categorical_features: Sequence[str] = (),
 ) -> list[str]:
     """Every column `build_features` produces, in the order the model sees them."""
     return [
         SECTOR_FEATURE,
+        *categorical_features,
         CYCLE_NUMBER_FEATURE,
         MONTH_FEATURE,
         *lag_columns(lags),
@@ -186,6 +188,7 @@ def complete_feature_frame(
     lags: Sequence[int],
     windows: Sequence[int],
     companion_lags: Sequence[int] = (),
+    categorical_features: Sequence[str] = (),
 ) -> pd.DataFrame:
     """Rows a pooled model can train on: featured, with every model column present.
 
@@ -205,4 +208,7 @@ def complete_feature_frame(
     required = [
         c for c in feature_columns(lags, windows, companion_lags) if c not in WINDOW_FEATURES
     ]
+    missing = set(categorical_features) - set(featured.columns)
+    if missing:
+        raise ValueError(f"missing categorical features in history: {sorted(missing)}")
     return featured.dropna(subset=required)

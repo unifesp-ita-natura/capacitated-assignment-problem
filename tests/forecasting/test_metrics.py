@@ -9,12 +9,15 @@ import pytest
 
 from src.forecasting.metrics import (
     PRIMARY_METRIC,
+    bias,
+    bias_pct,
     build_scoreboard,
     mae,
     mae_wmape,
     mase,
     rmse,
     select_best,
+    wmape,
 )
 
 
@@ -78,3 +81,20 @@ def test_mase_is_infinite_when_naive_benchmark_had_zero_error():
 
 def test_primary_metric_is_mae():
     assert PRIMARY_METRIC == "mae"
+
+
+def test_bias_cancels_opposite_errors_while_wmape_retains_them():
+    actual, predicted = [100, 200], [120, 170]
+    assert bias(actual, predicted) == -5
+    assert bias_pct(actual, predicted) == pytest.approx(-100 / 30)
+    assert wmape(actual, predicted) == pytest.approx(50 / 300)
+
+
+@pytest.mark.parametrize("metric", [bias_pct, wmape])
+def test_relative_metrics_are_undefined_without_actual_volume(metric):
+    assert math.isnan(metric([0, 0], [0, 10]))
+
+
+def test_positive_bias_means_overforecasting():
+    assert bias([100], [120]) == 20
+    assert bias_pct([100], [120]) == 20
