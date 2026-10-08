@@ -5,6 +5,13 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-10-07 forecast dashboard over backtest runs](2026-10-07-forecast-dashboard-runs.md) — Browser page comparing actual vs predicted per sector and cycle from archived runs, sliceable by region, management, CD and state; v2 runs show organization features help LightGBM by 0.2%
+- [2026-10-06 backtest execution archives](2026-10-06-backtest-execution-records.md) — User-selected run folders with CSVs, YAML snapshots, effective candidate metadata and execution status
+- [2026-10-06 level feature reference](2026-10-06-level-feature-reference.md) — Complete Portuguese catalog of implemented predictors, YAML options and multi-step behavior
+- [2026-10-06 organization level features](2026-10-06-level-organization-features.md) — Optional categorical region and sales-management predictors with historical assignment carry-forward
+- [2026-10-06 level backtest diagnostics](2026-10-06-level-backtest-metrics.md) — Common-subset Bias, WMAPE, RMSE, MASE, P90 and worst-fold MAE alongside the unchanged level ranking
+- [2026-10-05 level forecasting guides](2026-10-05-level-forecasting-guides.md) — Portuguese instructions for future level predictions, inputs, backtesting, feature experiments and final holdout
+
 - [2026-10-04 every forecasting candidate answers (sector, cycle, opening date)](2026-10-04-every-candidate-reads-the-window.md) — `opening_scenarios` builds one scenario per day the cycle could open, and every model answers each one through an opening-day factor and a window-length law; the data barely measures the opening day, so scenarios vary about ±5% (ETS) and ±0.5% (LightGBM)
 - [2026-09-28 scenario queries in the forecasting harness, on base_tratada_v2](2026-09-28-scenario-harness-v2.md) — f(sector, opening day, cycle length) through `model.forecast`, the v2 fan-out rows dropped, the v2 reference scores, and a window-aware ETS and LightGBM (small gains, all on short windows; the opening day itself moves nothing)
 - [2026-09-26 ETS as a level forecasting candidate](2026-09-26-ets-level-candidate.md) — exponential smoothing implemented; on two years it beats naive:mean by 4.4% and trails LightGBM by 7.0%; on one year it loses per cycle but wins per CD-day through lower bias

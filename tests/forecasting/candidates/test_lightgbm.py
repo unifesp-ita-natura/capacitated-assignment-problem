@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import src.forecasting.candidates  # noqa: F401 - registers candidates into REGISTRY
 from src.config.schema import LightGBMParams
+from src.forecasting.candidates.lightgbm import (
+    _as_model_frame,
+    _carry_organization,
+    _category_types,
+)
 from src.forecasting.model import QUERY_KEYS, REGISTRY
 
 PARAMS = LightGBMParams(lags=[1, 2], rolling_windows=[2], n_estimators=20, num_leaves=3)
@@ -227,3 +233,42 @@ def test_scenarios_of_one_cycle_differ_by_their_window():
 
     by_days = predictions.set_index("cycle_days")["items_pred"]
     assert by_days[21] > by_days[14] + 25
+
+
+def test_organization_encoding_is_shared_and_unseen_categories_are_missing():
+    history = pd.DataFrame({"cd_setor": ["A", "B"], "CD_RE": ["02", "01"]})
+    types = _category_types(history, ["cd_setor", "CD_RE"])
+    targets = pd.DataFrame({"cd_setor": ["B", "A"], "CD_RE": ["01", "99"]})
+    encoded = _as_model_frame(targets, types)
+    assert encoded.CD_RE.cat.categories.tolist() == ["01", "02"]
+    assert encoded.CD_RE.cat.codes.tolist() == [0, -1]
+
+
+def test_prediction_organization_comes_from_latest_history_by_sector():
+    history = _history({"A": [100, 120, 110], "B": [10, 12, 11]}).assign(CD_RE="01")
+    history.loc[(history.cd_setor == "A") & (history.CICLOS == "202603"), "CD_RE"] = "02"
+    pending = _targets(["A", "B", "NEW"], ["202604"], ["2026-04-02"]).assign(CD_RE="99")
+    carried = _carry_organization(pending, history.iloc[::-1], ["CD_RE"]).set_index("cd_setor")
+    assert carried.CD_RE.loc["A"] == "02"
+    assert carried.CD_RE.loc["B"] == "01"
+    assert pd.isna(carried.CD_RE.loc["NEW"])
+
+
+@pytest.mark.parametrize("target", ["level", "ratio"])
+def test_organization_candidate_predicts_multiple_steps_without_target_metadata(target):
+    params = PARAMS.model_copy(
+        update={"categorical_features": ["CD_RE", "CD_GV"], "target": target}
+    )
+    history = _history({"A": [100, 120, 110, 130, 125], "B": [10, 12, 11, 13, 12]}).assign(
+        CD_RE=lambda frame: frame.cd_setor.map({"A": "01", "B": "02"}),
+        CD_GV=lambda frame: frame.cd_setor.map({"A": "001", "B": "002"}),
+    )
+    targets = _targets(["A", "B"], ["202606", "202607"], ["2026-06-01", "2026-07-06"])
+    predictions = REGISTRY.build(params).fit_predict(history, targets)
+    assert len(predictions) == 4
+    assert predictions.items_pred.notna().all()
+
+
+def test_organization_candidate_name_distinguishes_feature_selection():
+    params = PARAMS.model_copy(update={"categorical_features": ["CD_RE", "CD_GV"]})
+    assert REGISTRY.build(params).name == "lightgbm:20x3+CD_RE+CD_GV"

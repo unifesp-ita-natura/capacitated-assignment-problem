@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Real vs Previsto</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/3.0.1/plotly.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --warn: #fab219;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+.note { color: var(--ink-2); font-weight: 400; }
+p.note { margin: 0 0 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 16px; margin-bottom: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end; }
+.spread { justify-content: space-between; align-items: center; }
+label { display: flex; flex-direction: column; gap: 4px; color: var(--ink-2); font-size: 12px; }
+label.inline { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); }
+input, select { font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--axis); border-radius: 6px; padding: 5px 8px; max-width: 100%; }
+select.metric { font-weight: 600; }
+button { font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--axis);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.swatch { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; }
+.models { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px 16px; }
+.models .run { grid-column: 1 / -1; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+.plot { width: 100%; height: 340px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+td.text, th.text, #runs td:nth-child(2), #runs th:nth-child(2) { text-align: left; white-space: normal; }
+th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
+th.sel, td.sel { font-weight: 700; }
+tbody tr.click { cursor: pointer; }
+tbody tr.click:hover { background: var(--grid); }
+.status { font-size: 12px; }
+.status.bad::before { content: "⚠ "; color: var(--warn); }
+#msg { color: var(--ink-2); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Previsão de demanda: real vs previsto</h1>
+  <p class="note">Itens por setor e ciclo, a partir dos runs arquivados pelo backtest
+    (<code>experiments/compare_forecasters/run.py</code>), servidos por <code>dashboard/serve.py</code>.</p>
+
+  <section class="card">
+    <div class="row">
+      <h2 style="margin:0">Runs</h2>
+      <button id="reload">Recarregar runs</button>
+      <span id="msg">Procurando runs…</span>
+    </div>
+    <div class="scroll" style="margin-top:12px"><table id="runs"></table></div>
+  </section>
+
+  <div id="app" hidden>
+    <section class="card">
+      <div class="row spread">
+        <h2>Modelos</h2>
+        <label class="inline">Métrica
+          <select id="fMetric" class="metric">
+            <option value="mae">MAE (itens)</option>
+            <option value="wmape">WMAPE (%)</option>
+            <option value="biasPct">Bias (%)</option>
+            <option value="bias">Bias (itens)</option>
+            <option value="rmse">RMSE (itens)</option>
+            <option value="p90">P90 do erro absoluto (itens)</option>
+          </select></label>
+      </div>
+      <div class="models" id="models"></div>
+      <div class="row" style="margin-top:12px">
+        <label>Setor<input id="fSector" list="sectors" placeholder="todos" size="8"><datalist id="sectors"></datalist></label>
+        <label>Região<select id="fRegion"></select></label>
+        <label>Gerência<select id="fManager"></select></label>
+        <label>CD<select id="fCd"></select></label>
+        <label>UF<select id="fUf"></select></label>
+        <label>Ciclo de<select id="fFrom"></select></label>
+        <label>até<select id="fTo"></select></label>
+        <label id="hWrap">Horizonte<select id="fH"></select></label>
+        <label class="inline"><input id="fCommon" type="checkbox" checked> só pontos previstos por todos os modelos</label>
+        <button id="reset">Limpar filtros</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Métricas no recorte <span class="note">(ordenado pela métrica escolhida)</span></h2>
+      <div class="scroll"><table id="metrics"></table></div>
+      <p class="note" style="margin:8px 0 0">MAE = erro absoluto médio por ponto (setor×ciclo). WMAPE = soma dos erros
+        absolutos ÷ soma do real. Bias = previsto − real (positivo = superestima). P90 = 90% dos pontos erram menos que isso.</p>
+    </section>
+
+    <section class="card">
+      <h2 id="tLevel"></h2>
+      <div id="pLevel" class="plot"></div>
+    </section>
+
+    <div class="grid2">
+      <section class="card">
+        <h2><span class="mName"></span> por ciclo <span class="note">(cores como na lista de modelos)</span></h2>
+        <div id="pErr" class="plot"></div>
+      </section>
+      <section class="card">
+        <h2>Real × previsto por ponto <span class="note">(diagonal = acerto; clique filtra o setor)</span></h2>
+        <div id="pScatter" class="plot"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="row spread">
+        <h2><span class="mName"></span> por grupo</h2>
+        <label class="inline">Agrupar por<select id="fGroup">
+          <option value="region">Região</option><option value="manager">Gerência</option>
+          <option value="cd">CD</option><option value="uf">UF</option></select></label>
+      </div>
+      <div id="pGroup" class="plot"></div>
+    </section>
+
+    <section class="card">
+      <div class="row spread">
+        <h2>Setores com pior <span class="mName"></span> <span class="note">(clique filtra o setor)</span></h2>
+        <label class="inline">Modelo<select id="fRef"></select></label>
+      </div>
+      <div class="scroll"><table id="worst"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Placar oficial dos runs <span class="note">(comparison.csv — subconjunto comum dentro de cada run, sem os filtros acima)</span></h2>
+      <div class="scroll"><table id="official"></table></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (x, d = 0) => Number.isFinite(x) ? x.toLocaleString("pt-BR", { maximumFractionDigits: d, minimumFractionDigits: d }) : "–";
+const cycleLabel = c => `${c.slice(0, 4)}/${c.slice(4)}`;
+const code = v => (v ?? "").toString().replace(/\.0$/, "");  // "265.0" -> "265"
+const groupBy = (rs, key) => rs.reduce((m, r) => { const k = key(r); (m.get(k) ?? m.set(k, []).get(k)).push(r); return m; }, new Map());
+const parseCsv = file => new Promise((ok, err) => Papa.parse(file, { header: true, skipEmptyLines: true, complete: ok, error: err }));
+
+// ---------- metrics (definitions of src/forecasting/metrics.py; bias = predicted - actual) ----------
+const METRICS = {
+  mae: { label: "MAE", unit: "itens", d: 0 }, wmape: { label: "WMAPE", unit: "%", d: 1 },
+  biasPct: { label: "Bias %", unit: "%", d: 1 }, bias: { label: "Bias", unit: "itens", d: 0 },
+  rmse: { label: "RMSE", unit: "itens", d: 0 }, p90: { label: "P90 |erro|", unit: "itens", d: 0 },
+};
+function metrics(rs) {
+  let ae = 0, se = 0, e = 0, a = 0;
+  const abs = [];
+  for (const r of rs) { const d = r.pred - r.actual; abs.push(Math.abs(d)); ae += Math.abs(d); se += d * d; e += d; a += r.actual; }
+  abs.sort((x, y) => x - y);
+  const n = rs.length;
+  // p90 with linear interpolation, like numpy.percentile
+  const pos = 0.9 * (n - 1), lo = Math.floor(pos);
+  return { n, mae: ae / n, rmse: Math.sqrt(se / n), wmape: 100 * ae / a, biasPct: 100 * e / a, bias: e / n,
+           p90: abs[lo] + (abs[Math.min(lo + 1, n - 1)] - abs[lo]) * (pos - lo), actual: a, pred: a + e };
+}
+{ const k = metrics([{ actual: 10, pred: 12 }, { actual: 30, pred: 26 }]);
+  console.assert(k.mae === 3 && k.wmape === 15 && k.biasPct === -5 && Math.abs(k.p90 - 3.8) < 1e-9, "metrics self-check"); }
+const fmtMetric = (m, x) => fmt(x, METRICS[m].d) + (METRICS[m].unit === "%" ? "%" : "");
+// Ranking: bias is better near zero, everything else is better small.
+const badness = (m, x) => m.startsWith("bias") ? Math.abs(x) : x;
+
+// ---------- state ----------
+let runs = [];            // {name, manifest, files: {predictions, comparison}, rows, comparison, selected}
+let rows = [];            // flattened rows of selected runs
+let models = [];          // model ids of selected runs, in run/candidate order
+const info = new Map();   // model id -> {run, candidate, family, features}
+const slots = new Map();  // model id -> colour slot 0..7, kept while the model stays checked
+
+// ---------- discovering runs (listed and served by dashboard/serve.py) ----------
+const runUrl = (name, file) => `runs/${encodeURIComponent(name)}/${file}`;
+const fetchText = async url => { const r = await fetch(url); return r.ok ? r.text() : null; };
+
+async function discover() {
+  const keep = new Set(runs.filter(r => r.selected).map(r => r.name));
+  let names;
+  try { names = await fetch("api/runs").then(r => r.json()); }
+  catch { $("msg").textContent = "Servidor não encontrado. Abra com: uv run python dashboard/serve.py"; return; }
+  // Re-read every manifest on each scan: a run that was still "running" may have finished.
+  runs = await Promise.all(names.map(async name => ({ name, selected: keep.has(name),
+    manifest: JSON.parse(await fetchText(runUrl(name, "manifest.json")) ?? "{}") })));
+  if (!runs.length) { $("msg").textContent = "Nenhum run encontrado (pastas com predictions.csv)."; $("app").hidden = true; return; }
+  runs.sort((a, b) => (b.manifest.started_at ?? "").localeCompare(a.manifest.started_at ?? ""));
+  if (!runs.some(r => r.selected)) (runs.find(r => r.manifest.status === "complete") ?? runs[0]).selected = true;
+  renderRuns();
+  await loadSelected();
+}
+
+function renderRuns() {
+  const head = ["", "Run", "Status", "Início", "Modelos", "Split", "Base (sha256)", "Commit"];
+  const thead = document.createElement("thead");
+  thead.append(tr(head.map(h => th(h))));
+  const tbody = document.createElement("tbody");
+  for (const run of runs) {
+    const m = run.manifest, s = m.split ?? {};
+    const cb = Object.assign(document.createElement("input"), { type: "checkbox", checked: !!run.selected });
+    cb.addEventListener("change", () => { run.selected = cb.checked; loadSelected(); });
+    const status = td(m.status ?? "sem manifest"); status.className = "status" + (m.status === "complete" ? "" : " bad");
+    status.title = m.error ?? "";
+    tbody.append(tr([td(cb), td(run.name), status, td((m.started_at ?? "").slice(0, 16).replace("T", " ")),
+      td((m.candidates ?? []).length || "–"),
+      td(s.min_train_cycles ? `${s.min_train_cycles} ciclos · h=${s.horizon} · ${s.window}` : "–"),
+      td((m.data?.sha256 ?? "").slice(0, 8) || "–"), td((m.code?.commit ?? "").slice(0, 7) || "–")]));
+  }
+  $("runs").replaceChildren(thead, tbody);
+}
+
+async function loadSelected() {
+  const chosen = runs.filter(r => r.selected);
+  $("msg").textContent = "Lendo previsões…";
+  for (const run of chosen) if (!run.rows) await loadRun(run);
+  const many = chosen.length > 1;
+  rows = []; models = []; info.clear();
+  for (const run of chosen) {
+    const candidates = new Map((run.manifest.candidates ?? []).map(c => [c.name, c]));
+    for (const name of [...new Set(run.rows.map(r => r.candidate))]) {
+      const id = many ? `${run.name} · ${name}` : name;
+      const c = candidates.get(name) ?? {};
+      info.set(id, { run: run.name, candidate: name, family: c.model ?? "", features: c.features ?? [] });
+      models.push(id);
+    }
+    for (const r of run.rows) rows.push({ ...r, model: many ? `${run.name} · ${r.candidate}` : r.candidate });
+  }
+  $("msg").textContent = `${chosen.length} run(s) · ${models.length} modelo(s) · ${fmt(rows.length)} pontos`;
+  if (!rows.length) { $("app").hidden = true; return; }
+  setup();
+}
+
+async function loadRun(run) {
+  const { data, meta } = await parseCsv(await fetchText(runUrl(run.name, "predictions.csv")) ?? "");
+  const need = ["cd_setor", "CICLOS", "actual", "items_pred", "candidate"];
+  const miss = need.filter(c => !meta.fields.includes(c));
+  if (miss.length) { run.rows = []; $("msg").textContent = `${run.name}: faltam colunas ${miss.join(", ")}`; return; }
+  run.rows = data.map(d => ({
+    candidate: d.candidate, sector: String(d.cd_setor), cycle: String(d.CICLOS), origin: String(d.origin_cycle ?? ""),
+    actual: +d.actual, pred: +d.items_pred,
+    region: code(d.CD_RE), manager: code(d.CD_GV), cd: code(d.cd_cd), uf: d.estado ?? "",
+  })).filter(r => Number.isFinite(r.actual) && Number.isFinite(r.pred));
+  const comparison = await fetchText(runUrl(run.name, "comparison.csv"));
+  run.comparison = comparison ? (await parseCsv(comparison)).data : [];
+}
+
+// ---------- filter widgets ----------
+const DIMENSIONS = { fRegion: "region", fManager: "manager", fCd: "cd", fUf: "uf" };
+const numeric = (a, b) => (+a - +b) || a.localeCompare(b);
+
+function fillSelect(sel, values, allLabel, labelFn = v => v) {
+  const keep = sel.value;
+  sel.replaceChildren(...(allLabel ? [new Option(allLabel, "")] : []), ...values.map(v => new Option(labelFn(v), v)));
+  if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+}
+
+function setup() {
+  const cycles = [...new Set(rows.flatMap(r => r.origin ? [r.cycle, r.origin] : [r.cycle]))].sort();
+  const idx = Object.fromEntries(cycles.map((c, i) => [c, i]));
+  for (const r of rows) r.h = r.origin ? idx[r.cycle] - idx[r.origin] : 1;
+
+  const checked = new Set([...$("models").querySelectorAll("input:checked")].map(c => c.value));
+  const fresh = !models.some(m => checked.has(m));
+  const nodes = [];
+  const manyRuns = runs.filter(r => r.selected).length > 1;
+  let lastRun = null;
+  models.forEach((m, i) => {
+    const { run, family, features } = info.get(m);
+    if (manyRuns && run !== lastRun) {
+      nodes.push(Object.assign(document.createElement("div"), { className: "run", textContent: `run ${run}` }));
+      lastRun = run;
+    }
+    const l = document.createElement("label"); l.className = "inline";
+    l.title = [family && `família: ${family}`, features.length && `features: ${features.join(", ")}`].filter(Boolean).join("\n");
+    const cb = Object.assign(document.createElement("input"), { type: "checkbox", value: m, checked: fresh ? i < 8 : checked.has(m) });
+    const sw = Object.assign(document.createElement("span"), { className: "swatch" });
+    l.append(cb, sw, document.createTextNode(m));
+    cb.addEventListener("change", () => {
+      if (cb.checked && [...$("models").querySelectorAll("input:checked")].length > 8) {
+        cb.checked = false; $("msg").textContent = "No máximo 8 modelos ao mesmo tempo (uma cor fixa para cada).";
+      }
+      render();
+    });
+    nodes.push(l);
+  });
+  $("models").replaceChildren(...nodes);
+
+  const uniq = key => [...new Set(rows.map(r => r[key]).filter(Boolean))].sort(numeric);
+  for (const [id, key] of Object.entries(DIMENSIONS)) {
+    const values = uniq(key);
+    fillSelect($(id), values, values.length ? "todos" : "sem dado neste run");
+    $(id).disabled = !values.length;
+  }
+  $("sectors").replaceChildren(...uniq("sector").map(s => new Option(s)));
+  const targets = [...new Set(rows.map(r => r.cycle))].sort();
+  const from = $("fFrom").value, to = $("fTo").value;
+  fillSelect($("fFrom"), targets, null, cycleLabel);
+  fillSelect($("fTo"), targets, null, cycleLabel);
+  if (!from) $("fFrom").value = targets[0];
+  if (!to || !targets.includes(to)) $("fTo").value = targets.at(-1);
+  const hs = [...new Set(rows.map(r => r.h))].sort((a, b) => a - b);
+  fillSelect($("fH"), hs, null);
+  $("hWrap").hidden = hs.length < 2;
+  fillSelect($("fRef"), models, null);
+  $("app").hidden = false;
+  render();
+}
+
+// ---------- colour: follows the model, never its rank ----------
+function assignSlots(on) {
+  for (const m of [...slots.keys()]) if (!on.includes(m)) slots.delete(m);
+  for (const m of on) if (!slots.has(m)) {
+    const used = new Set(slots.values());
+    slots.set(m, [0, 1, 2, 3, 4, 5, 6, 7].find(i => !used.has(i)));
+  }
+  for (const l of $("models").querySelectorAll("label")) {
+    const m = l.querySelector("input").value;
+    l.querySelector(".swatch").style.background = slots.has(m) ? colorOf(m) : "transparent";
+  }
+}
+const colorOf = m => css(`--s${slots.get(m) + 1}`);
+
+// ---------- filtering ----------
+function filtered() {
+  const on = models.filter(m => $("models").querySelector(`input[value="${CSS.escape(m)}"]`)?.checked);
+  const onSet = new Set(on);
+  const want = Object.fromEntries(Object.entries(DIMENSIONS).map(([id, key]) => [key, $(id).value]));
+  const sector = $("fSector").value.trim(), from = $("fFrom").value, to = $("fTo").value, h = +$("fH").value;
+  let rs = rows.filter(r => onSet.has(r.model) && r.h === h && r.cycle >= from && r.cycle <= to
+    && (!sector || r.sector === sector) && Object.entries(want).every(([k, v]) => !v || r[k] === v));
+  if ($("fCommon").checked && on.length > 1) {
+    const count = new Map();
+    for (const r of rs) { const k = r.sector + "|" + r.cycle; count.set(k, (count.get(k) || 0) + 1); }
+    rs = rs.filter(r => count.get(r.sector + "|" + r.cycle) === on.length);
+  }
+  return { rs, on };
+}
+
+// ---------- rendering ----------
+function layout(extra = {}) {
+  const ax = { gridcolor: css("--grid"), linecolor: css("--axis"), zerolinecolor: css("--axis"),
+               tickfont: { color: css("--muted") }, automargin: true };
+  return { paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", margin: { t: 8, r: 8, b: 40, l: 56 },
+    font: { family: "system-ui, sans-serif", color: css("--ink-2"), size: 12 },
+    legend: { orientation: "h", y: -0.18 }, hoverlabel: { bgcolor: css("--surface"), font: { color: css("--ink") } },
+    separators: ",.", ...extra, xaxis: { ...ax, ...extra.xaxis }, yaxis: { ...ax, ...extra.yaxis } };
+}
+const plot = (id, data, lay) => Plotly.react(id, data, layout(lay), { displaylogo: false, responsive: true });
+const line = (name, x, y, color, hover) => ({ name, x, y, mode: "lines+markers", line: { color, width: 2 }, marker: { size: 8 }, hovertemplate: hover });
+
+function render() {
+  const { rs, on } = filtered();
+  assignSlots(on);
+  const metric = $("fMetric").value, M = METRICS[metric];
+  for (const el of document.querySelectorAll(".mName")) el.textContent = M.label;
+  const byModel = groupBy(rs, r => r.model);
+  renderMetrics(on, byModel, metric);
+  renderOfficial();
+  if (!rs.length) { ["pLevel", "pErr", "pScatter", "pGroup"].forEach(id => Plotly.purge(id)); $("worst").replaceChildren(); return; }
+
+  const sector = $("fSector").value.trim();
+  $("tLevel").textContent = sector ? `Real vs previsto por ciclo — setor ${sector}` : "Real vs previsto por ciclo (soma dos setores no recorte)";
+  const cyc = [...new Set(rs.map(r => r.cycle))].sort(), x = cyc.map(cycleLabel);
+  const hover = M.unit === "%" ? "%{y:.1f}%" : "%{y:,.0f}";
+
+  // Actual summed over the unique (sector, cycle) pairs in the slice.
+  const uniquePairs = new Map(rs.map(r => [r.sector + "|" + r.cycle, r]));
+  const actualByCycle = groupBy([...uniquePairs.values()], r => r.cycle);
+  const level = [line("Real", x, cyc.map(c => actualByCycle.get(c)?.reduce((s, r) => s + r.actual, 0) ?? null), css("--ink"), "%{y:,.0f}")];
+  const err = [];
+  for (const m of on) {
+    const byC = groupBy(byModel.get(m) || [], r => r.cycle);
+    level.push(line(m, x, cyc.map(k => byC.get(k)?.reduce((s, r) => s + r.pred, 0) ?? null), colorOf(m), "%{y:,.0f}"));
+    err.push(line(m, x, cyc.map(k => byC.has(k) ? metrics(byC.get(k))[metric] : null), colorOf(m), hover));
+  }
+  const signed = metric.startsWith("bias");
+  plot("pLevel", level, { hovermode: "x unified", yaxis: { title: { text: "itens" }, rangemode: "tozero" } });
+  plot("pErr", err, { hovermode: "x unified", showlegend: false, yaxis: { zeroline: signed, rangemode: signed ? "normal" : "tozero" } });
+
+  // Scatter: each point is one (sector, cycle) forecast; the diagonal is a perfect forecast.
+  const max = Math.max(...rs.map(r => Math.max(r.actual, r.pred)));
+  const scatter = [{ x: [0, max], y: [0, max], mode: "lines", hoverinfo: "skip", line: { color: css("--axis"), width: 1 } },
+    ...on.map(m => { const g = byModel.get(m) || []; return {
+      type: "scattergl", mode: "markers", name: m, x: g.map(r => r.actual), y: g.map(r => r.pred),
+      customdata: g.map(r => [r.sector, cycleLabel(r.cycle)]),
+      marker: { color: colorOf(m), size: 8, opacity: 0.55, line: { color: css("--surface"), width: 1 } },
+      hovertemplate: "setor %{customdata[0]} · ciclo %{customdata[1]}<br>real %{x:,.0f} · previsto %{y:,.0f}<extra>%{fullData.name}</extra>" }; })];
+  plot("pScatter", scatter, { hovermode: "closest", showlegend: false, xaxis: { title: { text: "real" } }, yaxis: { title: { text: "previsto" } } });
+  $("pScatter").removeAllListeners?.("plotly_click");
+  $("pScatter").on("plotly_click", e => { const p = e.points[0]; if (p.customdata) setSector(p.customdata[0]); });
+
+  // Selected metric per region / management / CD / state: one dot per model.
+  const key = $("fGroup").value;
+  const groups = [...new Set(rs.map(r => r[key]).filter(Boolean))].sort(numeric);
+  plot("pGroup", on.map(m => { const byG = groupBy(byModel.get(m) || [], r => r[key]); return {
+    name: m, type: "scatter", mode: "markers", x: groups, y: groups.map(g => byG.has(g) ? metrics(byG.get(g))[metric] : null),
+    marker: { color: colorOf(m), size: 9, line: { color: css("--surface"), width: 2 } }, hovertemplate: hover }; }),
+    { hovermode: "x unified", showlegend: false, xaxis: { type: "category", title: { text: $("fGroup").selectedOptions[0].text } },
+      yaxis: { zeroline: signed, rangemode: signed ? "normal" : "tozero" } });
+
+  renderWorst(byModel.get($("fRef").value) || [], metric);
+}
+
+// ---------- tables (text goes in via textContent: names come from CSVs) ----------
+const td = c => { const e = document.createElement("td"); c instanceof Node ? e.append(c) : (e.textContent = c); return e; };
+const th = c => Object.assign(document.createElement("th"), { textContent: c });
+const tr = cells => { const e = document.createElement("tr"); e.append(...cells); return e; };
+
+function table(el, head, body, selCol = -1) {
+  const thead = document.createElement("thead");
+  thead.append(tr(head.map((h, i) => { const e = th(h); if (i === selCol) e.className = "sel"; return e; })));
+  const tbody = document.createElement("tbody");
+  for (const { cells, onClick, swatch } of body) {
+    const row = tr(cells.map((c, i) => { const e = td(c); if (i === selCol) e.className = "sel"; return e; }));
+    if (swatch) { const s = Object.assign(document.createElement("span"), { className: "swatch" }); s.style.background = swatch; row.firstChild.prepend(s); }
+    if (onClick) { row.className = "click"; row.addEventListener("click", onClick); }
+    tbody.append(row);
+  }
+  el.replaceChildren(thead, tbody);
+}
+
+const METRIC_COLS = ["mae", "wmape", "biasPct", "bias", "rmse", "p90"];
+function renderMetrics(on, byModel, metric) {
+  const body = on.filter(m => byModel.has(m)).map(m => ({ m, k: metrics(byModel.get(m)) }))
+    .sort((a, b) => badness(metric, a.k[metric]) - badness(metric, b.k[metric]))
+    .map(({ m, k }) => ({ swatch: colorOf(m), cells: [m, info.get(m).family || "–", fmt(k.n),
+      ...METRIC_COLS.map(c => fmtMetric(c, k[c])), fmt(k.actual), fmt(k.pred)] }));
+  table($("metrics"), ["Modelo", "Família", "Pontos", ...METRIC_COLS.map(c => METRICS[c].label), "Real total", "Previsto total"],
+    body, 3 + METRIC_COLS.indexOf(metric));
+}
+
+function renderWorst(rs, metric) {
+  const body = [...groupBy(rs, r => r.sector)].map(([s, g]) => ({ s, g, k: metrics(g) }))
+    .sort((a, b) => badness(metric, b.k[metric]) - badness(metric, a.k[metric])).slice(0, 50)
+    .map(({ s, g, k }) => ({ onClick: () => setSector(s), cells: [s, g[0].region || "–", g[0].manager || "–", g[0].cd || "–", g[0].uf || "–",
+      fmt(k.n), fmt(k.actual), fmt(k.pred), ...METRIC_COLS.map(c => fmtMetric(c, k[c]))] }));
+  table($("worst"), ["Setor", "Região", "Gerência", "CD", "UF", "Ciclos", "Real total", "Previsto total", ...METRIC_COLS.map(c => METRICS[c].label)],
+    body, 8 + METRIC_COLS.indexOf(metric));
+}
+
+// comparison.csv as written by the run: wmape_common is a ratio, bias_pct_common already a percentage.
+const OFFICIAL = [["mae_common", "MAE (peso igual por setor)", v => fmt(v)], ["wmape_common", "WMAPE", v => fmt(100 * v, 1) + "%"],
+  ["bias_pct_common", "Bias %", v => fmt(v, 1) + "%"], ["rmse_common", "RMSE", v => fmt(v)], ["mase_common", "MASE", v => fmt(v, 3)],
+  ["p90_abs_error_common", "P90 |erro|", v => fmt(v)], ["n_scored_common", "Pontos comuns", v => fmt(v)]];
+function renderOfficial() {
+  const chosen = runs.filter(r => r.selected);
+  const body = chosen.flatMap(run => (run.comparison ?? []).map(c => ({
+    cells: [run.name, c.candidate, ...OFFICIAL.map(([col, , f]) => col in c && c[col] !== "" ? f(+c[col]) : "–")] })));
+  table($("official"), ["Run", "Modelo", ...OFFICIAL.map(([, h]) => h)], body);
+}
+
+function setSector(s) { $("fSector").value = s; render(); window.scrollTo({ top: $("app").offsetTop, behavior: "smooth" }); }
+
+for (const id of ["fSector", "fRegion", "fManager", "fCd", "fUf", "fFrom", "fTo", "fH", "fCommon", "fMetric", "fRef", "fGroup"])
+  $(id).addEventListener("change", render);
+$("reset").addEventListener("click", () => {
+  for (const id of ["fSector", ...Object.keys(DIMENSIONS)]) $(id).value = "";
+  $("fFrom").selectedIndex = 0; $("fTo").selectedIndex = $("fTo").options.length - 1; render();
+});
+$("reload").addEventListener("click", discover);
+discover();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => rows.length && render());
+</script>
+</body>
+</html>

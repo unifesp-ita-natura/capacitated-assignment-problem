@@ -1,0 +1,22 @@
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+  - model: ets
+    alpha: pooled
+    cycle_days_exponent: pooled
+  - model: lightgbm
+    label: lgbm_regiao_gerencia
+    categorical_features: [CD_RE, CD_GV]
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  # Escolha um nome novo para cada teste; uma pasta existente não é sobrescrita.
+  run_dir: experiments/compare_forecasters/outputs/meu_teste_01

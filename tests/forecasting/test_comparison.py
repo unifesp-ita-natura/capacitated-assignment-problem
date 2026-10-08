@@ -106,3 +106,65 @@ def test_comparison_ranks_by_cd_day_error_when_results_carry_daily_forecasts():
 
     assert table["candidate"].tolist() == ["day_better", "cycle_better"]
     assert table["mae_cd_day_common"].tolist() == [5.0, 50.0]
+
+
+@pytest.mark.parametrize(
+    ("column", "expected"),
+    [
+        ("mae_common", 25),
+        ("rmse_common", 650**0.5),
+        ("p90_abs_error_common", 29),
+        ("worst_origin_mae_common", 25),
+        ("bias_common", -5),
+        ("bias_pct_common", -100 / 30),
+        ("wmape_common", 50 / 300),
+        ("mase_common", 25),
+    ],
+)
+def test_level_diagnostics_exclude_points_missing_from_other_candidates(column, expected):
+    wide = _result("wide", [("A", "c1", 100, 120), ("B", "c1", 200, 170), ("C", "c1", 1000, 0)])
+    narrow = _result("narrow", [("A", "c1", 100, 100), ("B", "c1", 200, 200)])
+    row = compare([wide, narrow]).set_index("candidate").loc["wide"]
+    assert row[column] == pytest.approx(expected)
+
+
+def test_common_mase_uses_each_folds_training_scale():
+    first = _result("model", [("A", "c1", 100, 110)]).origins[0]
+    second = OriginResult(
+        origin_cycle="o2",
+        target_cycles=("c2",),
+        scored=first.scored.assign(CICLOS="c2", origin_cycle="o2", items_pred=120, abs_error=20),
+        missing=first.missing,
+        naive_in_sample_mae=10,
+    )
+    result = EvaluationResult(candidate_name="model", origins=[first, second])
+    row = compare([result]).iloc[0]
+    assert row["mase_common"] == (10 / 1 + 20 / 10) / 2
+    assert row["worst_origin_mae_common"] == 20
+
+
+def test_all_level_diagnostics_are_nan_when_common_coverage_is_empty():
+    result = _result("a", [("A", "c1", 100, 110)])
+    empty = EvaluationResult(candidate_name="empty", origins=[])
+    table = compare([result, empty])
+    columns = [
+        "rmse_common",
+        "mase_common",
+        "p90_abs_error_common",
+        "worst_origin_mae_common",
+        "bias_common",
+        "bias_pct_common",
+        "wmape_common",
+    ]
+    assert table[columns].isna().all().all()
+
+
+def test_level_ranking_remains_mae_even_when_wmape_prefers_another_model():
+    rows = [("A", "c1", 100, 150), ("A", "c2", 100, 150), ("B", "c1", 1000, 1000)]
+    mae_winner = _result("mae_winner", rows)
+    wmape_winner = _result(
+        "wmape_winner", [("A", "c1", 100, 100), ("A", "c2", 100, 100), ("B", "c1", 1000, 940)]
+    )
+    table = compare([mae_winner, wmape_winner])
+    assert table.candidate.tolist() == ["mae_winner", "wmape_winner"]
+    assert table.wmape_common.iloc[0] > table.wmape_common.iloc[1]

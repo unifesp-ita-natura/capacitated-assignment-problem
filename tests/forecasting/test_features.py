@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from src.forecasting.features import (
     LEVEL_REFERENCE,
@@ -154,3 +155,19 @@ def test_level_reference_is_the_running_mean_of_earlier_cycles_only():
     # which is what makes this usable as a ratio denominator.
     assert featured.loc[("A", "202604"), LEVEL_REFERENCE] == 200
     assert pd.isna(featured.loc[("A", "202601"), LEVEL_REFERENCE])
+
+
+def test_organization_features_are_opt_in():
+    assert "CD_RE" not in feature_columns(LAGS, WINDOWS)
+    assert {"CD_RE", "CD_GV"} <= set(feature_columns(LAGS, WINDOWS, (), ["CD_RE", "CD_GV"]))
+
+
+def test_missing_organization_codes_do_not_remove_training_rows():
+    panel = PANEL.assign(CD_RE=pd.NA)
+    complete = complete_feature_frame(panel, LAGS, WINDOWS, categorical_features=["CD_RE"])
+    assert len(complete) == 4
+
+
+def test_requested_organization_column_must_exist():
+    with pytest.raises(ValueError, match="missing categorical features.*CD_GV"):
+        complete_feature_frame(PANEL, LAGS, WINDOWS, categorical_features=["CD_GV"])

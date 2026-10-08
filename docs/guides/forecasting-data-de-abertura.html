@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data de abertura explicada</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: coluna única de leitura, seções separadas por espaço, dois brinquedos interativos. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --ink: #1b2430;
+  --muted: #5b6776;
+  --line: #d9dfe6;
+  --banana: #f2c230;
+  --banana-ink: #3b2c00;
+  --bad: #c2410c;
+  --good: #0f766e;
+  --f-display: "Bricolage Grotesque", "Trebuchet MS", sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161d; --surface: #1a212b; --ink: #e8edf3; --muted: #9aa6b5; --line: #2b3542;
+    --banana: #f2c230; --banana-ink: #2b2000; --bad: #fb923c; --good: #2dd4bf; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161d; --surface: #1a212b; --ink: #e8edf3; --muted: #9aa6b5; --line: #2b3542;
+  --banana: #f2c230; --banana-ink: #2b2000; --bad: #fb923c; --good: #2dd4bf; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.55; padding-inline: 16px; padding-block: 32px 64px; }
+main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; line-height: 1.1; margin: 0; }
+h1 { font-size: clamp(2.2rem, 7vw, 3.4rem); font-weight: 800; }
+h2 { font-size: 1.6rem; font-weight: 800; }
+p { margin: 0; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.lede { font-size: 1.2rem; color: var(--muted); max-width: 55ch; }
+.tag { font-family: var(--f-mono); font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+mark { background: var(--banana); color: var(--banana-ink); padding: 0 .25em; border-radius: 3px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-family: var(--f-mono); font-size: .75rem; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.ask { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.chip { font-family: var(--f-mono); font-size: .9rem; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
+.chip.hot { background: var(--banana); color: var(--banana-ink); border-color: var(--banana); }
+.wall { border-left: 4px solid var(--bad); }
+.ok { border-left: 4px solid var(--good); }
+.big { font-family: var(--f-display); font-weight: 800; font-size: 2.2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+input[type=range] { width: 100%; accent-color: var(--banana); }
+input[type=range]:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.bar { height: 22px; border-radius: 4px; background: var(--banana); transition: width .15s; }
+.track { background: var(--bg); border-radius: 4px; border: 1px solid var(--line); }
+.days { display: grid; grid-template-columns: repeat(30, 1fr); gap: 2px; align-items: end; height: 110px; }
+.days div { position: relative; background: var(--line); border-radius: 2px 2px 0 0; min-height: 3px; }
+.days div.on { background: var(--banana); }
+.days div.none { background: transparent; border: 1px dashed var(--line); }
+.axis { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: .72rem; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+h3 { font-family: var(--f-display); font-size: 1.25rem; margin: 6px 0 0; }
+code { font-family: var(--f-mono); font-size: .9em; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 0 .3em; }
+.small { font-size: .9rem; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .bar { transition: none; } }
+</style>
+</head>
+<body>
+
+<main>
+  <header style="display:flex;flex-direction:column;gap:14px">
+    <span class="tag">Previsão de demanda · nível por setor e ciclo</span>
+    <h1>A data de abertura, sem complicar</h1>
+    <p class="lede">Cada setor abre sua janela de vendas num dia. O otimizador quer saber: <mark>e se esse setor abrisse em outro dia?</mark> Aqui está como cada modelo responde isso.</p>
+  </header>
+
+  <section>
+    <span class="tag">A pergunta</span>
+    <h2>O otimizador faz a mesma pergunta várias vezes</h2>
+    <p>Ele está escolhendo em qual bloco cada setor entra, e o bloco decide o dia de abertura. Então ele pergunta ao modelo, para o mesmo setor e o mesmo ciclo, uma vez para cada dia possível.</p>
+    <div class="card">
+      <div class="ask">
+        <span class="chip">setor A</span><span class="chip">ciclo 202701</span>
+        <span>abre dia 4?</span><span class="chip hot">quantos itens?</span>
+      </div>
+      <div class="ask" style="margin-top:10px">
+        <span class="chip">setor A</span><span class="chip">ciclo 202701</span>
+        <span>abre dia 9?</span><span class="chip hot">quantos itens?</span>
+      </div>
+    </div>
+    <p>Se o modelo responder o mesmo número nas duas perguntas, o otimizador não aprende nada. Por isso toda estimativa é identificada por setor, ciclo e a janela consultada.</p>
+  </section>
+
+  <section>
+    <span class="tag">O problema</span>
+    <h2>Modelo de série é um macaco com caderno de bananas</h2>
+    <p>O ETS e a média do setor só olham uma lista: quantos itens o setor vendeu em cada ciclo passado. Não há coluna de data nessa lista. O macaco sabe contar, mas ninguém contou a ele quando a janela abriu.</p>
+    <div class="card wall">
+      <div class="scroll"><table>
+        <tr><th>ciclo</th><th>itens do setor A</th></tr>
+        <tr><td class="num">202517</td><td class="num">4.210</td></tr>
+        <tr><td class="num">202518</td><td class="num">3.980</td></tr>
+        <tr><td class="num">202601</td><td class="num">4.455</td></tr>
+      </table></div>
+      <p class="small" style="margin-top:8px">Valores ilustrativos. Sem data, sem duração. Não existe entrada por onde a abertura possa entrar.</p>
+    </div>
+    <p>A saída foi consertar por fora: normalizar a lista antes do ajuste e reescalar a resposta depois. São dois truques, mostrados mais abaixo.</p>
+  </section>
+
+  <section>
+    <span class="tag">LightGBM</span>
+    <h2>O LightGBM é mais fácil: ele ganha colunas</h2>
+    <p>O LightGBM lê uma tabela com várias colunas. Então a consulta entra como colunas novas, calculadas da janela que foi perguntada e não da que aconteceu.</p>
+    <div class="card ok">
+      <div class="scroll"><table>
+        <tr><th>consulta</th><th>duração</th><th>dias desde a abertura anterior</th><th>dia do mês</th></tr>
+        <tr><td>abre 04/01</td><td class="num">21</td><td class="num">28</td><td class="num">4</td></tr>
+        <tr><td>abre 09/01</td><td class="num">16</td><td class="num">33</td><td class="num">9</td></tr>
+      </table></div>
+      <p class="small" style="margin-top:8px">Valores ilustrativos. As linhas diferem, então as respostas diferem, sem nenhum ajuste depois.</p>
+    </div>
+    <div class="card wall">
+      <strong>Uma coluna ficou de fora de propósito:</strong> quantos dias depois da abertura do ciclo o setor abre. Junto com o código do setor, ela entrega o sub-bloco, e o sub-bloco é justamente a decisão que o otimizador está tomando. Seria o modelo colando a resposta da prova.
+    </div>
+  </section>
+
+  <section>
+    <span class="tag">Modelos de série</span>
+    <h2>Os dois truques, passo a passo</h2>
+    <p>Os dois truques seguem o mesmo molde: <strong>tirar o efeito antes de o modelo olhar, e devolver o efeito depois</strong>. O modelo de série fica ignorante da data e da duração, e o truque cuida delas nas pontas. Nos dois casos a ordem é a mesma: (1) estimar o efeito com o histórico de treino, (2) dividir cada total passado por ele, (3) o modelo prevê o nível limpo, (4) multiplicar pelo efeito da consulta.</p>
+
+    <h3>Truque 1: a duração da janela</h3>
+    <p><strong>A ideia.</strong> Janela de 14 dias vende menos que janela de 21. Mas quanto menos? Supõe-se que o total varie com a duração elevada a <code>β</code>:  total ∝ duração<sup>β</sup>. Com β = 1, vender por dia é constante. Com β = 0, a duração não importa.</p>
+    <p><strong>Como se acha o β.</strong> Para cada setor, olha-se quanto o log do total e o log da duração ficam acima ou abaixo da média do próprio setor. A inclinação dessa relação, somando todos os setores, é o β, preso entre 0 e 1. A comparação é do setor consigo mesmo: setores grandes e pequenos não se misturam. Nos dados, deu 0,32 no histórico inteiro e entre 0,18 e 0,33 nas 11 origens do backtest.</p>
+    <p><strong>Por que não usar β = 1.</strong> Um ciclo de 14 dias vende cerca de 97% da média do setor, e não os 67% que uma demanda diária constante daria. A janela curta é, em geral, mais "concentrada": quase tudo que o setor ia vender ainda acontece.</p>
+
+    <p><strong>Teste com um setor de exemplo.</strong> Mexa no β e na duração consultada. A coluna da direita é o total passado dividido por duração<sup>β</sup>: se o β estiver certo, os números ficam parecidos, mesmo com durações diferentes.</p>
+    <div class="card">
+      <div class="scroll"><table id="hist">
+        <thead><tr><th>ciclo</th><th>duração</th><th>total</th><th>total ÷ duração<sup>β</sup></th></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr><td colspan="3"><strong>nível limpo (média)</strong></td><td class="num" id="lvl"></td></tr></tfoot>
+      </table></div>
+      <div class="row" style="margin-top:14px"><label for="beta">β</label><span class="big" id="betaOut">0,32</span></div>
+      <input id="beta" type="range" min="0" max="1" step="0.01" value="0.32">
+      <div class="row" style="margin-top:14px"><label for="qdur">Duração consultada (dias)</label><span class="big" id="qdurOut">16</span></div>
+      <input id="qdur" type="range" min="10" max="28" step="1" value="16">
+      <div class="row" style="margin-top:14px"><span>Previsão = nível limpo × duração<sup>β</sup>:</span><span class="big" id="fcOut"></span></div>
+      <div class="track" style="margin-top:8px"><div class="bar" id="fcBar"></div></div>
+      <p class="small" style="margin-top:8px">Totais de exemplo, marcados como ilustrativos. Com β = 0 a previsão não se mexe com a duração. Com β = 1, ela segue a duração em linha reta.</p>
+    </div>
+    <p><strong>Quem usa.</strong> Média do setor, ARIMA, ETS por setor e cycle_factor passam por esse truque. O ETS com α compartilhado escolhe o próprio β junto com o α, pelo erro de previsão, e achou valores entre 0,1 e 0,2.</p>
+    <p><strong>Uma armadilha que deu errado.</strong> Tirar também o efeito do ciclo ao estimar o β fez o valor subir para 1,13. Dentro de um ciclo, a duração só varia com o sub-bloco, então esse número media "sub-blocos tardios vendem menos", e não o efeito da duração. Esse estimador foi rejeitado.</p>
+    <p><strong>O que ganhou.</strong> Erro por ciclo (MAE) do cycle_factor foi de 1.836 para 1.810, e do último valor, de 2.432 para 2.416. A média do setor praticamente não mexeu (1.903 para 1.909), porque ela já faz média de muitas janelas. O ganho está nas janelas curtas.</p>
+
+    <h3 style="margin-top:20px">Truque 2: o dia de abertura</h3>
+    <p><strong>A ideia.</strong> Existe um efeito multiplicativo de "abrir <em>d</em> dias depois do início do ciclo". Para achá-lo, é preciso comparar cada setor com ele mesmo, e cada ciclo com os outros ciclos.</p>
+    <p><strong>Passo 1: o resíduo.</strong> Para cada setor e ciclo, toma-se o log do total e tiram-se duas médias: a do setor (o que ele costuma vender) e a do ciclo (o que todos venderam naquele ciclo). Repete-se isso dez vezes alternando, até estabilizar. O que sobra é o <em>resíduo</em>.</p>
+    <div class="card">
+      Setor A costuma vender 4.000. No ciclo 202604, todos os setores venderam 5% acima do usual. Esperado para A: 4.200. A abriu no dia 16 e vendeu 4.410. Resíduo = ln(4.410 / 4.200) = <span class="chip hot">+0,049</span>. Positivo quer dizer "abrir no dia 16 pareceu ajudar".
+    </div>
+    <p><strong>Passo 2: a média por dia, com freio.</strong> Soma-se o resíduo de todas as observações que abriram no mesmo dia e divide-se por <code>n + 100</code>. O 100 é um freio: com poucas observações, o dia quase não sai de 1. Depois aplica-se exp() para virar fator. Veja o freio trabalhando:</p>
+    <div class="card">
+      <div class="row"><label for="nobs">Observações naquele dia (n)</label><span class="big" id="nOut">10</span></div>
+      <input id="nobs" type="range" min="1" max="500" step="1" value="10">
+      <div class="row" style="margin-top:14px"><label for="eres">Resíduo médio do dia</label><span class="big" id="eOut">+0,050</span></div>
+      <input id="eres" type="range" min="-0.1" max="0.1" step="0.005" value="0.05">
+      <div class="row" style="margin-top:14px"><span>Fator sem freio:</span><span class="big" id="rawOut"></span></div>
+      <div class="row" style="margin-top:6px"><span>Fator com freio (n ÷ (n + 100)):</span><span class="big" id="shrOut"></span></div>
+      <p class="small" style="margin-top:8px">Com n = 10, o fator quase não sai de 1 mesmo com resíduo grande. Só com centenas de observações ele passa a valer.</p>
+    </div>
+    <p><strong>Passo 3: usar o fator.</strong> Cada total passado é dividido pelo fator do dia em que abriu (um ciclo aberto no dia 16, fator 1,056, passa de 4.400 para 4.167). O modelo prevê o nível "como se o dia não importasse". Cada cenário consultado é então multiplicado pelo fator do seu dia. Dia nunca visto no histórico fica com fator 1.</p>
+    <p><strong>Quem usa.</strong> Todos os modelos de série. O ETS com α compartilhado só passa por este truque, porque ele já cuida da duração sozinho.</p>
+    <p>Escolha um dia e veja o fator estimado na base v2:</p>
+    <div class="card">
+      <div class="row"><label for="day">Dia de abertura (dias após o início do ciclo)</label><span class="big" id="dayOut">16</span></div>
+      <input id="day" type="range" min="0" max="29" step="1" value="16">
+      <div class="row" style="margin-top:14px"><span>Fator do dia:</span><span class="big" id="facOut">1,056</span></div>
+      <div class="row" style="margin-top:6px"><span>Uma previsão de 10.000 itens vira:</span><span class="big" id="itemsOut">10.560</span></div>
+      <div class="days" id="days" style="margin-top:16px" aria-label="Fator estimado por dia de abertura"></div>
+      <div class="axis"><span>dia 0</span><span>dia 15</span><span>dia 29</span></div>
+      <p class="small" style="margin-top:8px">Tracejado: dia que nunca ocorre na base (dias 2 a 6), com fator 1.</p>
+    </div>
+  </section>
+
+  <section>
+    <span class="tag">O que os números dizem</span>
+    <h2>A duração importa. O dia, quase nada.</h2>
+    <div class="stats">
+      <div class="card"><div class="big">1,3</div><p class="small">dia de desvio-padrão na abertura de um mesmo setor, porque os setores ficam no seu sub-bloco.</p></div>
+      <div class="card"><div class="big">0,95 a 1,06</div><p class="small">faixa dos fatores. Pulam de um dia para o outro (1,056 no dia 16, 0,969 no 23, 1,052 no 24), o que lembra ruído.</p></div>
+      <div class="card"><div class="big">≤ 0,1%</div><p class="small">mudança no erro (MAE por ciclo) de cada modelo ao incluir o fator.</p></div>
+    </div>
+    <p>A base quase não mostra o dia variando, então ela não ensina o efeito dele. A duração varia mais e ajuda de verdade: o ganho concentra-se nas janelas curtas, de até 16 dias.</p>
+    <p>Na prática, o ETS muda cerca de 5% de um dia de abertura para outro, e o LightGBM cerca de 0,5% ao longo de 30 dias. O que o backtest mede é só a janela que de fato aconteceu. Nenhuma execução consegue confirmar a resposta para uma data que nunca ocorreu.</p>
+  </section>
+</main>
+
+<script>
+const F = {0:1.004,1:0.987,7:0.993,8:1.007,9:1.02,10:0.981,11:1.017,12:0.992,13:1.024,14:1.013,15:0.997,16:1.056,17:1.016,18:1.006,19:1.003,20:0.991,21:0.996,22:0.993,23:0.969,24:1.052,25:0.987,26:1.005,27:0.991,28:0.992,29:0.95};
+const HIST = [["202601", 21, 4200], ["202602", 21, 4300], ["202603", 14, 3700], ["202604", 21, 4250], ["202605", 14, 3650]];
+const pt = (x, d) => x.toLocaleString("pt-BR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const $ = id => document.getElementById(id);
+const days = $("days");
+
+function drawBeta() {
+  const b = parseFloat($("beta").value), q = parseInt($("qdur").value, 10);
+  $("betaOut").textContent = pt(b, 2);
+  $("qdurOut").textContent = q;
+  const levels = HIST.map(([, d, t]) => t / Math.pow(d, b));
+  const lvl = levels.reduce((a, c) => a + c, 0) / levels.length;
+  $("hist").querySelector("tbody").innerHTML = HIST.map(([c, d, t], i) =>
+    `<tr><td class="num">${c}</td><td class="num">${d}</td><td class="num">${t.toLocaleString("pt-BR")}</td><td class="num">${Math.round(levels[i]).toLocaleString("pt-BR")}</td></tr>`).join("");
+  $("lvl").textContent = Math.round(lvl).toLocaleString("pt-BR");
+  const fc = lvl * Math.pow(q, b);
+  $("fcOut").textContent = Math.round(fc).toLocaleString("pt-BR");
+  $("fcBar").style.width = Math.min(100, fc / 6000 * 100) + "%";
+}
+function drawShrink() {
+  const n = parseInt($("nobs").value, 10), e = parseFloat($("eres").value);
+  $("nOut").textContent = n;
+  $("eOut").textContent = (e >= 0 ? "+" : "") + pt(e, 3);
+  $("rawOut").textContent = pt(Math.exp(e), 3);
+  $("shrOut").textContent = pt(Math.exp(e * n / (n + 100)), 3);
+}
+function drawDays() {
+  const d = parseInt($("day").value, 10), f = F[d] ?? 1;
+  $("dayOut").textContent = d;
+  $("facOut").textContent = pt(f, 3);
+  $("itemsOut").textContent = Math.round(10000 * f).toLocaleString("pt-BR");
+  [...days.children].forEach((el, i) => el.classList.toggle("on", i === d));
+}
+for (let i = 0; i < 30; i++) {
+  const el = document.createElement("div"), f = F[i];
+  if (f === undefined) { el.className = "none"; el.style.height = "30%"; }
+  else el.style.height = (30 + (f - 0.94) / 0.13 * 70) + "%";
+  el.title = "dia " + i + ": " + (f === undefined ? "nunca ocorre (fator 1)" : pt(f, 3));
+  days.appendChild(el);
+}
+$("beta").addEventListener("input", drawBeta);
+$("qdur").addEventListener("input", drawBeta);
+$("nobs").addEventListener("input", drawShrink);
+$("eres").addEventListener("input", drawShrink);
+$("day").addEventListener("input", drawDays);
+drawBeta(); drawShrink(); drawDays();
+</script>
+
+</body>
+</html>

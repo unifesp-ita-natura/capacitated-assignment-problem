@@ -1,0 +1,26 @@
+[mcp_servers.semantic-scholar-mcp]
+command = "uv"
+args = [
+    "run",
+    "--with",
+    "git+https://github.com/FujishigeTemma/semantic-scholar-mcp",
+    "semantic-scholar-mcp",
+    "serve",
+]
+env_vars = ["SEMANTIC_SCHOLAR_API_KEY"]
+
+[mcp_servers.zotero-mcp]
+command = "uv"
+args = [
+    "run",
+    "--with",
+    "zotero-mcp-server",
+    "zotero-mcp",
+    "serve",
+]
+env_vars = [
+    "ZOTERO_LOCAL",
+    "ZOTERO_API_KEY",
+    "ZOTERO_LIBRARY_ID",
+    "ZOTERO_LIBRARY_TYPE",
+]

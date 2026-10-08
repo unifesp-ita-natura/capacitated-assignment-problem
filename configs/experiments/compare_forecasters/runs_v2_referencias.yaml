@@ -1,0 +1,32 @@
+# Referências na base v2, arquivadas como run (ver docs/guides/forecasting-backtest-executions.md).
+# Para repetir, troque paths.run_dir: uma pasta existente não é sobrescrita.
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+  - model: ets
+    alpha: pooled
+    cycle_days_exponent: pooled
+  - model: lightgbm
+    label: razao + lag 19 + media anual
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3, 19]
+    lags: [1, 2, 3, 4, 19]
+    target: ratio
+  - model: lightgbm
+    label: lgbm_regiao_gerencia
+    categorical_features: [CD_RE, CD_GV]
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-07_v2_referencias

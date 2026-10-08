@@ -20,6 +20,17 @@ Writes `outputs/comparison.csv` (the ranking table) and
 `outputs/errors_by_candidate.csv` (every scored (sector, cycle, fold) row
 for every candidate, for digging into where a candidate loses).
 
+Set `paths.run_dir` to name a fresh folder for a run. It archives `comparison.csv`,
+`predictions.csv`, the exact `config.yaml` and a `manifest.json` with effective
+parameters, models, features and execution metadata. Existing run folders are
+rejected. Legacy CSV paths remain supported and gain automatic archives.
+See [execution archive guide](../../docs/guides/forecasting-backtest-executions.md)
+and `configs/experiments/compare_forecasters/level_recorded.yaml`.
+
+The level comparison also reports RMSE, MASE, P90 absolute error, worst-fold
+MAE, Bias and WMAPE on the common subset, while retaining the MAE ranking.
+Definitions and units: [level metric guide](../../docs/guides/forecasting-level-metrics.md).
+
 ## Result (2026-09-15) — hypothesis rejected
 
 | rank | candidate | MAE (common subset) | MAE (own coverage) | scored | skipped |

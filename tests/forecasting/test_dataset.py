@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from src.forecasting.dataset import (
@@ -9,6 +10,7 @@ from src.forecasting.dataset import (
     build_shape_panel,
     cycle_calendar,
     load_demand_base,
+    sector_cycle_attributes,
 )
 
 FIXTURE_PATH = "tests/fixtures/demand_sample.csv"
@@ -97,3 +99,41 @@ def test_build_item_panel_carries_order_and_volume_counts():
 
     assert actual.sort_index().equals(expected.sort_index().astype(actual.dtype))
     assert "volumes" in panel.columns
+
+
+def test_loader_preserves_organization_codes_as_identifiers(tmp_path):
+    raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01", CD_GV="007")
+    path = tmp_path / "organization.csv"
+    raw.to_csv(path, index=False)
+    panel = build_item_panel(load_demand_base(path))
+    assert panel.CD_RE.eq("01").all()
+    assert panel.CD_GV.eq("007").all()
+
+
+def test_organization_can_change_between_cycles():
+    raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01", CD_GV="007")
+    raw.loc[raw.CICLOS == "202601", "CD_GV"] = "008"
+    panel = build_item_panel(raw)
+    assert panel.loc[panel.CICLOS == "202601", "CD_GV"].eq("008").all()
+
+
+def test_panel_rejects_conflicting_organization_within_sector_cycle():
+    raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01", CD_GV="007")
+    first = raw.iloc[0].copy()
+    first["CD_RE"] = "02"
+    conflicting = pd.concat([raw, first.to_frame().T], ignore_index=True)
+    with pytest.raises(ValueError, match="conflicting"):
+        build_item_panel(conflicting)
+
+
+def test_sector_cycle_attributes_reports_the_cd_with_most_items():
+    raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01")
+    key = raw.iloc[0][["cd_setor", "CICLOS"]]
+    is_key = (raw.cd_setor == key.cd_setor) & (raw.CICLOS == key.CICLOS)
+    minor = raw[is_key].iloc[[0]].assign(cd_cd=9999, total_itens_mascarado=1)
+    attributes = sector_cycle_attributes(pd.concat([raw, minor], ignore_index=True))
+    row = attributes[(attributes.cd_setor == key.cd_setor) & (attributes.CICLOS == key.CICLOS)]
+    assert len(row) == 1
+    assert row.cd_cd.item() != 9999
+    assert row.CD_RE.item() == "01"
+    assert len(attributes) == len(raw[["cd_setor", "CICLOS"]].drop_duplicates())

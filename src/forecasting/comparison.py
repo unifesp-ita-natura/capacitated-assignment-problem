@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from src.forecasting import daily as daily_module
 from src.forecasting.evaluation import EvaluationResult, equal_weight_mae
-from src.forecasting.metrics import PRIMARY_METRIC
+from src.forecasting.metrics import PRIMARY_METRIC, bias, bias_pct, mase, rmse, wmape
 
 SCORE_KEYS = ["cd_setor", "CICLOS", "origin_cycle"]
 
@@ -52,6 +53,39 @@ def _daily_columns(result: EvaluationResult, keys: set[tuple[str, str, str]]) ->
     }
 
 
+def _common_mase(result: EvaluationResult, keys: set[tuple[str, str, str]]) -> float:
+    """Average common-point fold MASE, retaining each fold's training-only scale."""
+    values = []
+    for origin in result.origins:
+        scored = _restrict(origin.scored, keys)
+        if not scored.empty:
+            values.append(mase(scored["actual"], scored["items_pred"], origin.naive_in_sample_mae))
+    return float(np.mean(values)) if values else float("nan")
+
+
+def _common_level_columns(scored: pd.DataFrame) -> dict[str, float]:
+    """Report level diagnostics on identical points; return NaN for empty coverage."""
+    names = (
+        "rmse_common",
+        "p90_abs_error_common",
+        "worst_origin_mae_common",
+        "bias_common",
+        "bias_pct_common",
+        "wmape_common",
+    )
+    if scored.empty:
+        return dict.fromkeys(names, float("nan"))
+    actual, predicted = scored["actual"], scored["items_pred"]
+    return {
+        "rmse_common": rmse(actual, predicted),
+        "p90_abs_error_common": float(np.percentile(scored["abs_error"], 90)),
+        "worst_origin_mae_common": float(scored.groupby("origin_cycle")["abs_error"].mean().max()),
+        "bias_common": bias(actual, predicted),
+        "bias_pct_common": bias_pct(actual, predicted),
+        "wmape_common": wmape(actual, predicted),
+    }
+
+
 def _candidate_row(
     result: EvaluationResult, keys: set[tuple[str, str, str]]
 ) -> dict[str, float | int | str]:
@@ -66,6 +100,8 @@ def _candidate_row(
     restricted = _restrict(scored, keys)
     return {
         **_daily_columns(result, keys),
+        **_common_level_columns(restricted),
+        "mase_common": _common_mase(result, keys),
         "candidate": result.candidate_name,
         "mae_own": equal_weight_mae(scored) if not scored.empty else float("nan"),
         "n_scored_own": len(scored),

@@ -123,6 +123,8 @@ class LightGBMParams(BaseModel):
     # result before the panel_order_counts experiment was produced — see
     # docs/plans/forecasting-feature-roadmap.md, stage 1.
     companion_lags: list[int] = []
+    # Optional organization identifiers, encoded as categories rather than quantities.
+    categorical_features: list[Literal["CD_RE", "CD_GV"]] = []
     # Overrides the generated candidate name. The comparison table keys rows
     # by name, so variants that differ only in a field the generated name
     # doesn't carry (rolling windows, lags) need one to be tellable apart.
