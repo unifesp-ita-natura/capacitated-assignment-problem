@@ -52,7 +52,7 @@ teste_ets_01/
 | Arquivo | Conteúdo | Arquivo e função responsável |
 |---|---|---|
 | `comparison.csv` | Métricas e cobertura dos modelos. | `run.py::_save_outputs`; `src/forecasting/comparison.py::compare` |
-| `predictions.csv` | Valores reais, previsões e erros por setor, ciclo e rodada. | `run.py::_errors_by_candidate` e `_save_outputs` |
+| `predictions.csv` | Valores reais, previsões e erros por setor, ciclo e rodada, com região (`CD_RE`), gerência (`CD_GV`), CD (`cd_cd`) e UF (`estado`) do setor-ciclo; CD e UF são os de mais itens quando há vários. | `run.py::_execute`, `_errors_by_candidate` e `_save_outputs`; `src/forecasting/dataset.py::sector_cycle_attributes` |
 | `config.yaml` | Cópia exata do YAML lido para a execução. | `records.py::prepare_record` |
 | `manifest.json` | Identificação da execução, parâmetros efetivos, modelos, features e versões. | `records.py::prepare_record` e `update_record` |
 
@@ -77,6 +77,9 @@ Os parâmetros efetivos são as configurações, incluindo padrões: por exemplo
 cada rodada, como o alpha escolhido pelo ETS, e objetos treinados não são
 exportados nesta versão. O estado Git informa alterações locais, mas não
 arquiva uma cópia do código nem garante reprodução dessas alterações.
+
+Para visualizar os runs, abra `dashboard/index.html` e escolha a pasta
+`experiments/compare_forecasters/outputs` (ver `dashboard/README.md`).
 
 ## Compatibilidade com YAMLs anteriores
 
