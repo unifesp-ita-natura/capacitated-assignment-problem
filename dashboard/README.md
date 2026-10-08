@@ -9,18 +9,66 @@ As métricas seguem a análise de Prophet da Layza (MAE, WMAPE, Bias; branch
 
 ## Como usar
 
-1. Gere um ou mais runs: cada YAML com `paths.run_dir` cria uma pasta nova em
-   `experiments/compare_forecasters/outputs/`. Exemplos:
-   `configs/experiments/compare_forecasters/runs_v2_referencias.yaml` e
-   `runs_v2_organizacao.yaml`.
-2. Abra `dashboard/index.html` no navegador (Chrome, Edge ou Firefox; precisa
-   de internet para carregar Plotly e PapaParse do cdnjs).
-3. Em **Pasta de runs**, escolha `experiments/compare_forecasters/outputs`.
-   Toda subpasta com `predictions.csv` vira um run; CSVs soltos fora de uma
-   pasta de run são ignorados. O run completo mais recente vem marcado; marque
-   outros para comparar modelos entre runs (até 8 modelos ao mesmo tempo).
+A página é um arquivo HTML comum: não precisa de servidor nem de Python, só
+de um navegador (Chrome, Edge ou Firefox) e de internet para baixar as
+bibliotecas de gráfico (Plotly e PapaParse, do cdnjs).
 
-Nada sai do navegador: os arquivos são lidos localmente.
+### 1. Gerar os runs
+
+Os runs ficam em `experiments/compare_forecasters/outputs/`, que o git ignora.
+Por isso, cada pessoa gera os seus depois de clonar o repositório. Na raiz:
+
+```bash
+uv sync --extra forecast
+uv run python -m experiments.compare_forecasters.run configs/experiments/compare_forecasters/runs_v2_referencias.yaml
+uv run python -m experiments.compare_forecasters.run configs/experiments/compare_forecasters/runs_v2_organizacao.yaml
+```
+
+No Windows, com o `.venv` já instalado:
+
+```bat
+.\.venv\Scripts\python.exe -m experiments.compare_forecasters.run configs/experiments/compare_forecasters/runs_v2_referencias.yaml
+```
+
+Cada run leva cerca de 2 minutos e cria uma pasta nova com `predictions.csv`,
+`comparison.csv`, `config.yaml` e `manifest.json`. Para um teste novo, copie
+um YAML e troque `paths.run_dir`: o runner recusa uma pasta que já existe, em
+vez de sobrescrevê-la.
+
+### 2. Abrir a página
+
+- Linux: `xdg-open dashboard/index.html`
+- macOS: `open dashboard/index.html`
+- Windows: `start dashboard\index.html`
+
+Duplo clique no arquivo, ou arrastá-lo para uma aba do navegador, também
+funciona.
+
+### 3. Carregar a pasta de runs
+
+Em **Pasta de runs**, clique em **Escolher arquivos** e selecione a pasta
+`experiments/compare_forecasters/outputs` em si, sem entrar nela. O navegador
+pergunta se pode "fazer upload" dos arquivos: pode aceitar. A página só lê os
+arquivos no próprio navegador, e nada é enviado para a internet.
+
+Toda subpasta com `predictions.csv` vira um run, e os CSVs soltos fora de uma
+pasta de run são ignorados. O run completo mais recente vem marcado; marque
+outros na tabela de runs para comparar modelos entre runs, até 8 modelos ao
+mesmo tempo. Depois de gerar um run novo, escolha a pasta de novo para
+recarregar.
+
+### 4. Ler os gráficos
+
+- **Real vs previsto por ciclo**: a linha preta é o real e as coloridas são
+  os modelos. Quanto mais perto da preta, melhor.
+- **Métrica por ciclo**: mostra em quais ciclos cada modelo erra mais. Em
+  Bias, acima de zero o modelo previu demais e abaixo de zero previu de menos.
+- **Real × previsto por ponto**: cada ponto é um setor num ciclo, e a
+  diagonal é o acerto exato. Clicar num ponto filtra a página por aquele setor.
+- **Métrica por grupo**: o erro por região, gerência, CD ou UF.
+- **Setores com pior métrica**: clicar numa linha filtra aquele setor.
+
+O botão **Limpar filtros** volta à visão completa.
 
 ## O que mostra
 
