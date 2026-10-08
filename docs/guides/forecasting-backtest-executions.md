@@ -78,8 +78,8 @@ cada rodada, como o alpha escolhido pelo ETS, e objetos treinados não são
 exportados nesta versão. O estado Git informa alterações locais, mas não
 arquiva uma cópia do código nem garante reprodução dessas alterações.
 
-Para visualizar os runs, abra `dashboard/index.html` e escolha a pasta
-`experiments/compare_forecasters/outputs` (ver `dashboard/README.md`).
+Para visualizar os runs, rode `uv run python dashboard/serve.py` na raiz: o
+navegador abre o painel já com os runs desta pasta (ver `dashboard/README.md`).
 
 ## Compatibilidade com YAMLs anteriores
 

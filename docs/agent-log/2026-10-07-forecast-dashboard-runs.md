@@ -14,7 +14,7 @@ to look at, and runs of the models on base_tratada_v2 to visualize.
 
 ## Outcome
 
-`dashboard/index.html` opens in a browser, reads a folder of runs, and
+`uv run python dashboard/serve.py` opens a page that lists the runs by itself and
 compares actual with predicted for every model in one or more runs. It can be
 sliced by sector, region, sales management, CD, state and cycle, and it shows
 the metric chosen in its selector. Two runs on base_tratada_v2 exist under
@@ -22,7 +22,11 @@ the metric chosen in its selector. Two runs on base_tratada_v2 exist under
 
 ## What changed
 
-- `dashboard/index.html`, `dashboard/README.md`: one static page (Plotly and
+- `dashboard/serve.py`: stdlib server on 127.0.0.1 that lists run folders
+  (`/api/runs`) and serves only the page and four whitelisted run files, so
+  the page finds runs without a manual folder pick (browsers forbid listing
+  local folders from a file:// page).
+- `dashboard/index.html`, `dashboard/README.md`: one page (Plotly and
   PapaParse from cdnjs). It reads `manifest.json`, `predictions.csv` and
   `comparison.csv` from each run subfolder and ignores loose legacy CSVs.
   Layza's analysis was a daily aggregate with no sector, so the page keeps her
