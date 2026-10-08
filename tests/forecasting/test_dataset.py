@@ -10,6 +10,7 @@ from src.forecasting.dataset import (
     build_shape_panel,
     cycle_calendar,
     load_demand_base,
+    sector_cycle_attributes,
 )
 
 FIXTURE_PATH = "tests/fixtures/demand_sample.csv"
@@ -123,3 +124,16 @@ def test_panel_rejects_conflicting_organization_within_sector_cycle():
     conflicting = pd.concat([raw, first.to_frame().T], ignore_index=True)
     with pytest.raises(ValueError, match="conflicting"):
         build_item_panel(conflicting)
+
+
+def test_sector_cycle_attributes_reports_the_cd_with_most_items():
+    raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01")
+    key = raw.iloc[0][["cd_setor", "CICLOS"]]
+    is_key = (raw.cd_setor == key.cd_setor) & (raw.CICLOS == key.CICLOS)
+    minor = raw[is_key].iloc[[0]].assign(cd_cd=9999, total_itens_mascarado=1)
+    attributes = sector_cycle_attributes(pd.concat([raw, minor], ignore_index=True))
+    row = attributes[(attributes.cd_setor == key.cd_setor) & (attributes.CICLOS == key.CICLOS)]
+    assert len(row) == 1
+    assert row.cd_cd.item() != 9999
+    assert row.CD_RE.item() == "01"
+    assert len(attributes) == len(raw[["cd_setor", "CICLOS"]].drop_duplicates())

@@ -14,10 +14,12 @@ from experiments.compare_forecasters.records import prepare_record, update_recor
 from src.config.schema import ForecastParams
 from src.forecasting.comparison import compare
 from src.forecasting.dataset import (
+    CYCLE_KEYS,
     DailyBase,
     build_daily_base,
     build_item_panel,
     load_demand_base,
+    sector_cycle_attributes,
 )
 from src.forecasting.evaluation import EvaluationResult, RollingOriginSplit, evaluate
 from src.forecasting.model import REGISTRY
@@ -78,7 +80,11 @@ def _execute(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     results = _evaluate_all(config, panel, daily_base)
     table = compare(results)
 
-    return table, _errors_by_candidate(results)
+    # Region, sales management, CD and state ride along so results can be sliced by them.
+    predictions = _errors_by_candidate(results).merge(
+        sector_cycle_attributes(raw), on=CYCLE_KEYS, how="left"
+    )
+    return table, predictions
 
 
 def _save_outputs(

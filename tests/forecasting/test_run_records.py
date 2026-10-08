@@ -129,3 +129,5 @@ def test_real_executor_archives_a_small_backtest(tmp_path):
     manifest = _read_manifest(tmp_path / "teste_região")
     assert comparison.n_scored_common.iloc[0] > 0
     assert manifest["n_predictions"] == comparison.n_scored_own.iloc[0]
+    predictions = pd.read_csv(tmp_path / "teste_região" / "predictions.csv")
+    assert predictions.cd_cd.notna().all()

@@ -126,6 +126,27 @@ def _attach_organization(panel: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame
     return panel.merge(organization, on=CYCLE_KEYS, validate="one_to_one")
 
 
+def sector_cycle_attributes(raw: pd.DataFrame) -> pd.DataFrame:
+    """Per (sector, cycle): region, sales management, and the CD and state with the most items.
+
+    For slicing backtest results only, never a model input. A sector-cycle
+    split across several CDs (about 28% in base_tratada_v2) reports the one
+    that carried most of its items.
+    """
+    attributes = raw[CYCLE_KEYS].drop_duplicates()
+    for column in ("cd_cd", "estado", *ORGANIZATION_COLUMNS):
+        if column in raw.columns:
+            attributes = attributes.merge(_dominant(raw, column), on=CYCLE_KEYS, how="left")
+    return attributes
+
+
+def _dominant(raw: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Each sector-cycle's value of `column` that carried the most items."""
+    items = raw.groupby([*CYCLE_KEYS, column], as_index=False)["total_itens_mascarado"].sum()
+    top = items.sort_values("total_itens_mascarado", kind="stable")
+    return top.drop_duplicates(CYCLE_KEYS, keep="last")[[*CYCLE_KEYS, column]]
+
+
 def build_shape_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> pd.DataFrame:
     """One row per (sector, cycle, relative position): that day's share of the cycle's total items.
 
