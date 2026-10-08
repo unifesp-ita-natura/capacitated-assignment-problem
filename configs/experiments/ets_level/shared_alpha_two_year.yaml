@@ -1,0 +1,52 @@
+experiment_name: ets_level_shared_alpha_two_year
+description:
+  goal: Same question on the two-year panel.
+  hypothesis: (1) The pooled ETS beats the per-sector ETS(A,N,N) per cycle (2,621
+    on the ets_level common subset). (2) LightGBM still beats it by more than 5%.
+  design_note: 'Only alpha changes against ets_level: the per-sector ETS(A,N,N) is
+    kept as the reference. Fixed alphas 0.1/0.2/0.3 are reported to locate the optimum,
+    but picking among them on these folds would be selecting on the test set; only
+    alpha: pooled is chosen from training history alone. The level starts at each
+    sector''s first observation.'
+  status: confirmed
+split:
+  horizon: 1
+  min_train_cycles: 20
+  window: expanding
+candidates:
+- model: naive
+  strategy: mean
+- model: ets
+- model: lightgbm
+  num_leaves: 7
+  n_estimators: 100
+  learning_rate: 0.05
+  companion_lags:
+  - 1
+  - 2
+  - 3
+  - 4
+  rolling_windows:
+  - 2
+  - 3
+  - 19
+  lags:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 19
+  target: ratio
+  label: razao + lag 19 + media anual
+- model: ets
+  alpha: pooled
+- model: ets
+  alpha: 0.1
+- model: ets
+  alpha: 0.2
+- model: ets
+  alpha: 0.3
+paths:
+  base_csv: data/processed/demand_two_years.csv
+  output_csv: experiments/ets_level/outputs/comparison_shared_alpha_two_year.csv
+  errors_csv: experiments/ets_level/outputs/errors_shared_alpha_two_year.csv

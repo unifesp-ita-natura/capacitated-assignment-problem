@@ -1,0 +1,163 @@
+"""Testes do Simulated Annealing contra instâncias pequenas de ótimo conhecido."""
+
+from __future__ import annotations
+
+import random
+
+import pytest
+
+from src.persistence import SolveResult
+from src.solver.heuristics.simulated_annealing import (
+    AnnealingParams,
+    run_simulated_annealing,
+    solve,
+)
+
+# Instância base: 2 setores, 2 combinações, 2 dias, 1 CD.
+# Combinação 1 -> toda a demanda cai no dia 1; combinação 2 -> tudo no dia 2.
+# As-Is coloca os dois setores na combinação 1: dia 1 = 20, dia 2 = 0 (amplitude 20).
+# Ótimo: um setor em cada combinação -> dia 1 = 10, dia 2 = 10 (amplitude 0).
+_DEMAND = {
+    (1, 1, 1): 10.0,
+    (1, 2, 1): 0.0,
+    (1, 1, 2): 0.0,
+    (1, 2, 2): 10.0,
+    (2, 1, 1): 10.0,
+    (2, 2, 1): 0.0,
+    (2, 1, 2): 0.0,
+    (2, 2, 2): 10.0,
+}
+
+
+def _instance(**overrides) -> dict:
+    base = dict(
+        sectors=[1, 2],
+        combinations=[1, 2],
+        days=[1, 2],
+        cd_sectors={1: [1, 2]},
+        daily_capacity={(1, 1): 100.0, (1, 2): 100.0},
+        projected_demand=_DEMAND,
+        current_assignment={1: 1, 2: 1},
+        max_churn=2,
+        days_by_cycle={0: [1, 2]},
+    )
+    base.update(overrides)
+    return base
+
+
+def test_levels_demand_to_zero_amplitude():
+    result = solve(**_instance(), rng=random.Random(1), params=AnnealingParams(max_iterations=500))
+
+    assert result.objective == 0.0
+    assert set(result.assignment.values()) == {1, 2}
+
+
+def test_never_returns_worse_than_as_is():
+    result = solve(**_instance(), rng=random.Random(1))
+
+    # As-Is tem energia 20 (amplitude 20, sem penalidades); o SA nunca piora isso.
+    assert result.energy <= 20.0
+
+
+def test_respects_zero_churn_budget():
+    result = solve(
+        **_instance(max_churn=0), rng=random.Random(1), params=AnnealingParams(max_iterations=500)
+    )
+
+    assert result.assignment == {1: 1, 2: 1}
+    assert result.churn_penalty == 0.0
+    assert result.objective == 20.0
+
+
+def test_fixes_capacity_violation():
+    tight = _instance(daily_capacity={(1, 1): 10.0, (1, 2): 100.0})
+
+    result = solve(**tight, rng=random.Random(1), params=AnnealingParams(max_iterations=500))
+
+    assert result.capacity_penalty == 0.0
+
+
+def test_is_deterministic_for_a_fixed_seed():
+    first = solve(**_instance(), rng=random.Random(42))
+    second = solve(**_instance(), rng=random.Random(42))
+
+    assert first.assignment == second.assignment
+    assert first.energy == second.energy
+
+
+def test_stop_reason_is_one_of_the_known_values():
+    result = solve(**_instance(), rng=random.Random(1))
+
+    assert result.stop_reason in {"min_temperature", "stagnation", "max_iterations"}
+
+
+def test_valid_combinations_restricts_the_domain():
+    # O CD 1 só pode usar a combinação 1 -> nenhum setor consegue sair dela.
+    result = solve(
+        **_instance(valid_combinations={1: [1]}),
+        rng=random.Random(1),
+        params=AnnealingParams(max_iterations=500),
+    )
+
+    assert result.assignment == {1: 1, 2: 1}
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2, 3, 4])
+def test_finds_the_optimum_across_seeds(seed):
+    result = solve(
+        **_instance(), rng=random.Random(seed), params=AnnealingParams(max_iterations=500)
+    )
+
+    assert result.objective == 0.0
+
+
+def test_objective_averages_the_range_per_cycle_instead_of_globally():
+    # Cycle 0 (days 1,2): as-is amplitude 20. Cycle 1 (days 11,12): as-is amplitude 200
+    # (much bigger, simulating demand growth). A global max-min over all 4 days would
+    # be 200 - 0 = 200; the per-cycle-averaged objective should be (20 + 200) / 2 = 110.
+    demand = {
+        (1, 1, 1): 10.0,
+        (1, 2, 1): 0.0,
+        (2, 1, 1): 10.0,
+        (2, 2, 1): 0.0,
+        (1, 11, 1): 100.0,
+        (1, 12, 1): 0.0,
+        (2, 11, 1): 100.0,
+        (2, 12, 1): 0.0,
+    }
+    instance = _instance(
+        days=[1, 2, 11, 12],
+        daily_capacity={(1, a): 1000.0 for a in [1, 2, 11, 12]},
+        projected_demand=demand,
+        current_assignment={1: 1, 2: 1},
+        max_churn=0,
+        days_by_cycle={0: [1, 2], 1: [11, 12]},
+    )
+
+    result = solve(**instance, rng=random.Random(1), params=AnnealingParams(max_iterations=10))
+
+    assert result.assignment == {1: 1, 2: 1}  # zero churn budget keeps the As-Is
+    assert result.objective == pytest.approx(110.0)
+
+
+def test_run_simulated_annealing_returns_a_solve_result():
+    seed = 42
+
+    result = run_simulated_annealing(**_instance(), seed=seed)
+
+    expected = solve(**_instance(), rng=random.Random(seed))
+    assert isinstance(result, SolveResult)
+    assert (
+        result.model_name,
+        result.solver,
+        result.status,
+        result.termination_condition,
+        result.objective,
+    ) == (
+        "simulated_annealing",
+        "simulated_annealing",
+        expected.stop_reason,
+        expected.stop_reason,
+        expected.objective,
+    )
+    assert result.wall_time_seconds >= 0

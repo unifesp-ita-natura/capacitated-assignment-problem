@@ -87,3 +87,28 @@ serie_volume_cd = df_demanda.groupby(
 )["total_volumes_mascarado"].sum()
 
 serie_volume_cd.to_csv("serie_volume_por_cd.csv", index=False)
+tabela_simulador = pd.read_excel("Simulador Bloco e Subbloco_v2.xlsx", sheet_name="Calendário FV")
+
+# corrigindo a coluna setor da tabela do simulado
+tabela_simulador["cd_setor_limpo"] = (
+    tabela_simulador["COD SETOR"].astype(str).str.replace("S", "", regex=False).str.strip()
+)
+
+df_demanda["data_pedido"] = pd.to_datetime(df_demanda["data_pedido"], format="mixed", dayfirst=True)
+df_demanda["mes_pedido"] = df_demanda["data_pedido"].dt.month
+df_demanda["semana_pedido"] = df_demanda["data_pedido"].dt.isocalendar().week
+
+# limpando espaços extras na coluna setor da tabela demanda
+df_demanda["cd_setor_limpo"] = df_demanda["cd_setor"].astype(str).str.strip()
+
+df_completo = pd.merge(df_demanda, tabela_simulador, on="cd_setor_limpo", how="left")
+
+colunas_agrupadas = ["cd_setor", "aa_ciclo", "nm_ciclo", "mes_pedido", "semana_pedido"]
+
+serie_volume = df_completo.groupby(colunas_agrupadas, as_index=False)[
+    "total_volumes_mascarado"
+].sum()
+
+serie_volume.to_csv("serie_volume_setor.csv", index=False)
+
+print("Script executado com sucesso!")

@@ -10,19 +10,24 @@ dependencies = [
     "pyomo>=6.9.0",
     "numpy>=2.0.0,<2.3",
     "pyyaml>=6.0,<7.0",
+    "pandas>=2.3.3",
+    "python-calamine>=0.8.2",
+    "highspy>=1.15.1",
 ]
 
 [project.optional-dependencies]
 viz = [
     "matplotlib>=3.10.8",
+    "seaborn>=0.13.2",
 ]
 tracking = [
     "mlflow>=2.14.0",
 ]
 forecast = [
     "matplotlib>=3.10.8",
-    "pandas>=2.2.0",
+    "pandas>=2.3.0",
     "prophet>=1.1.6",
+    "lightgbm>=4.5.0",
     "statsmodels>=0.15.0",
 ]
 
