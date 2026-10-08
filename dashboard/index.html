@@ -59,7 +59,7 @@ button { font: inherit; color: var(--ink); background: transparent; border: 1px 
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; }
-td.text, th.text { text-align: left; white-space: normal; }
+td.text, th.text, #runs td:nth-child(2), #runs th:nth-child(2) { text-align: left; white-space: normal; }
 th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
 th.sel, td.sel { font-weight: 700; }
 tbody tr.click { cursor: pointer; }
@@ -74,13 +74,13 @@ tbody tr.click:hover { background: var(--grid); }
 <main>
   <h1>Previsão de demanda: real vs previsto</h1>
   <p class="note">Itens por setor e ciclo, a partir dos runs arquivados pelo backtest
-    (<code>experiments/compare_forecasters/run.py</code>). Os arquivos são lidos só no seu navegador.</p>
+    (<code>experiments/compare_forecasters/run.py</code>), servidos por <code>dashboard/serve.py</code>.</p>
 
   <section class="card">
     <div class="row">
-      <label>Pasta de runs (ex.: <code>experiments/compare_forecasters/outputs</code>)
-        <input id="fDir" type="file" webkitdirectory multiple></label>
-      <span id="msg">Nenhuma pasta carregada.</span>
+      <h2 style="margin:0">Runs</h2>
+      <button id="reload">Recarregar runs</button>
+      <span id="msg">Procurando runs…</span>
     </div>
     <div class="scroll" style="margin-top:12px"><table id="runs"></table></div>
   </section>
@@ -201,23 +201,21 @@ let models = [];          // model ids of selected runs, in run/candidate order
 const info = new Map();   // model id -> {run, candidate, family, features}
 const slots = new Map();  // model id -> colour slot 0..7, kept while the model stays checked
 
-// ---------- discovering runs ----------
-$("fDir").addEventListener("change", ev => loadFolder([...ev.target.files]));
+// ---------- discovering runs (listed and served by dashboard/serve.py) ----------
+const runUrl = (name, file) => `runs/${encodeURIComponent(name)}/${file}`;
+const fetchText = async url => { const r = await fetch(url); return r.ok ? r.text() : null; };
 
-async function loadFolder(files) {
-  const byDir = groupBy(files, f => (f.webkitRelativePath || f.name).split("/").slice(0, -1).join("/"));
-  runs = [];
-  for (const [dir, files] of byDir) {
-    const pick = n => files.find(f => f.name === n);
-    if (!pick("predictions.csv")) continue;  // only archived runs, never the legacy loose CSVs
-    const manifest = pick("manifest.json") ? JSON.parse(await pick("manifest.json").text()) : {};
-    runs.push({ name: dir.split("/").at(-1), manifest, files: { predictions: pick("predictions.csv"), comparison: pick("comparison.csv") } });
-  }
-  if (!runs.length) { $("msg").textContent = "Nenhum run encontrado (pastas com predictions.csv)."; return; }
+async function discover() {
+  const keep = new Set(runs.filter(r => r.selected).map(r => r.name));
+  let names;
+  try { names = await fetch("api/runs").then(r => r.json()); }
+  catch { $("msg").textContent = "Servidor não encontrado. Abra com: uv run python dashboard/serve.py"; return; }
+  // Re-read every manifest on each scan: a run that was still "running" may have finished.
+  runs = await Promise.all(names.map(async name => ({ name, selected: keep.has(name),
+    manifest: JSON.parse(await fetchText(runUrl(name, "manifest.json")) ?? "{}") })));
+  if (!runs.length) { $("msg").textContent = "Nenhum run encontrado (pastas com predictions.csv)."; $("app").hidden = true; return; }
   runs.sort((a, b) => (b.manifest.started_at ?? "").localeCompare(a.manifest.started_at ?? ""));
-  const firstComplete = runs.find(r => r.manifest.status === "complete") ?? runs[0];
-  firstComplete.selected = true;
-  $("msg").textContent = `${runs.length} run(s) encontrado(s). Marque quais comparar.`;
+  if (!runs.some(r => r.selected)) (runs.find(r => r.manifest.status === "complete") ?? runs[0]).selected = true;
   renderRuns();
   await loadSelected();
 }
@@ -263,17 +261,17 @@ async function loadSelected() {
 }
 
 async function loadRun(run) {
-  const { data, meta } = await parseCsv(run.files.predictions);
+  const { data, meta } = await parseCsv(await fetchText(runUrl(run.name, "predictions.csv")) ?? "");
   const need = ["cd_setor", "CICLOS", "actual", "items_pred", "candidate"];
   const miss = need.filter(c => !meta.fields.includes(c));
   if (miss.length) { run.rows = []; $("msg").textContent = `${run.name}: faltam colunas ${miss.join(", ")}`; return; }
-  run.hasAttributes = meta.fields.includes("CD_RE");
   run.rows = data.map(d => ({
     candidate: d.candidate, sector: String(d.cd_setor), cycle: String(d.CICLOS), origin: String(d.origin_cycle ?? ""),
     actual: +d.actual, pred: +d.items_pred,
     region: code(d.CD_RE), manager: code(d.CD_GV), cd: code(d.cd_cd), uf: d.estado ?? "",
   })).filter(r => Number.isFinite(r.actual) && Number.isFinite(r.pred));
-  run.comparison = run.files.comparison ? (await parseCsv(run.files.comparison)).data : [];
+  const comparison = await fetchText(runUrl(run.name, "comparison.csv"));
+  run.comparison = comparison ? (await parseCsv(comparison)).data : [];
 }
 
 // ---------- filter widgets ----------
@@ -489,6 +487,8 @@ $("reset").addEventListener("click", () => {
   for (const id of ["fSector", ...Object.keys(DIMENSIONS)]) $(id).value = "";
   $("fFrom").selectedIndex = 0; $("fTo").selectedIndex = $("fTo").options.length - 1; render();
 });
+$("reload").addEventListener("click", discover);
+discover();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => rows.length && render());
 </script>
 </body>

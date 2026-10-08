@@ -9,9 +9,14 @@ As métricas seguem a análise de Prophet da Layza (MAE, WMAPE, Bias; branch
 
 ## Como usar
 
-A página é um arquivo HTML comum: não precisa de servidor nem de Python, só
-de um navegador (Chrome, Edge ou Firefox) e de internet para baixar as
-bibliotecas de gráfico (Plotly e PapaParse, do cdnjs).
+A página é servida por `dashboard/serve.py`, um servidor local de poucas
+linhas feito só com a biblioteca padrão do Python. Ele é necessário porque um
+navegador não deixa um HTML aberto direto do disco listar pastas: o servidor
+lista os runs e entrega os arquivos deles para a página. Ele só escuta em
+`127.0.0.1` (só o seu computador acessa) e só entrega a página e os arquivos
+de run (`predictions.csv`, `comparison.csv`, `manifest.json`, `config.yaml`),
+nunca o resto do repositório. Os gráficos precisam de internet para baixar
+Plotly e PapaParse do cdnjs.
 
 ### 1. Gerar os runs
 
@@ -35,29 +40,30 @@ Cada run leva cerca de 2 minutos e cria uma pasta nova com `predictions.csv`,
 um YAML e troque `paths.run_dir`: o runner recusa uma pasta que já existe, em
 vez de sobrescrevê-la.
 
-### 2. Abrir a página
+### 2. Abrir o painel
 
-- Linux: `xdg-open dashboard/index.html`
-- macOS: `open dashboard/index.html`
-- Windows: `start dashboard\index.html`
+Na raiz do repositório:
 
-Duplo clique no arquivo, ou arrastá-lo para uma aba do navegador, também
-funciona.
+```bash
+uv run python dashboard/serve.py
+```
 
-### 3. Carregar a pasta de runs
+No Windows: `.\.venv\Scripts\python.exe dashboard\serve.py`.
 
-Em **Pasta de runs**, clique em **Escolher arquivos** e selecione a pasta
-`experiments/compare_forecasters/outputs` em si, sem entrar nela. O navegador
-pergunta se pode "fazer upload" dos arquivos: pode aceitar. A página só lê os
-arquivos no próprio navegador, e nada é enviado para a internet.
+O navegador abre sozinho em <http://127.0.0.1:8000/>, já com os runs
+listados. O run completo mais recente vem marcado; marque outros na tabela de
+runs para comparar modelos entre runs (até 8 modelos ao mesmo tempo). Deixe o
+terminal aberto enquanto usa a página e pare com `Ctrl+C`.
 
-Toda subpasta com `predictions.csv` vira um run, e os CSVs soltos fora de uma
-pasta de run são ignorados. O run completo mais recente vem marcado; marque
-outros na tabela de runs para comparar modelos entre runs, até 8 modelos ao
-mesmo tempo. Depois de gerar um run novo, escolha a pasta de novo para
-recarregar.
+- **Rodou um run novo?** Clique em **Recarregar runs**, sem reiniciar nada.
+- **Porta 8000 ocupada?** `uv run python dashboard/serve.py --port 8001`.
+- **Runs em outra pasta** (um `run_dir` fora de `outputs/`)? Use
+  `--runs caminho/da/pasta`.
 
-### 4. Ler os gráficos
+Abrir `index.html` com duplo clique não funciona: a página avisa
+"Servidor não encontrado" e mostra o comando acima.
+
+### 3. Ler os gráficos
 
 - **Real vs previsto por ciclo**: a linha preta é o real e as coloridas são
   os modelos. Quanto mais perto da preta, melhor.
