@@ -7,6 +7,9 @@ dados sintéticos ou solver.
 Este documento fornece instruções e exemplos. Os scripts, CSVs e configurações dos
 exemplos não foram criados nesta tarefa. Nenhuma previsão real foi executada.
 O roteiro de avaliação está em [Backtesting e features](forecasting-level-backtesting.md).
+Para entender, com exemplos interativos, como a data de abertura e a duração da janela entram
+no LightGBM e nos modelos de série, abrir [forecasting-data-de-abertura.html](forecasting-data-de-abertura.html)
+no navegador (as fontes vêm do Google Fonts; sem internet, usa as fontes padrão).
 
 ## 1. Entender os inputs e a saída
 
