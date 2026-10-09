@@ -6,10 +6,13 @@ import pandas as pd
 import pytest
 
 from src.forecasting.dataset import (
+    build_daily_base,
     build_item_panel,
     build_shape_panel,
     cycle_calendar,
+    demand_unit_id,
     load_demand_base,
+    resum_to_sector,
     sector_cycle_attributes,
 )
 
@@ -124,6 +127,79 @@ def test_panel_rejects_conflicting_organization_within_sector_cycle():
     conflicting = pd.concat([raw, first.to_frame().T], ignore_index=True)
     with pytest.raises(ValueError, match="conflicting"):
         build_item_panel(conflicting)
+
+
+def _with_synthetic_states(raw: pd.DataFrame) -> pd.DataFrame:
+    """Split every sector's rows roughly in half between two fake states."""
+    estado = pd.Series("SP", index=raw.index)
+    estado.loc[raw.index % 2 == 0] = "RJ"
+    return raw.assign(estado=estado)
+
+
+def test_demand_unit_id_returns_cd_setor_when_not_grouping_by_state():
+    raw = load_demand_base(FIXTURE_PATH)
+    assert demand_unit_id(raw, group_by_state=False).equals(raw["cd_setor"])
+
+
+def test_demand_unit_id_raises_without_estado_column():
+    raw = load_demand_base(FIXTURE_PATH)
+    with pytest.raises(ValueError, match="estado"):
+        demand_unit_id(raw, group_by_state=True)
+
+
+def test_demand_unit_id_combines_sector_and_state():
+    raw = _with_synthetic_states(load_demand_base(FIXTURE_PATH))
+    unit = demand_unit_id(raw, group_by_state=True)
+    assert set(unit) == {"3257|SP", "3257|RJ", "3260|SP", "3260|RJ", "3262|SP", "3262|RJ"}
+
+
+def test_build_item_panel_group_by_state_splits_items_by_state():
+    raw = _with_synthetic_states(load_demand_base(FIXTURE_PATH))
+    panel = build_item_panel(raw, group_by_state=True)
+
+    assert panel["cd_setor"].str.contains(r"\|").all()
+    split = panel["cd_setor"].str.split("|", n=1, expand=True)
+    assert set(split[1]) <= {"SP", "RJ"}
+    assert set(split[0]) == {"3257", "3260", "3262"}
+
+
+def test_resum_to_sector_undoes_a_group_by_state_split():
+    raw = _with_synthetic_states(load_demand_base(FIXTURE_PATH))
+    unsplit = build_item_panel(raw)
+    split = build_item_panel(raw, group_by_state=True)
+
+    resummed = resum_to_sector(split, ["items", "orders", "volumes"])
+    left = resummed.set_index(["cd_setor", "CICLOS"])[["items", "orders", "volumes"]].sort_index()
+    right = unsplit.set_index(["cd_setor", "CICLOS"])[["items", "orders", "volumes"]].sort_index()
+    pd.testing.assert_frame_equal(left, right, check_like=True)
+
+
+def test_resum_to_sector_is_a_no_op_on_an_unsplit_frame():
+    raw = load_demand_base(FIXTURE_PATH)
+    panel = build_item_panel(raw)
+    assert resum_to_sector(panel, ["items"]) is panel
+
+
+def test_build_shape_panel_group_by_state_resums_to_the_same_shares():
+    raw = _with_synthetic_states(load_demand_base(FIXTURE_PATH))
+    unsplit = build_shape_panel(raw)
+    split = build_shape_panel(raw, group_by_state=True)
+
+    resummed = resum_to_sector(split.drop(columns="share"), ["items"])
+    totals = resummed.set_index(["cd_setor", "CICLOS", "relative_position"])["items"]
+    expected = unsplit.set_index(["cd_setor", "CICLOS", "relative_position"])["items"]
+    pd.testing.assert_series_equal(totals.sort_index(), expected.sort_index(), check_names=False)
+
+
+def test_build_daily_base_group_by_state_resums_to_the_same_actuals():
+    raw = _with_synthetic_states(load_demand_base(FIXTURE_PATH))
+    unsplit = build_daily_base(raw)
+    split = build_daily_base(raw, group_by_state=True)
+
+    resummed = resum_to_sector(split.actuals, ["items"])
+    left = resummed.set_index(["cd_setor", "cd_cd", "CICLOS", "date"])["items"].sort_index()
+    right = unsplit.actuals.set_index(["cd_setor", "cd_cd", "CICLOS", "date"])["items"].sort_index()
+    pd.testing.assert_series_equal(left, right, check_names=False)
 
 
 def test_sector_cycle_attributes_reports_the_cd_with_most_items():

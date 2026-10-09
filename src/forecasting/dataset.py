@@ -1,4 +1,12 @@
-"""Load the raw demand base; aggregate it into the per-(sector, cycle) panels forecasting uses."""
+"""Load the raw demand base; aggregate it into the per-(sector, cycle) panels forecasting uses.
+
+A panel builder's `group_by_state` flag forecasts each (sector, state) pair
+as its own unit instead of the whole sector (see `demand_unit_id`); callers
+must pass the result through `resum_to_sector` before it leaves this module,
+since nothing outside the forecasting module should ever see a sector split
+by state (see docs/context/natura-client-answers.md: a sector is a
+commercial grouping, not a geographic one, and block/sub-block assignment
+is never split)."""
 
 from __future__ import annotations
 
@@ -82,7 +90,48 @@ def cycle_calendar(raw: pd.DataFrame) -> pd.DataFrame:
     return calendar.sort_values("CICLOS").reset_index(drop=True)
 
 
-def build_item_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> pd.DataFrame:
+def demand_unit_id(raw: pd.DataFrame, group_by_state: bool) -> pd.Series:
+    """The sector id to forecast at: `cd_setor` alone, or `cd_setor|estado` when
+    `group_by_state` (the row's real state, never guessed or dominant-picked).
+
+    A sector is a commercial grouping, not a geographic one — the same
+    sector routinely spans several states (see
+    docs/context/natura-client-answers.md) — so `group_by_state=True` treats
+    each (sector, state) pair actually present in the data as its own
+    forecasting unit. Nothing downstream of this id cares about its format,
+    only that it's a stable label (see `resum_to_sector`, which undoes this).
+    """
+    if not group_by_state:
+        return raw["cd_setor"]
+    if "estado" not in raw.columns:
+        raise ValueError("group_by_state=True needs an `estado` column in the demand base")
+    return raw["cd_setor"].astype(str) + "|" + raw["estado"].astype(str)
+
+
+def resum_to_sector(frame: pd.DataFrame, value_columns: list[str]) -> pd.DataFrame:
+    """Collapse a `group_by_state`-split frame's `cd_setor` back to the real sector,
+    summing `value_columns` over any states it was split into.
+
+    `cd_setor` values produced by `demand_unit_id(..., group_by_state=True)`
+    look like "<real sector>|<estado>"; this splits on the separator and
+    re-aggregates every other column as a grouping key. A frame that was
+    never split (no "|" in `cd_setor`) comes back unchanged, so callers can
+    apply this unconditionally regardless of which mode produced `frame`.
+    """
+    cd_setor = frame["cd_setor"].astype(str)
+    if not cd_setor.str.contains("|", regex=False).any():
+        return frame
+    group_keys = [c for c in frame.columns if c not in (*value_columns, "cd_setor", "estado")]
+    return (
+        frame.assign(cd_setor=cd_setor.str.split("|").str[0])
+        .groupby(["cd_setor", *group_keys], as_index=False)[value_columns]
+        .sum()
+    )
+
+
+def build_item_panel(
+    raw: pd.DataFrame, calendar: pd.DataFrame | None = None, group_by_state: bool = False
+) -> pd.DataFrame:
     """Aggregate the raw base into one row per (sector, cycle): items, orders, volumes, date.
 
     `items` is L_{s,k} in the paper's notation, in items (the unit the CD
@@ -98,9 +147,14 @@ def build_item_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) ->
     `cycle_calendar`), and orders the series. `window_start` and
     `cycle_days` are the sector's own window, the scenario inputs a
     candidate may use (see `model.forecast`).
+
+    `group_by_state=True` forecasts each (sector, state) pair as its own
+    unit instead of the whole sector (see `demand_unit_id`); pass the result
+    through `resum_to_sector` before it leaves the forecasting module.
     """
     calendar = cycle_calendar(raw) if calendar is None else calendar
     complete = raw[raw["CICLOS"].isin(set(calendar.loc[calendar["is_complete"], "CICLOS"]))]
+    complete = complete.assign(cd_setor=demand_unit_id(complete, group_by_state))
 
     panel = complete.groupby(CYCLE_KEYS, as_index=False).agg(
         items=("total_itens_mascarado", "sum"),
@@ -147,7 +201,9 @@ def _dominant(raw: pd.DataFrame, column: str) -> pd.DataFrame:
     return top.drop_duplicates(CYCLE_KEYS, keep="last")[[*CYCLE_KEYS, column]]
 
 
-def build_shape_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> pd.DataFrame:
+def build_shape_panel(
+    raw: pd.DataFrame, calendar: pd.DataFrame | None = None, group_by_state: bool = False
+) -> pd.DataFrame:
     """One row per (sector, cycle, relative position): that day's share of the cycle's total items.
 
     Relative position is `dia_ciclo / Qtde dias`, a fraction of the sales
@@ -156,11 +212,16 @@ def build_shape_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -
     between blocks (see docs/agent-log). This panel is not consumed by the
     volume-forecasting harness in this module — it's the input the separate
     shape-forecasting work keys off.
+
+    `group_by_state=True` forecasts each (sector, state) pair as its own
+    unit instead of the whole sector (see `demand_unit_id`); pass the result
+    through `resum_to_sector` before it leaves the forecasting module.
     """
     calendar = cycle_calendar(raw) if calendar is None else calendar
     complete_cycles = set(calendar.loc[calendar["is_complete"], "CICLOS"])
 
     complete = raw[raw["CICLOS"].isin(complete_cycles)].copy()
+    complete["cd_setor"] = demand_unit_id(complete, group_by_state)
     complete["relative_position"] = complete["dia_ciclo"] / complete["Qtde dias"]
 
     daily = complete.groupby(["cd_setor", "CICLOS", "relative_position"], as_index=False).agg(
@@ -178,17 +239,24 @@ class DailyBase(NamedTuple):
     windows: pd.DataFrame  # cd_setor, CICLOS, window_start, n_days — the sector's own window
 
 
-def build_daily_base(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> DailyBase:
+def build_daily_base(
+    raw: pd.DataFrame, calendar: pd.DataFrame | None = None, group_by_state: bool = False
+) -> DailyBase:
     """Split the raw base into per-day actuals and per-(sector, cycle) windows (complete cycles).
 
     Days without orders have no row in `actuals`: the base only records days
     that sold something, so the zeros are recovered from `windows` (a sector's
     window is its own `Dt Abertura`..`Dt Fechamento`, see `_sector_windows`).
+
+    `group_by_state=True` forecasts each (sector, state) pair as its own
+    unit instead of the whole sector (see `demand_unit_id`); pass `actuals`
+    through `resum_to_sector` before it leaves the forecasting module.
     """
     if "cd_cd" not in raw.columns:
         raise ValueError("the daily harness needs a `cd_cd` column in the demand base")
     calendar = cycle_calendar(raw) if calendar is None else calendar
     complete = raw[raw["CICLOS"].isin(set(calendar.loc[calendar["is_complete"], "CICLOS"]))]
+    complete = complete.assign(cd_setor=demand_unit_id(complete, group_by_state))
 
     actuals = complete.groupby(["cd_setor", "cd_cd", "CICLOS", "data_pedido"], as_index=False).agg(
         items=("total_itens_mascarado", "sum")
