@@ -8,8 +8,8 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RAW_PATH = Path("../data/raw")
-DEFAULT_PROCESSED_PATH = Path("../data/processed")
+DEFAULT_RAW_PATH = Path("data/raw")
+DEFAULT_PROCESSED_PATH = Path("data/processed")
 DEFAULT_SIMULADOR_FILE = DEFAULT_RAW_PATH / "Simulador Bloco e Subbloco_v2.xlsx"
 
 EXCEL_ENGINE = "calamine"
