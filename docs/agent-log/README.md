@@ -5,7 +5,11 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-10-09 shape features](2026-10-09-shape-features.md) — Isolated LightGBM shape with selectable region, sales management, weekday and month; holidays deferred
+- [2026-10-09 standalone shape dashboard](2026-10-09-shape-dashboard.md) — Local shape-only run filters, daily and cumulative comparisons, metrics and downloads; no level integration
+- [2026-10-09 daily shape backtest](2026-10-09-daily-shape-backtest.md) — Independent sector-cycle-day curves, CD aggregation, shape-only scoring and archived runs without level changes
 - [2026-10-07 forecast dashboard over backtest runs](2026-10-07-forecast-dashboard-runs.md) — Browser page comparing actual vs predicted per sector and cycle from archived runs, sliceable by region, management, CD and state; v2 runs show organization features help LightGBM by 0.2%
+- [2026-10-07 simple feature-engineering manual](2026-10-07-simple-feature-engineering-manual.md) — Windows setup, a complete YAML, feature comparisons, outputs and code validation for an intern
 - [2026-10-06 backtest execution archives](2026-10-06-backtest-execution-records.md) — User-selected run folders with CSVs, YAML snapshots, effective candidate metadata and execution status
 - [2026-10-06 level feature reference](2026-10-06-level-feature-reference.md) — Complete Portuguese catalog of implemented predictors, YAML options and multi-step behavior
 - [2026-10-06 organization level features](2026-10-06-level-organization-features.md) — Optional categorical region and sales-management predictors with historical assignment carry-forward
