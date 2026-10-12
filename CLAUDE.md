@@ -41,6 +41,12 @@ Cross-cutting references:
   respondeu sobre regras de negócio, capacidade dos CDs e os dados, mais as
   dúvidas ainda em aberto. Consulte antes de assumir qualquer premissa de
   negócio.
+- `docs/context/demanda-level-shape.md` — colunas e ressalvas dos arquivos de
+  demanda histórica (`demanda_level.csv`/`demanda_shape.csv` e os siblings
+  `_by_state`).
+- `docs/context/external-demand-features.md` — fontes, colunas e ressalvas das
+  features externas (calendário, feriados, indicadores PNAD Contínua) juntadas
+  aos arquivos `_by_state`.
 - `docs/plans/forecasting-feature-roadmap.md` — plano incremental de testes de
   novas features para a previsão de demanda, com o protocolo de avaliação que
   toda etapa precisa respeitar.

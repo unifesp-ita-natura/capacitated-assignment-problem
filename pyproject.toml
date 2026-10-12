@@ -13,6 +13,7 @@ dependencies = [
     "pandas>=2.3.3",
     "python-calamine>=0.8.2",
     "highspy>=1.15.1",
+    "holidays>=0.106",
 ]
 
 [project.optional-dependencies]

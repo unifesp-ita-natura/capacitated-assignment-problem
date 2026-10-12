@@ -29,10 +29,12 @@ data/generated/*
 data/instances/*
 data/processed/*
 data/raw/*
+data/external/*
 !data/generated/.gitkeep
 !data/instances/.gitkeep
 !data/processed/.gitkeep
 !data/raw/.gitkeep
+!data/external/.gitkeep
 .DS_Store
 
 # env files
@@ -57,3 +59,4 @@ experiments/**/results/
 # Raw Google Drive drops pasted directly into the repo root (client comms + data)
 /comunicações-*/
 /dados-*/
+.vscode
