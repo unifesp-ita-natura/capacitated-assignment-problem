@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shape · Análise de previsões</title>
+  <link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
+</head>
+<body>
+<header><div class="brand"><span class="mark">S</span><div><strong>Shape Explorer</strong><small>Previsão de demanda · distribuição diária</small></div></div><span class="badge">Resultados de backtest</span></header>
+<div class="layout">
+<aside>
+  <h2>Selecione seu teste</h2><p class="muted">Explore uma pasta de resultados por vez.</p>
+  <label>Pasta de resultados<select id="run"></select></label>
+  <button id="reload" class="secondary">Atualizar pastas</button>
+  <div id="filters" hidden>
+    <hr><label>Modelo de shape<select id="model"></select></label>
+    <label>Ciclo avaliado<select id="cycle"></select></label>
+    <label>Origem da previsão<select id="origin"></select></label>
+    <label>Setor<input id="sector" list="sectors" placeholder="Todos os setores"><datalist id="sectors"></datalist></label>
+    <button id="clear" class="secondary">Limpar setor e modelo</button>
+    <hr><label>Unidade do gráfico<select id="unit"><option value="pct">Participação diária (%)</option><option value="items">Itens por dia</option></select></label>
+    <a id="download" class="button" href="#">Baixar pontos filtrados</a>
+    <a id="config" class="text-link" href="#">Baixar configuração do teste</a>
+  </div>
+  <p class="aside-note">Cada curva distribui o total real do ciclo pelos dias. Os erros em itens avaliam somente o shape.</p>
+</aside>
+<main>
+  <div class="heading"><div><p class="eyebrow">DISTRIBUIÇÃO AO LONGO DO CICLO</p><h1>O previsto acompanha o real?</h1><p class="muted">Compare a curva diária, seu acumulado e onde a demanda ficou deslocada.</p></div></div>
+  <div id="message" role="status" aria-live="polite">Procurando resultados…</div>
+  <section id="empty" class="card" hidden><h2>Comece gerando um backtest de shape</h2><p>As pastas aparecerão aqui depois da execução. Na raiz do repositório:</p><pre>.venv\Scripts\python.exe -m experiments.compare_shapes.run configs/experiments/compare_shapes/sector_day.yaml</pre><p>Depois, clique em “Atualizar pastas”.</p></section>
+  <div id="content" hidden>
+    <div id="kpis" class="kpis"></div>
+    <section class="card"><div class="section-head"><h2>Real versus previsto por dia do ciclo</h2><span id="slice" class="muted"></span></div><p class="muted">Dia 1 é a abertura da janela de cada setor. Com todos os setores, as curvas alinham os dias desde a abertura e mostram participações ponderadas pelo volume real.</p><div id="daily" class="chart"></div></section>
+    <div class="two-columns">
+      <section class="card"><h2>Participação acumulada</h2><p class="muted">Uma curva prevista adiantada indica concentração de demanda mais cedo que o real.</p><div id="cumulative" class="chart"></div></section>
+      <section class="card"><h2>Erro diário em itens</h2><p class="muted">Previsto − real. Acima de zero: superestimação naquele dia.</p><div id="errors" class="chart"></div></section>
+    </div>
+    <section class="card"><h2>Métricas do recorte</h2><p class="muted">Calculadas nos pontos comuns aos modelos selecionados. Share MAE dá o mesmo peso a cada curva de setor–ciclo. WMAPE é exibido em %.</p><div class="table-wrap"><table id="metrics"></table></div><p class="footnote">O bias agregado tende a zero porque cada curva conserva o total real; isso não garante acerto na distribuição diária.</p></section>
+    <section class="card"><div class="section-head"><h2>Previsto e real ponto a ponto</h2><span id="point-count" class="muted"></span></div><div class="table-wrap"><table id="points"></table></div></section>
+    <details class="card"><summary>Ranking completo da execução e parâmetros utilizados</summary><p class="muted">Este ranking vem do comparison.csv original e não acompanha os filtros.</p><div class="table-wrap"><table id="official"></table></div><h3>Registro da execução</h3><pre id="manifest"></pre></details>
+  </div>
+</main></div>
+</body></html>
