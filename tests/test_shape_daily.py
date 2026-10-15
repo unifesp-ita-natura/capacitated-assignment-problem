@@ -1,5 +1,6 @@
 """Check CD-free daily curves, normalization and historical-only training."""
 
+import importlib.util
 import json
 
 import numpy as np
@@ -14,6 +15,10 @@ from src.forecasting.shape_evaluation import (
     ShapeSplit,
     compare_shapes,
     evaluate_shapes,
+)
+
+requires_lightgbm = pytest.mark.skipif(
+    importlib.util.find_spec("lightgbm") is None, reason="lightgbm is not installed"
 )
 
 
@@ -66,7 +71,10 @@ def test_conflicting_shape_organization_rejected(raw):
         build_shape_days(raw)
 
 
-@pytest.mark.parametrize("model,expected", [("uniform", [0.25] * 4), ("sector", [0.2, 0, 0, 0.8])])
+@pytest.mark.parametrize(
+    "model,expected",
+    [("uniform", [0.25] * 4), ("sector", [0.2, 0, 0, 0.8]), ("recency", [0.2, 0, 0, 0.8])],
+)
 def test_expected_predictions(raw, model, expected):
     days = build_shape_days(raw)
     history = days[days["CICLOS"].eq("0")]
@@ -75,6 +83,40 @@ def test_expected_predictions(raw, model, expected):
     ].drop_duplicates()
     forecast = predict_shape(history, windows, model, n_bins=4)
     np.testing.assert_allclose(forecast["share_pred"], expected)
+
+
+def test_recency_decay_of_one_matches_plain_average(raw):
+    history = build_shape_days(raw)[build_shape_days(raw)["CICLOS"].eq("0")]
+    windows = build_shape_days(raw)[build_shape_days(raw)["CICLOS"].eq("1")][
+        ["cd_setor", "CICLOS", "window_start", "n_days"]
+    ].drop_duplicates()
+    plain = predict_shape(history, windows, "sector", n_bins=4)
+    weighted = predict_shape(history, windows, "recency", n_bins=4, decay=1.0)
+    np.testing.assert_allclose(weighted["share_pred"], plain["share_pred"])
+
+
+def test_recency_weighting_favors_the_more_recent_cycle(raw):
+    raw.loc[raw["CICLOS"].eq("0"), "total_itens_mascarado"] = [100, 0]
+    raw.loc[raw["CICLOS"].eq("1"), "total_itens_mascarado"] = [0, 100]
+    days = build_shape_days(raw)
+    history = days[days["CICLOS"].isin(["0", "1"])]
+    windows = days[days["CICLOS"].eq("2")][
+        ["cd_setor", "CICLOS", "window_start", "n_days"]
+    ].drop_duplicates()
+    plain = predict_shape(history, windows, "sector", n_bins=4)
+    weighted = predict_shape(history, windows, "recency", n_bins=4, decay=0.1)
+    assert plain["share_pred"].iloc[-1] == pytest.approx(0.5)
+    assert weighted["share_pred"].iloc[-1] > plain["share_pred"].iloc[-1]
+
+
+def test_recency_requires_decay_in_range(raw):
+    days = build_shape_days(raw)
+    history = days[days["CICLOS"].eq("0")]
+    windows = days[days["CICLOS"].eq("1")][
+        ["cd_setor", "CICLOS", "window_start", "n_days"]
+    ].drop_duplicates()
+    with pytest.raises(ValueError, match="decay"):
+        predict_shape(history, windows, "recency", n_bins=4, decay=0)
 
 
 def test_unknown_sector_uses_uniform(raw):
@@ -115,7 +157,19 @@ def test_evaluation_and_metrics(raw, candidate, metric, expected):
     )
 
 
-@pytest.mark.parametrize("model", ["sector", "lightgbm"])
+def test_recency_candidate_in_evaluation(raw):
+    days = build_shape_days(raw)
+    candidates = [
+        ShapeCandidate(name="recency", model="recency", n_bins=4, decay=0.5),
+        ShapeCandidate(name="sector", model="sector", n_bins=4),
+    ]
+    scored = evaluate_shapes(days, candidates, ShapeSplit(min_train_cycles=1))
+    assert set(scored["candidate"]) == {"recency", "sector"}
+
+
+@pytest.mark.parametrize(
+    "model", ["sector", pytest.param("lightgbm", marks=requires_lightgbm)]
+)
 def test_target_demand_does_not_leak_into_prediction(raw, model):
     candidates = [
         ShapeCandidate(
@@ -233,6 +287,7 @@ def test_failed_run_records_error(raw, tmp_path):
     assert "not enough" in manifest["error"]
 
 
+@requires_lightgbm
 def test_learned_run_records_features(raw, tmp_path):
     path = _config_file(raw, tmp_path)
     config = yaml.safe_load(path.read_text())

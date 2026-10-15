@@ -87,6 +87,7 @@ def _candidate_metadata(candidate: ShapeCandidate) -> dict:
     inputs = {
         "uniform": [],
         "sector": ["cd_setor", "offset", "n_days", "actual_share"],
+        "recency": ["cd_setor", "offset", "n_days", "actual_share", "opening_date"],
         "lightgbm": [*BASE_FEATURES, *candidate.learning.features],
     }
     return {

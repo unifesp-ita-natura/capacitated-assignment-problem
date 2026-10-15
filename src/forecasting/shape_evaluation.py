@@ -22,8 +22,9 @@ class ShapeCandidate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1)
-    model: Literal["uniform", "sector", "lightgbm"]
+    model: Literal["uniform", "sector", "recency", "lightgbm"]
     n_bins: int = Field(default=10, ge=1)
+    decay: float = Field(default=1.0, gt=0, le=1)
     learning: ShapeLearningParams = Field(default_factory=ShapeLearningParams)
 
 
@@ -61,7 +62,7 @@ def _predict_candidate(history, actual, windows, candidate):
         return predict_learned_shape(
             history, historical_windows(history, actual), candidate.learning
         )
-    return predict_shape(history, windows, candidate.model, candidate.n_bins)
+    return predict_shape(history, windows, candidate.model, candidate.n_bins, candidate.decay)
 
 
 def _validate_candidates(candidates: list[ShapeCandidate]) -> None:
