@@ -4,12 +4,20 @@ Tests live in `tests/`. `conftest.py` provides shared fixtures.
 
 ## Solver
 
-**Do not call the real solver (e.g. Gurobi) directly in tests.** Mock solver
-interactions instead of requiring a live installation or license. When
-documentation describes how to run the project with the real solver in a
-real environment, keep those instructions clear and separate from the test
-suite's mocked path. See `src/solver/README.md` for the mocking pattern used
-by the example solver module.
+**Prefer solving for real with HiGHS over mocking.** HiGHS ships as a direct
+dependency (`highspy`) and needs no license, so tests that exercise solving
+should call `solve(..., solver="appsi_highs")` (or let a default that falls
+back to HiGHS resolve on its own) and assert on the real `SolverResults`
+(termination condition, objective) rather than on a `MagicMock`'s call log.
+
+**Only mock to simulate "Gurobi has no license."** A dev machine with a
+working Gurobi license can't produce that condition for real, so stub out
+just `pyo.SolverFactory("gurobi")` (e.g. a small fake with
+`available() -> False`) while leaving every other solver name — in
+particular the HiGHS fallback — going through the real `pyo.SolverFactory`.
+See `tests/solver/mip/test_example.py` and `tests/solver/mip/test_block_assignment.py`
+for the pattern, and `src/solver/README.md` for the fallback behavior being
+tested.
 
 ## Commands
 

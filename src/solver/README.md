@@ -23,17 +23,28 @@ treat every family the same).
 
 ## Gurobi license
 
-`mip/` requires a Gurobi license to run for real (tests mock it — see
-below). Point to it with a `.env` file (gitignored):
+`mip/` defaults to `solver="gurobi"`. Point to your license with a `.env`
+file (gitignored):
 
 ```
 LICENSE_PATH="/path/to/gurobi.lic"
 GUROBI_PATH="/path/to/gurobi-install/"
 ```
 
+If no working Gurobi license/install is found (checked via `.available()`,
+never by letting `.solve()` fail), the default falls back to the bundled,
+license-free `appsi_highs` and logs a warning — see `solve_example` in
+`mip/example.py` and `solve_block_assignment`/`run_block_assignment_mip` in
+`mip/block_assignment.py`. This keeps the project runnable on a machine with
+no Gurobi license.
+
 ## Testing
 
-**Do not call a real solver directly in tests.** Mock `pyo.SolverFactory`
-(or the `.solve()` call on it) for `mip/`, and the equivalent entrypoint for
-`cpsat/`, instead of requiring a live license or a slow real solve — see
-`tests/solver/mip/test_example.py` and `docs/conventions/testing.md`.
+**Prefer solving for real with HiGHS** (`solver="appsi_highs"`) over mocking
+`pyo.SolverFactory` — it needs no license, so tests get real `SolverResults`
+instead of asserting on a mock's call log. Mock only to simulate "Gurobi has
+no license" (a small stub whose `.available()` returns `False`), leaving
+every other solver name, especially the HiGHS fallback, going through the
+real `pyo.SolverFactory`. See `tests/solver/mip/test_example.py`,
+`tests/solver/mip/test_block_assignment.py`, and
+`docs/conventions/testing.md`.
