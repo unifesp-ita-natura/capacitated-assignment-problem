@@ -40,7 +40,7 @@ from src.forecasting.data import (
     build_shape_observations,
     to_calendar,
 )
-from src.forecasting.dataset import CYCLE_KEYS
+from src.forecasting.dataset import SERIES_KEY, SERIES_KEYS
 from src.forecasting.level import LEVEL_STRATEGIES, forecast_cycle_total_with
 from src.forecasting.shape import SHAPE_STRATEGIES
 from src.generate.generator import future_cycle_starts, slot_start_day
@@ -48,13 +48,13 @@ from src.generate.generator import future_cycle_starts, slot_start_day
 # Columns build_item_panel() produces (src/forecasting/dataset.py) and every
 # candidate's output must match, so the evaluation harness (evaluation.py)
 # can join predictions back onto actuals without per-candidate glue.
-PANEL_COLUMNS = ["cd_setor", "CICLOS", "items", "opening_date"]
-PREDICTION_COLUMNS = ["cd_setor", "CICLOS", "items_pred"]
-# A query is one scenario: "sector s, in cycle k, with its window opening on
-# `window_start` and lasting `cycle_days` days". One (sector, cycle) can carry
+PANEL_COLUMNS = [SERIES_KEY, "CICLOS", "items", "opening_date"]
+PREDICTION_COLUMNS = [SERIES_KEY, "CICLOS", "items_pred"]
+# A query is one scenario: "series s (a sector-city), in cycle k, with its
+# window opening on `window_start` and lasting `cycle_days` days". One (series, cycle) can carry
 # several queries, one per opening date the optimizer wants to compare.
 SCENARIO_COLUMNS = ["window_start", "cycle_days"]
-QUERY_KEYS = ["cd_setor", "CICLOS", *SCENARIO_COLUMNS]
+QUERY_KEYS = [SERIES_KEY, "CICLOS", *SCENARIO_COLUMNS]
 # How many past cycles at one opening day it takes for that day's measured
 # effect to count half: a day seen this often keeps half its raw effect, a
 # day seen rarely stays near "no effect" (see `opening_factors`).
@@ -141,7 +141,7 @@ class ForecastCandidate(Protocol):
         output (`targets` carries `CICLOS`, `opening_date`, `window_start` and
         `cycle_days` but no `items` column, since that's what's being
         predicted). A (sector, cycle) may appear in several target rows, one
-        per scenario window. Returns `cd_setor`, `CICLOS`, `items_pred`, plus
+        per scenario window. Returns `serie`, `CICLOS`, `items_pred`, plus
         `window_start` and `cycle_days` if the candidate tells scenarios
         apart; without them, its prediction for a (sector, cycle) applies to
         every scenario of it (see `align_predictions`). A candidate is
@@ -160,18 +160,19 @@ class _PerSectorCandidate:
 
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
         horizon = targets["CICLOS"].nunique()
+        targets_by_series = dict(tuple(targets.groupby(SERIES_KEY)))
         rows = []
-        for sector, sector_history in history.sort_values("opening_date").groupby("cd_setor"):
-            # A sector present in `history` isn't necessarily active in every
-            # target cycle (not every sector orders every cycle) — skip it
+        for sector, sector_history in history.sort_values("opening_date").groupby(SERIES_KEY):
+            # A series present in `history` isn't necessarily active in every
+            # target cycle (not every city orders every cycle) — skip it
             # here rather than call `self._fn` for nothing to score against.
+            if sector not in targets_by_series:
+                continue
             sector_targets = (
-                targets[targets["cd_setor"] == sector]
+                targets_by_series[sector]
                 .sort_values("opening_date")
                 .drop_duplicates("CICLOS")  # scenarios of one cycle share its forecast
             )
-            if sector_targets.empty:
-                continue
 
             series = sector_history.set_index("opening_date")["items"]
             try:
@@ -179,7 +180,7 @@ class _PerSectorCandidate:
             except InsufficientHistoryError:
                 continue
             for cycle, value in zip(sector_targets["CICLOS"], predicted, strict=False):
-                rows.append({"cd_setor": sector, "CICLOS": cycle, "items_pred": value})
+                rows.append({SERIES_KEY: sector, "CICLOS": cycle, "items_pred": value})
         return pd.DataFrame(rows, columns=PREDICTION_COLUMNS)
 
 
@@ -205,7 +206,7 @@ def cycle_days_exponent(history: pd.DataFrame) -> float:
     # ponytail: sector effects only; a cycle-wide shock that coincides with
     # short windows leaks into β. Add cycle effects if β drifts between folds.
     usable = history[(history["items"] > 0) & (history["cycle_days"] > 0)]
-    by_sector = usable["cd_setor"]
+    by_sector = usable[SERIES_KEY]
     days = np.log(usable["cycle_days"].astype(float))
     items = np.log(usable["items"].astype(float))
     days = days - days.groupby(by_sector).transform("mean")
@@ -235,8 +236,8 @@ class _WindowScaledCandidate:
         self.chosen_exponent = cycle_days_exponent(history)
         scale = history["cycle_days"].astype(float) ** self.chosen_exponent
         levels = self._inner.fit_predict(history.assign(items=history["items"] / scale), targets)
-        levels = levels.drop_duplicates(CYCLE_KEYS)[[*CYCLE_KEYS, "items_pred"]]
-        rows = targets[QUERY_KEYS].merge(levels, on=CYCLE_KEYS)
+        levels = levels.drop_duplicates(SERIES_KEYS)[[*SERIES_KEYS, "items_pred"]]
+        rows = targets[QUERY_KEYS].merge(levels, on=SERIES_KEYS)
         rows["items_pred"] = rows["items_pred"] * rows["cycle_days"] ** self.chosen_exponent
         return rows
 
@@ -249,13 +250,13 @@ def window_scaled(candidate: ForecastCandidate) -> ForecastCandidate:
 def opening_scenarios(cycles: pd.DataFrame, days: Iterable[int]) -> pd.DataFrame:
     """Queries for the same cycle opening on different dates: one per (sector, cycle) and day.
 
-    `cycles` has one row per (sector, cycle): `cd_setor`, `CICLOS`, the
+    `cycles` has one row per (series, cycle): `serie`, `CICLOS`, the
     cycle's `opening_date` and the sector's `cycle_days`. Day `d` is the
     scenario where the sector's window opens `d` days after the cycle does.
     The window keeps its length and only moves.
     """
     offsets = pd.DataFrame({"opening_day": list(days)})
-    scenarios = cycles[["cd_setor", "CICLOS", "opening_date", "cycle_days"]].merge(
+    scenarios = cycles[[SERIES_KEY, "CICLOS", "opening_date", "cycle_days"]].merge(
         offsets, how="cross"
     )
     scenarios["window_start"] = scenarios["opening_date"] + pd.to_timedelta(
@@ -284,7 +285,7 @@ def opening_factors(history: pd.DataFrame) -> pd.Series:
     # ponytail: fixed 10 alternating passes for the two-way demeaning;
     # converge on a tolerance if the panel grows much more unbalanced.
     for _ in range(10):
-        residual = residual - residual.groupby(usable["cd_setor"]).transform("mean")
+        residual = residual - residual.groupby(usable[SERIES_KEY]).transform("mean")
         residual = residual - residual.groupby(usable["CICLOS"]).transform("mean")
     by_day = residual.groupby(opening_day(usable))
     return np.exp(by_day.sum() / (by_day.size() + OPENING_DAY_PRIOR))
@@ -349,7 +350,7 @@ def forecast(
 
     This is f(sector, opening day, cycle length) = expected items for the
     cycle, the call the optimizer makes for every opening date it weighs.
-    Each query names its sector (`cd_setor`), the cycle it schedules
+    Each query names its series (`serie`, a sector-city), the cycle it schedules
     (`CICLOS`, with the cycle's `opening_date`) and the scenario window
     (`window_start`, `cycle_days`). The cycle is required rather than
     guessed: candidates read its code (LightGBM's cycle number) and order

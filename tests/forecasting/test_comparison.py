@@ -14,7 +14,7 @@ def _result(name: str, rows: list[tuple[str, str, float, float]]) -> EvaluationR
     scored = pd.DataFrame(
         [
             {
-                "cd_setor": sector,
+                "serie": sector,
                 "CICLOS": cycle,
                 "actual": actual,
                 "items_pred": predicted,
@@ -28,7 +28,7 @@ def _result(name: str, rows: list[tuple[str, str, float, float]]) -> EvaluationR
         origin_cycle="o1",
         target_cycles=("c1",),
         scored=scored,
-        missing=pd.DataFrame(columns=["cd_setor", "CICLOS", "origin_cycle"]),
+        missing=pd.DataFrame(columns=["serie", "CICLOS", "origin_cycle"]),
         naive_in_sample_mae=1.0,
     )
     return EvaluationResult(candidate_name=name, origins=[origin])
@@ -90,8 +90,12 @@ def test_a_candidate_that_scored_nothing_gets_a_nan_common_error():
 def _with_daily(result: EvaluationResult, cd_day_error: float) -> EvaluationResult:
     """Attach one CD-day row per scored point, off by `cd_day_error` items."""
     origin = result.origins[0]
-    daily = origin.scored[["cd_setor", "CICLOS", "origin_cycle"]].assign(
-        cd_cd="1", date=pd.Timestamp("2026-01-01"), actual=100.0, pred=100.0 - cd_day_error
+    daily = origin.scored[["serie", "CICLOS", "origin_cycle"]].assign(
+        cd_setor=origin.scored["serie"],
+        cd_cd="1",
+        date=pd.Timestamp("2026-01-01"),
+        actual=100.0,
+        pred=100.0 - cd_day_error,
     )
     replaced = OriginResult(**{**origin.__dict__, "daily": daily})
     return EvaluationResult(candidate_name=result.candidate_name, origins=[replaced])

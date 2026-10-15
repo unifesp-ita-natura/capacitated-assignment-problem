@@ -1,4 +1,4 @@
-"""Load the raw demand base; aggregate it into the per-(sector, cycle) panels forecasting uses."""
+"""Load the raw demand base; aggregate it into the panels forecasting uses."""
 
 from __future__ import annotations
 
@@ -8,6 +8,12 @@ from typing import NamedTuple
 import pandas as pd
 
 CYCLE_KEYS = ["cd_setor", "CICLOS"]
+# A level series is one (sector, city) pair. City names repeat across states,
+# so a city is identified by (estado, cidade). `serie` joins the three into
+# the single key the level candidates group by.
+CITY_COLUMNS = ["estado", "cidade"]
+SERIES_KEY = "serie"
+SERIES_KEYS = [SERIES_KEY, "CICLOS"]
 ORGANIZATION_COLUMNS = ("CD_RE", "CD_GV")
 
 # Columns the raw demand base must have. Anything else is ignored by the
@@ -82,35 +88,68 @@ def cycle_calendar(raw: pd.DataFrame) -> pd.DataFrame:
     return calendar.sort_values("CICLOS").reset_index(drop=True)
 
 
-def build_item_panel(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Aggregate the raw base into one row per (sector, cycle): items, orders, volumes, date.
+def build_item_panel(
+    raw: pd.DataFrame, calendar: pd.DataFrame | None = None, by_city: bool = True
+) -> pd.DataFrame:
+    """Aggregate the raw base into one row per (sector, city, cycle): items, orders, volumes, date.
 
-    `items` is L_{s,k} in the paper's notation, in items (the unit the CD
-    daily-capacity figures were given in — see docs/agent-log), and stays
-    the forecast target. `orders` and `volumes` ride along as predictors,
-    never as targets: a cycle's own order count isn't known when its volume
-    is forecast, so only their lags are usable (see `features.py`). Cycles
+    Each (sector, city) pair is its own series, keyed by `serie`; a city is
+    (estado, cidade), since names repeat across states. A city that bought
+    before but not in a cycle its sector was active gets a row of zeros
+    (see `_fill_quiet_cycles`). `by_city=False` keeps one series per sector
+    (`serie` is `cd_setor`, no city columns), for comparing the two. `items` is L_{s,k}
+    in the paper's notation, in items (the unit the CD daily-capacity
+    figures were given in — see docs/agent-log), and stays the forecast
+    target. `orders` and `volumes` ride along as predictors, never as
+    targets: a cycle's own order count isn't known when its volume is
+    forecast, so only their lags are usable (see `features.py`). Cycles
     the base only partially observed (per `cycle_calendar`) are dropped:
     keeping them would teach every forecasting candidate a demand collapse
     that is an artifact of the export window, not real.
 
     `opening_date` is the cycle's, shared by every sector (see
     `cycle_calendar`), and orders the series. `window_start` and
-    `cycle_days` are the sector's own window, the scenario inputs a
-    candidate may use (see `model.forecast`).
+    `cycle_days` are the sector's own window, shared by all its cities, the
+    scenario inputs a candidate may use (see `model.forecast`).
     """
     calendar = cycle_calendar(raw) if calendar is None else calendar
     complete = raw[raw["CICLOS"].isin(set(calendar.loc[calendar["is_complete"], "CICLOS"]))]
 
-    panel = complete.groupby(CYCLE_KEYS, as_index=False).agg(
+    keys = [*CYCLE_KEYS, *CITY_COLUMNS] if by_city else CYCLE_KEYS
+    panel = complete.groupby(keys, as_index=False).agg(
         items=("total_itens_mascarado", "sum"),
         orders=("total_pedidos_mascarado", "sum"),
         volumes=("total_volumes_mascarado", "sum"),
     )
+    if by_city:
+        panel = _fill_quiet_cycles(panel)
     panel = panel.merge(calendar[["CICLOS", "opening_date"]], on="CICLOS", how="left")
     panel = panel.merge(_sector_windows(complete), on=CYCLE_KEYS)
     panel = _attach_organization(panel, complete)
-    return panel.sort_values(["cd_setor", "opening_date"]).reset_index(drop=True)
+    series = panel["cd_setor"].astype(str)
+    if by_city:
+        series = series + "|" + panel["estado"] + "|" + panel["cidade"]
+    panel.insert(0, SERIES_KEY, series)
+    return panel.sort_values([SERIES_KEY, "opening_date"]).reset_index(drop=True)
+
+
+def _fill_quiet_cycles(panel: pd.DataFrame) -> pd.DataFrame:
+    """Add a zero row for each cycle a city bought nothing in, after its first purchase.
+
+    The base only records cities that bought, so without these rows a
+    backtest would only ever be asked about cities it already knows will
+    buy in the target cycle — knowledge a real forecast doesn't have. Only
+    cycles the sector itself was active in are filled, and never before the
+    city's first purchase, which is when it becomes known.
+    """
+    city_keys = ["cd_setor", *CITY_COLUMNS]
+    first = panel.groupby(city_keys, as_index=False)["CICLOS"].min()
+    grid = panel[CYCLE_KEYS].drop_duplicates().merge(first, on="cd_setor", suffixes=("", "_1st"))
+    grid = grid.loc[grid["CICLOS"] >= grid["CICLOS_1st"], [*city_keys, "CICLOS"]]
+    filled = grid.merge(panel, on=[*city_keys, "CICLOS"], how="left")
+    counts = ["items", "orders", "volumes"]
+    filled[counts] = filled[counts].fillna(0).astype(panel[counts].dtypes.to_dict())
+    return filled
 
 
 def _attach_organization(panel: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame:
@@ -123,18 +162,19 @@ def _attach_organization(panel: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame
         raise ValueError("conflicting CD_RE/CD_GV assignments within a sector-cycle")
     organization = grouped.first().reset_index()
     organization[columns] = organization[columns].astype("string")
-    return panel.merge(organization, on=CYCLE_KEYS, validate="one_to_one")
+    return panel.merge(organization, on=CYCLE_KEYS, validate="many_to_one")
 
 
 def sector_cycle_attributes(raw: pd.DataFrame) -> pd.DataFrame:
-    """Per (sector, cycle): region, sales management, and the CD and state with the most items.
+    """Per (sector, cycle): region, sales management, and the CD with the most items.
 
     For slicing backtest results only, never a model input. A sector-cycle
     split across several CDs (about 28% in base_tratada_v2) reports the one
-    that carried most of its items.
+    that carried most of its items. The state is not here: each level series
+    already carries its own city's `estado`.
     """
     attributes = raw[CYCLE_KEYS].drop_duplicates()
-    for column in ("cd_cd", "estado", *ORGANIZATION_COLUMNS):
+    for column in ("cd_cd", *ORGANIZATION_COLUMNS):
         if column in raw.columns:
             attributes = attributes.merge(_dominant(raw, column), on=CYCLE_KEYS, how="left")
     return attributes

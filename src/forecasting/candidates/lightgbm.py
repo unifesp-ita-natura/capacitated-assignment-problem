@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.config.schema import LightGBMParams
+from src.forecasting.dataset import SERIES_KEY, SERIES_KEYS
 from src.forecasting.features import (
     COMPANION_SERIES,
     LEVEL_REFERENCE,
@@ -17,7 +18,6 @@ from src.forecasting.features import (
     lag_columns,
 )
 from src.forecasting.model import (
-    CYCLE_KEYS,
     QUERY_KEYS,
     REGISTRY,
     SCENARIO_COLUMNS,
@@ -26,7 +26,7 @@ from src.forecasting.model import (
 
 # What the recursive forecast has to carry forward cycle by cycle, before
 # any companion series the configuration adds.
-_BASE_PANEL_COLUMNS = ("cd_setor", "CICLOS", "items", "opening_date", *SCENARIO_COLUMNS)
+_BASE_PANEL_COLUMNS = (SERIES_KEY, "CICLOS", "items", "opening_date", *SCENARIO_COLUMNS)
 _OUTPUT_COLUMNS = [*QUERY_KEYS, "items_pred"]
 
 
@@ -193,7 +193,7 @@ class _PooledLightGBMCandidate:
             # ponytail: a later cycle's lag is the mean over this cycle's
             # scenarios; a per-scenario path only matters at horizon > 1.
             working = _fill_predictions(
-                working, cycle, frame.groupby("cd_setor")["items_pred"].mean()
+                working, cycle, frame.groupby(SERIES_KEY)["items_pred"].mean()
             )
 
         if not predicted_frames:
@@ -208,7 +208,7 @@ class _PooledLightGBMCandidate:
         """
         scenarios = targets.loc[targets["CICLOS"] == cycle, QUERY_KEYS]
         shared = rows.drop(columns=SCENARIO_COLUMNS)
-        return add_window_features(shared.merge(scenarios, on=CYCLE_KEYS))
+        return add_window_features(shared.merge(scenarios, on=SERIES_KEYS))
 
     def _predictable_rows(self, working: pd.DataFrame, cycle: str) -> pd.DataFrame:
         """Rows for `cycle` that have at least one usable lag.
@@ -275,8 +275,8 @@ def _pending_rows(targets: pd.DataFrame, cycle: str, panel_columns: list[str]) -
     the item count itself, so they stay `NaN` and only their lags, which
     reach back into observed cycles, ever reach the model.
     """
-    rows = targets[targets["CICLOS"] == cycle][["cd_setor", "CICLOS", "opening_date"]]
-    rows = rows.drop_duplicates(CYCLE_KEYS)  # one per sector: scenarios share its lags
+    rows = targets[targets["CICLOS"] == cycle][[SERIES_KEY, "CICLOS", "opening_date"]]
+    rows = rows.drop_duplicates(SERIES_KEYS)  # one per series: scenarios share its lags
     blank = dict.fromkeys(
         [column for column in panel_columns if column not in rows.columns], np.nan
     )
@@ -288,7 +288,7 @@ def _pending_rows(targets: pd.DataFrame, cycle: str, panel_columns: list[str]) -
 def _fill_predictions(working: pd.DataFrame, cycle: str, predicted: pd.Series) -> pd.DataFrame:
     """Write this cycle's predictions into the working panel, so the next cycle's lags see them."""
     is_cycle = working["CICLOS"] == cycle
-    working.loc[is_cycle, "items"] = working.loc[is_cycle, "cd_setor"].map(predicted)
+    working.loc[is_cycle, "items"] = working.loc[is_cycle, SERIES_KEY].map(predicted)
     return working
 
 

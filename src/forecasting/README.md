@@ -1,7 +1,16 @@
 # `src/forecasting`
 
 Predicts `L_{s,k}` — total items per (sector, cycle) — the demand figure
-the block/sub-block assignment MIP needs as input. See
+the block/sub-block assignment MIP needs as input. The level is forecast one
+series per (sector, city): `build_item_panel` returns one row per (sector,
+city, cycle), keyed by `serie` = `cd_setor|estado|cidade`, and every
+candidate, lag, metric and comparison groups by `serie`. The window and the
+opening day stay the sector's, shared by all its cities; sum a sector's
+series to get its total. A city that skipped a cycle after its first
+purchase, while its sector was active, gets a zero row, so the backtest
+never knows in advance which cities will buy. `build_item_panel(raw,
+by_city=False)` keeps one series per sector; `experiments/sector_vs_city`
+compares the two. Shape is still per (sector, cycle). See
 `docs/papers/forecasting-volume-spec.tex` for the formal definition and
 `docs/agent-log/` for how the target's unit and dating were decided against
 the real demand base (`data/base_tratada.csv`; `data/base_tratada_v2.csv`
@@ -49,7 +58,7 @@ One (sector, cycle) can carry several queries, one per scenario.
   it schedules (`CICLOS`, `opening_date`) as well as the window.
 
   ```python
-  cycles = ...  # cd_setor, CICLOS, opening_date, cycle_days: one row per (sector, cycle)
+  cycles = ...  # serie, CICLOS, opening_date, cycle_days: one row per (series, cycle)
   scenarios = forecast(candidate, panel, opening_scenarios(cycles, range(30)))
   ```
 - In `evaluate()`, each target is queried with the window the sector

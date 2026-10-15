@@ -1,4 +1,4 @@
-"""Rank candidates on the (sector, cycle, fold) points that all of them actually scored."""
+"""Rank candidates on the (series, cycle, fold) points that all of them actually scored."""
 
 from __future__ import annotations
 
@@ -6,10 +6,11 @@ import numpy as np
 import pandas as pd
 
 from src.forecasting import daily as daily_module
+from src.forecasting.dataset import SERIES_KEY
 from src.forecasting.evaluation import EvaluationResult, equal_weight_mae
 from src.forecasting.metrics import PRIMARY_METRIC, bias, bias_pct, mase, rmse, wmape
 
-SCORE_KEYS = ["cd_setor", "CICLOS", "origin_cycle"]
+SCORE_KEYS = [SERIES_KEY, "CICLOS", "origin_cycle"]
 
 
 def _scored_keys(result: EvaluationResult) -> set[tuple[str, str, str]]:
@@ -18,7 +19,7 @@ def _scored_keys(result: EvaluationResult) -> set[tuple[str, str, str]]:
 
 
 def common_scored_keys(results: list[EvaluationResult]) -> set[tuple[str, str, str]]:
-    """The (sector, cycle, fold) points every candidate produced a prediction for.
+    """The (series, cycle, fold) points every candidate produced a prediction for.
 
     Candidates legitimately skip different points: an ARIMA order may not fit
     a given sector, and a pooled model needs enough cycles to build its lag

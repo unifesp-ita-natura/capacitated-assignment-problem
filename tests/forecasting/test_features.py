@@ -17,7 +17,7 @@ WINDOWS = [2]
 
 PANEL = pd.DataFrame(
     {
-        "cd_setor": ["A", "A", "A", "A", "B", "B", "B", "B"],
+        "serie": ["A", "A", "A", "A", "B", "B", "B", "B"],
         "CICLOS": ["202601", "202602", "202603", "202604"] * 2,
         "items": [100, 200, 300, 400, 10, 20, 30, 40],
         "opening_date": pd.to_datetime(
@@ -28,7 +28,7 @@ PANEL = pd.DataFrame(
 
 
 def test_lags_come_from_the_same_sector_only():
-    featured = build_features(PANEL, LAGS, WINDOWS).set_index(["cd_setor", "CICLOS"])
+    featured = build_features(PANEL, LAGS, WINDOWS).set_index(["serie", "CICLOS"])
 
     # B's first cycle has no prior cycle of its own — it must not inherit
     # A's last value just because A's rows come first in the frame.
@@ -37,14 +37,14 @@ def test_lags_come_from_the_same_sector_only():
 
 
 def test_lag_columns_hold_the_previous_cycles_values():
-    featured = build_features(PANEL, LAGS, WINDOWS).set_index(["cd_setor", "CICLOS"])
+    featured = build_features(PANEL, LAGS, WINDOWS).set_index(["serie", "CICLOS"])
 
     assert featured.loc[("A", "202604"), "lag_1"] == 300
     assert featured.loc[("A", "202604"), "lag_2"] == 200
 
 
 def test_rolling_mean_excludes_the_row_being_predicted():
-    featured = build_features(PANEL, LAGS, WINDOWS).set_index(["cd_setor", "CICLOS"])
+    featured = build_features(PANEL, LAGS, WINDOWS).set_index(["serie", "CICLOS"])
 
     # This is the leakage guard: the mean for cycle 4 averages cycles 2 and
     # 3 (200, 300) — never cycle 4's own 400.
@@ -52,7 +52,7 @@ def test_rolling_mean_excludes_the_row_being_predicted():
 
 
 def test_calendar_features_come_from_the_cycle_not_the_block():
-    featured = build_features(PANEL, LAGS, WINDOWS).set_index(["cd_setor", "CICLOS"])
+    featured = build_features(PANEL, LAGS, WINDOWS).set_index(["serie", "CICLOS"])
 
     assert featured.loc[("A", "202603"), "cycle_number"] == 3
     assert featured.loc[("A", "202603"), "opening_month"] == 3
@@ -79,7 +79,7 @@ def test_complete_frame_keeps_only_rows_with_every_feature_present():
 def test_complete_frame_pools_every_sector_into_one_matrix():
     complete = complete_feature_frame(PANEL, LAGS, WINDOWS)
 
-    assert set(complete["cd_setor"]) == {"A", "B"}
+    assert set(complete["serie"]) == {"A", "B"}
 
 
 # Same panel, plus the order and volume counts `build_item_panel` now
@@ -102,7 +102,7 @@ def test_companion_lags_are_absent_unless_asked_for():
 
 def test_companion_lags_hold_the_previous_cycles_counts():
     featured = build_features(PANEL_WITH_COUNTS, LAGS, WINDOWS, COMPANION_LAGS).set_index(
-        ["cd_setor", "CICLOS"]
+        ["serie", "CICLOS"]
     )
 
     assert featured.loc[("A", "202604"), "orders_lag_1"] == 30
@@ -112,7 +112,7 @@ def test_companion_lags_hold_the_previous_cycles_counts():
 
 def test_companion_lags_come_from_the_same_sector_only():
     featured = build_features(PANEL_WITH_COUNTS, LAGS, WINDOWS, COMPANION_LAGS).set_index(
-        ["cd_setor", "CICLOS"]
+        ["serie", "CICLOS"]
     )
 
     assert pd.isna(featured.loc[("B", "202601"), "orders_lag_1"])
@@ -121,7 +121,7 @@ def test_companion_lags_come_from_the_same_sector_only():
 
 def test_items_per_order_lag_is_an_earlier_cycles_ratio_never_its_own():
     featured = build_features(PANEL_WITH_COUNTS, LAGS, WINDOWS, COMPANION_LAGS).set_index(
-        ["cd_setor", "CICLOS"]
+        ["serie", "CICLOS"]
     )
 
     # Cycle 3's ratio is 300/30 = 10; cycle 4's own ratio (400/20 = 20)
@@ -149,7 +149,7 @@ def test_complete_frame_carries_the_columns_a_target_is_cut_from():
 
 
 def test_level_reference_is_the_running_mean_of_earlier_cycles_only():
-    featured = build_features(PANEL_WITH_COUNTS, LAGS, WINDOWS).set_index(["cd_setor", "CICLOS"])
+    featured = build_features(PANEL_WITH_COUNTS, LAGS, WINDOWS).set_index(["serie", "CICLOS"])
 
     # A's earlier cycles are 100, 200, 300 -> 200. Its own 400 is excluded,
     # which is what makes this usable as a ratio denominator.

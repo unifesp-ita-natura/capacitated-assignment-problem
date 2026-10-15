@@ -12,14 +12,14 @@ from src.forecasting.model import REGISTRY, InsufficientHistoryError
 
 HISTORY = pd.DataFrame(
     {
-        "cd_setor": ["A", "A", "A"],
+        "serie": ["A", "A", "A"],
         "CICLOS": ["1", "2", "3"],
         "items": [100, 200, 300],
         "opening_date": pd.to_datetime(["2026-01-01", "2026-01-22", "2026-02-12"]),
     }
 ).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
 TARGETS = pd.DataFrame(
-    {"cd_setor": ["A"], "CICLOS": ["4"], "opening_date": pd.to_datetime(["2026-03-05"])}
+    {"serie": ["A"], "CICLOS": ["4"], "opening_date": pd.to_datetime(["2026-03-05"])}
 ).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
 
 

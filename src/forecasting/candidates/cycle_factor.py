@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.config.schema import CycleFactorParams
+from src.forecasting.dataset import SERIES_KEY
 from src.forecasting.model import (
     PREDICTION_COLUMNS,
     REGISTRY,
@@ -41,12 +42,12 @@ class _CycleFactorCandidate:
             return pd.DataFrame(columns=PREDICTION_COLUMNS)
 
         factor = self._forecast_factor(_observed_factors(history))
-        rows = targets[targets["cd_setor"].isin(levels.index)]
+        rows = targets[targets[SERIES_KEY].isin(levels.index)]
         return pd.DataFrame(
             {
-                "cd_setor": rows["cd_setor"].to_numpy(),
+                SERIES_KEY: rows[SERIES_KEY].to_numpy(),
                 "CICLOS": rows["CICLOS"].to_numpy(),
-                "items_pred": np.clip(rows["cd_setor"].map(levels).to_numpy() * factor, 0, None),
+                "items_pred": np.clip(rows[SERIES_KEY].map(levels).to_numpy() * factor, 0, None),
             }
         )
 
@@ -68,7 +69,7 @@ class _CycleFactorCandidate:
 
 def _sector_levels(history: pd.DataFrame) -> pd.Series:
     """Each sector's mean over everything observed — the same number `naive:mean` forecasts."""
-    return history.groupby("cd_setor")["items"].mean()
+    return history.groupby(SERIES_KEY)["items"].mean()
 
 
 def _observed_factors(history: pd.DataFrame) -> pd.Series:
@@ -82,9 +83,9 @@ def _observed_factors(history: pd.DataFrame) -> pd.Series:
     the denominator, not a demand surge — while the ratio of sums stays
     inside 0.94 to 1.48, with a fifth of the dispersion.
     """
-    ordered = history.sort_values(["cd_setor", "opening_date"])
-    previous = ordered.groupby("cd_setor")["items"].shift(1)
-    running_mean = previous.groupby(ordered["cd_setor"]).transform(
+    ordered = history.sort_values([SERIES_KEY, "opening_date"])
+    previous = ordered.groupby(SERIES_KEY)["items"].shift(1)
+    running_mean = previous.groupby(ordered[SERIES_KEY]).transform(
         lambda series: series.expanding().mean()
     )
     usable = running_mean.notna() & (running_mean > 0)

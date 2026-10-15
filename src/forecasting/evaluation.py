@@ -9,9 +9,12 @@ import numpy as np
 import pandas as pd
 
 from src.forecasting import daily as daily_module
-from src.forecasting.dataset import DailyBase
+from src.forecasting.dataset import CITY_COLUMNS, SERIES_KEY, DailyBase
 from src.forecasting.metrics import PRIMARY_METRIC, mase, rmse
 from src.forecasting.model import SCENARIO_COLUMNS, ForecastCandidate, align_predictions
+
+# What identifies a scored row: its series, plus the sector and city it is made of.
+_ID_COLUMNS = [SERIES_KEY, "cd_setor", *CITY_COLUMNS]
 
 
 @dataclass(frozen=True)
@@ -36,14 +39,14 @@ class RollingOriginSplit:
 
 @dataclass(frozen=True)
 class OriginResult:
-    """One rolling-origin fold: which (sector, cycle) pairs were scored, which were skipped."""
+    """One rolling-origin fold: which (series, cycle) pairs were scored, which were skipped."""
 
     origin_cycle: str
     target_cycles: tuple[str, ...]
-    scored: pd.DataFrame  # cd_setor, CICLOS, actual, items_pred, abs_error, origin_cycle
+    scored: pd.DataFrame  # serie, cd_setor, estado, cidade, CICLOS, actual, items_pred, ...
     missing: (
         pd.DataFrame
-    )  # cd_setor, CICLOS, origin_cycle — target had an actual, candidate gave no prediction
+    )  # serie, CICLOS, origin_cycle — target had an actual, candidate gave no prediction
     naive_in_sample_mae: (
         float  # one-cycle-ahead naive error on this fold's training window, for MASE
     )
@@ -62,14 +65,21 @@ class EvaluationResult:
     def scored(self) -> pd.DataFrame:
         if not self.origins:
             return pd.DataFrame(
-                columns=["cd_setor", "CICLOS", "actual", "items_pred", "abs_error", "origin_cycle"]
+                columns=[
+                    *_ID_COLUMNS,
+                    "CICLOS",
+                    "actual",
+                    "items_pred",
+                    "abs_error",
+                    "origin_cycle",
+                ]
             )
         return pd.concat([o.scored for o in self.origins], ignore_index=True)
 
     @property
     def missing(self) -> pd.DataFrame:
         if not self.origins:
-            return pd.DataFrame(columns=["cd_setor", "CICLOS", "origin_cycle"])
+            return pd.DataFrame(columns=[SERIES_KEY, "CICLOS", "origin_cycle"])
         return pd.concat([o.missing for o in self.origins], ignore_index=True)
 
     @property
@@ -78,7 +88,7 @@ class EvaluationResult:
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     def summary(self) -> dict[str, float | int]:
-        """Aggregate error per the spec's rule: equal weight per sector, plus p90/worst fold."""
+        """Aggregate error per the spec's rule: equal weight per series, plus p90/worst fold."""
         scored = self.scored
         if scored.empty:
             raise ValueError(
@@ -100,6 +110,7 @@ class EvaluationResult:
             "n_scored": len(scored),
             "n_missing": len(self.missing),
             "n_sectors_scored": scored["cd_setor"].nunique(),
+            "n_series_scored": scored[SERIES_KEY].nunique(),
             "n_origins": len(self.origins),
         }
 
@@ -121,15 +132,14 @@ class EvaluationResult:
 
 
 def equal_weight_mae(scored: pd.DataFrame) -> float:
-    """MAE giving every sector one vote, regardless of how many rows it contributed.
+    """MAE giving every series (sector-city) one vote, regardless of how many rows it contributed.
 
-    The spec's decision rule (section 4.6) weights sectors equally rather
-    than by volume, because the assignment problem treats every sector
-    symmetrically — a big sector's error shouldn't dominate the ranking.
+    The spec's decision rule (section 4.6) weights series equally rather
+    than by volume — a big series' error shouldn't dominate the ranking.
     Shared with `comparison.py` so a candidate's headline number and its
     common-subset number are computed the same way.
     """
-    return float(scored.groupby("cd_setor")["abs_error"].mean().mean())
+    return float(scored.groupby(SERIES_KEY)["abs_error"].mean().mean())
 
 
 def _cycle_order(panel: pd.DataFrame) -> list[str]:
@@ -149,7 +159,7 @@ def _training_cycles(cycles: list[str], origin_idx: int, split: RollingOriginSpl
 
 
 def _naive_in_sample_mae(history: pd.DataFrame) -> float:
-    """One-cycle-ahead naive absolute error, pooled across sectors, on the training window alone.
+    """One-cycle-ahead naive absolute error, pooled across series, on the training window alone.
 
     Used only to scale MASE (metrics.mase) — never touches the holdout being
     scored, so the scale itself can't leak future data. Returns `nan` when
@@ -159,7 +169,7 @@ def _naive_in_sample_mae(history: pd.DataFrame) -> float:
     """
     diffs = [
         np.abs(np.diff(series["items"].to_numpy()))
-        for _, series in history.sort_values("opening_date").groupby("cd_setor")
+        for _, series in history.sort_values("opening_date").groupby(SERIES_KEY)
         if len(series) >= 2
     ]
     if not diffs:
@@ -184,8 +194,9 @@ def _score_origin(
     # Each target is queried with the window the sector actually had, so the
     # actual it is scored against is the outcome of that very scenario.
     target_rows = panel[panel["CICLOS"].isin(target_cycles)]
-    targets = target_rows[["cd_setor", "CICLOS", "opening_date", *SCENARIO_COLUMNS]]
-    merged = target_rows[["cd_setor", "CICLOS", "items"]].rename(columns={"items": "actual"})
+    targets = target_rows[[SERIES_KEY, "CICLOS", "opening_date", *SCENARIO_COLUMNS]]
+    ids = [column for column in _ID_COLUMNS if column in target_rows]  # a sector panel has no city
+    merged = target_rows[[*ids, "CICLOS", "items"]].rename(columns={"items": "actual"})
     merged["items_pred"] = align_predictions(targets, candidate.fit_predict(history, targets))
     is_missing = merged["items_pred"].isna()
 
@@ -193,14 +204,16 @@ def _score_origin(
     scored["abs_error"] = (scored["actual"] - scored["items_pred"]).abs()
     scored["origin_cycle"] = train_cycles[-1]
 
-    missing = merged.loc[is_missing, ["cd_setor", "CICLOS"]].copy()
+    missing = merged.loc[is_missing, [SERIES_KEY, "CICLOS"]].copy()
     missing["origin_cycle"] = train_cycles[-1]
 
     daily = pd.DataFrame()
     if daily_base is not None:
-        daily = daily_module.score_daily(
-            scored[["cd_setor", "CICLOS", "items_pred"]], daily_base, train_cycles, curve
-        ).assign(origin_cycle=train_cycles[-1])
+        # The daily spread is per sector: its cities' forecasts are summed first.
+        by_sector = scored.groupby(["cd_setor", "CICLOS"], as_index=False)["items_pred"].sum()
+        daily = daily_module.score_daily(by_sector, daily_base, train_cycles, curve).assign(
+            origin_cycle=train_cycles[-1]
+        )
 
     return OriginResult(
         origin_cycle=train_cycles[-1],

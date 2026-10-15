@@ -25,7 +25,7 @@ def _history(sectors: dict[str, list[float]]) -> pd.DataFrame:
     rows = []
     for sector, values in sectors.items():
         for cycle, date, value in zip(CYCLES[: len(values)], DATES, values, strict=False):
-            rows.append({"cd_setor": sector, "CICLOS": cycle, "items": value, "opening_date": date})
+            rows.append({"serie": sector, "CICLOS": cycle, "items": value, "opening_date": date})
     return pd.DataFrame(rows).assign(
         window_start=lambda frame: frame["opening_date"], cycle_days=21
     )
@@ -33,7 +33,7 @@ def _history(sectors: dict[str, list[float]]) -> pd.DataFrame:
 
 def _targets(sectors: list[str], cycles: list[str], dates: list[str]) -> pd.DataFrame:
     rows = [
-        {"cd_setor": sector, "CICLOS": cycle, "opening_date": pd.Timestamp(date)}
+        {"serie": sector, "CICLOS": cycle, "opening_date": pd.Timestamp(date)}
         for cycle, date in zip(cycles, dates, strict=True)
         for sector in sectors
     ]
@@ -48,7 +48,7 @@ def test_pooled_candidate_predicts_every_sector_with_history():
 
     predictions = REGISTRY.build(PARAMS).fit_predict(history, targets)
 
-    assert set(predictions["cd_setor"]) == {"A", "B"}
+    assert set(predictions["serie"]) == {"A", "B"}
     assert (predictions["items_pred"] >= 0).all()
 
 
@@ -82,7 +82,7 @@ def test_a_sector_with_no_prior_cycle_is_skipped_not_guessed():
 
     predictions = REGISTRY.build(PARAMS).fit_predict(history, targets)
 
-    assert "NEW" not in set(predictions["cd_setor"])
+    assert "NEW" not in set(predictions["serie"])
 
 
 def test_predictions_are_reproducible_for_a_fixed_random_state():
@@ -133,7 +133,7 @@ def test_pooled_candidate_uses_order_counts_without_needing_them_for_the_target_
 
     predictions = REGISTRY.build(PARAMS_WITH_COUNTS).fit_predict(history, targets)
 
-    assert set(predictions["cd_setor"]) == {"A", "B"}
+    assert set(predictions["serie"]) == {"A", "B"}
     assert (predictions["items_pred"] >= 0).all()
 
 
@@ -177,10 +177,10 @@ def test_ratio_target_still_returns_predictions_in_items():
 
     predictions = REGISTRY.build(RATIO_PARAMS).fit_predict(history, targets)
 
-    assert set(predictions["cd_setor"]) == {"A", "B"}
+    assert set(predictions["serie"]) == {"A", "B"}
     # A lives near 115 and B near 12; a ratio left untransformed would land
     # both near 1.
-    by_sector = predictions.set_index("cd_setor")["items_pred"]
+    by_sector = predictions.set_index("serie")["items_pred"]
     assert by_sector["A"] > 50
     assert by_sector["B"] < 50
 
@@ -202,7 +202,7 @@ def test_scenarios_of_one_cycle_differ_by_their_window():
             start = pd.Timestamp("2025-01-06") + pd.Timedelta(days=21 * n)
             rows.append(
                 {
-                    "cd_setor": f"S{s}",
+                    "serie": f"S{s}",
                     "CICLOS": f"2025{n:02d}",
                     "items": 100.0 if days == 21 else 50.0,
                     "opening_date": start,
@@ -221,7 +221,7 @@ def test_scenarios_of_one_cycle_differ_by_their_window():
     next_start = pd.Timestamp("2025-01-06") + pd.Timedelta(days=21 * 12)
     targets = pd.DataFrame(
         {
-            "cd_setor": ["S0", "S0"],
+            "serie": ["S0", "S0"],
             "CICLOS": "202599",
             "opening_date": next_start,
             "window_start": next_start,
@@ -236,9 +236,9 @@ def test_scenarios_of_one_cycle_differ_by_their_window():
 
 
 def test_organization_encoding_is_shared_and_unseen_categories_are_missing():
-    history = pd.DataFrame({"cd_setor": ["A", "B"], "CD_RE": ["02", "01"]})
-    types = _category_types(history, ["cd_setor", "CD_RE"])
-    targets = pd.DataFrame({"cd_setor": ["B", "A"], "CD_RE": ["01", "99"]})
+    history = pd.DataFrame({"serie": ["A", "B"], "CD_RE": ["02", "01"]})
+    types = _category_types(history, ["serie", "CD_RE"])
+    targets = pd.DataFrame({"serie": ["B", "A"], "CD_RE": ["01", "99"]})
     encoded = _as_model_frame(targets, types)
     assert encoded.CD_RE.cat.categories.tolist() == ["01", "02"]
     assert encoded.CD_RE.cat.codes.tolist() == [0, -1]
@@ -246,9 +246,9 @@ def test_organization_encoding_is_shared_and_unseen_categories_are_missing():
 
 def test_prediction_organization_comes_from_latest_history_by_sector():
     history = _history({"A": [100, 120, 110], "B": [10, 12, 11]}).assign(CD_RE="01")
-    history.loc[(history.cd_setor == "A") & (history.CICLOS == "202603"), "CD_RE"] = "02"
+    history.loc[(history.serie == "A") & (history.CICLOS == "202603"), "CD_RE"] = "02"
     pending = _targets(["A", "B", "NEW"], ["202604"], ["2026-04-02"]).assign(CD_RE="99")
-    carried = _carry_organization(pending, history.iloc[::-1], ["CD_RE"]).set_index("cd_setor")
+    carried = _carry_organization(pending, history.iloc[::-1], ["CD_RE"]).set_index("serie")
     assert carried.CD_RE.loc["A"] == "02"
     assert carried.CD_RE.loc["B"] == "01"
     assert pd.isna(carried.CD_RE.loc["NEW"])
@@ -260,8 +260,8 @@ def test_organization_candidate_predicts_multiple_steps_without_target_metadata(
         update={"categorical_features": ["CD_RE", "CD_GV"], "target": target}
     )
     history = _history({"A": [100, 120, 110, 130, 125], "B": [10, 12, 11, 13, 12]}).assign(
-        CD_RE=lambda frame: frame.cd_setor.map({"A": "01", "B": "02"}),
-        CD_GV=lambda frame: frame.cd_setor.map({"A": "001", "B": "002"}),
+        CD_RE=lambda frame: frame.serie.map({"A": "01", "B": "02"}),
+        CD_GV=lambda frame: frame.serie.map({"A": "001", "B": "002"}),
     )
     targets = _targets(["A", "B"], ["202606", "202607"], ["2026-06-01", "2026-07-06"])
     predictions = REGISTRY.build(params).fit_predict(history, targets)

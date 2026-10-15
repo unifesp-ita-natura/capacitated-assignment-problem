@@ -35,7 +35,7 @@ def test_daily_items_add_back_up_to_the_cycle_panel():
     raw = load_demand_base(FIXTURE_PATH)
 
     base = build_daily_base(raw)
-    panel = build_item_panel(raw).set_index(["cd_setor", "CICLOS"])["items"]
+    panel = build_item_panel(raw).groupby(["cd_setor", "CICLOS"])["items"].sum()
 
     by_cycle = base.actuals.groupby(["cd_setor", "CICLOS"])["items"].sum()
     assert by_cycle.to_dict() == panel.to_dict()

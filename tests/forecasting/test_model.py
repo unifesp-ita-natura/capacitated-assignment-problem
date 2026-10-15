@@ -90,7 +90,7 @@ def test_forecast_future_cycles_covers_every_cycle_in_the_horizon():
 
 HISTORY = pd.DataFrame(
     {
-        "cd_setor": ["A", "A", "B", "B"],
+        "serie": ["A", "A", "B", "B"],
         "CICLOS": ["1", "2", "1", "2"],
         "items": [100, 200, 10, 20],
         "opening_date": pd.to_datetime(["2026-01-01", "2026-01-22", "2026-01-01", "2026-01-22"]),
@@ -98,7 +98,7 @@ HISTORY = pd.DataFrame(
 ).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
 TARGETS = pd.DataFrame(
     {
-        "cd_setor": ["A", "B"],
+        "serie": ["A", "B"],
         "CICLOS": ["3", "3"],
         "opening_date": pd.to_datetime(["2026-02-12", "2026-02-12"]),
     }
@@ -112,7 +112,7 @@ def test_per_sector_applies_fn_independently_to_each_sector():
 
     predictions = candidate.fit_predict(HISTORY, TARGETS)
 
-    by_sector = predictions.set_index("cd_setor")["items_pred"]
+    by_sector = predictions.set_index("serie")["items_pred"]
     assert by_sector["A"] == 200
     assert by_sector["B"] == 20
 
@@ -124,12 +124,12 @@ def test_per_sector_skips_a_sector_with_no_target_cycles_without_calling_fn():
         calls.append("called")
         return pd.Series([series.iloc[-1]] * horizon)
 
-    targets_missing_b = TARGETS[TARGETS["cd_setor"] == "A"]
+    targets_missing_b = TARGETS[TARGETS["serie"] == "A"]
     candidate = per_sector(name="last", fn=fn)
 
     predictions = candidate.fit_predict(HISTORY, targets_missing_b)
 
-    assert set(predictions["cd_setor"]) == {"A"}
+    assert set(predictions["serie"]) == {"A"}
     assert calls == ["called"]
 
 
@@ -143,7 +143,7 @@ def test_per_sector_skips_a_sector_whose_fn_raises_insufficient_history():
 
     predictions = candidate.fit_predict(HISTORY, TARGETS)
 
-    assert set(predictions["cd_setor"]) == {"A"}
+    assert set(predictions["serie"]) == {"A"}
 
 
 def test_per_sector_propagates_unexpected_errors():
