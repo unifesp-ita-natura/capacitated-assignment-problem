@@ -167,9 +167,7 @@ def test_recency_candidate_in_evaluation(raw):
     assert set(scored["candidate"]) == {"recency", "sector"}
 
 
-@pytest.mark.parametrize(
-    "model", ["sector", pytest.param("lightgbm", marks=requires_lightgbm)]
-)
+@pytest.mark.parametrize("model", ["sector", pytest.param("lightgbm", marks=requires_lightgbm)])
 def test_target_demand_does_not_leak_into_prediction(raw, model):
     candidates = [
         ShapeCandidate(
