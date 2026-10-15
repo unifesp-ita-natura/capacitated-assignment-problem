@@ -1,8 +1,12 @@
-"""Tests for the sector/Bloco-Subloco assignment MIP — solver backend is mocked, never called."""
+"""Tests for the sector/Bloco-Subloco assignment MIP.
+
+Solves run against the real HiGHS backend (bundled via `highspy`, no license
+needed) rather than a mocked solver, so these tests exercise real solving.
+A fake "gurobi" solver is used only to force the one condition a license-free
+machine can't produce for real: Gurobi being unavailable.
+"""
 
 from __future__ import annotations
-
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,6 +15,16 @@ from src.solver.mip.block_assignment import (
     run_block_assignment_mip,
     solve_block_assignment,
 )
+
+
+class _UnavailableGurobiStub:
+    """Stands in for `pyo.SolverFactory("gurobi")` when no license is installed."""
+
+    def available(self, exception_flag: bool = True) -> bool:
+        return False
+
+    def solve(self, *args, **kwargs):
+        raise AssertionError("gurobi stub should never be solved against")
 
 
 @pytest.fixture
@@ -108,61 +122,61 @@ def test_churn_constraint_is_a_single_budget_across_all_sectors(toy_instance):
     assert model.churn_limit.upper() == 2 * toy_instance["max_churn"]
 
 
-@patch("src.solver.mip.block_assignment.pyo.SolverFactory")
-def test_solve_block_assignment_defaults_to_gurobi(mock_solver_factory, toy_instance):
-    mock_solver = MagicMock()
-    mock_solver_factory.return_value = mock_solver
+def test_solve_block_assignment_solves_for_real_with_highs(toy_instance):
     model = build_block_assignment_model(**toy_instance)
 
-    solve_block_assignment(model)
+    results = solve_block_assignment(model, solver="appsi_highs")
 
-    mock_solver_factory.assert_called_once_with("gurobi")
-    mock_solver.solve.assert_called_once()
-
-
-@pytest.mark.parametrize("solver_name", ["gurobi", "appsi_highs", "cbc"])
-@patch("src.solver.mip.block_assignment.pyo.SolverFactory")
-def test_solve_block_assignment_dispatches_to_requested_solver(
-    mock_solver_factory, solver_name, toy_instance
-):
-    mock_solver = MagicMock()
-    mock_solver_factory.return_value = mock_solver
-    model = build_block_assignment_model(**toy_instance)
-
-    solve_block_assignment(model, solver=solver_name)
-
-    mock_solver_factory.assert_called_once_with(solver_name)
+    assert str(results.solver.termination_condition) == "optimal"
 
 
-@patch("src.solver.mip.block_assignment.pyo.SolverFactory")
-def test_run_block_assignment_mip_defaults_to_highs(mock_solver_factory, toy_instance):
-    mock_solver = MagicMock()
-    mock_solver.solve.return_value = MagicMock(
-        solver=MagicMock(status="ok", termination_condition="optimal")
-    )
-    mock_solver_factory.return_value = mock_solver
-
+def test_run_block_assignment_mip_defaults_to_gurobi_when_a_license_is_installed(toy_instance):
     result = run_block_assignment_mip(**toy_instance)
 
-    mock_solver_factory.assert_called_once_with("appsi_highs")
-    assert (
-        result.model_name,
-        result.solver,
-        result.status,
-        result.termination_condition,
-    ) == ("mip_highs", "appsi_highs", "ok", "optimal")
+    assert result.model_name == "mip_block_assignment"
+    assert result.solver in ("gurobi", "appsi_highs")  # falls back if this machine has no license
+    assert result.termination_condition == "optimal"
     assert result.wall_time_seconds >= 0
 
 
-@patch("src.solver.mip.block_assignment.pyo.SolverFactory")
-def test_run_block_assignment_mip_dispatches_to_requested_solver(mock_solver_factory, toy_instance):
-    mock_solver = MagicMock()
-    mock_solver.solve.return_value = MagicMock(
-        solver=MagicMock(status="ok", termination_condition="optimal")
+def test_run_block_assignment_mip_dispatches_to_requested_solver(toy_instance):
+    result = run_block_assignment_mip(**toy_instance, solver="appsi_highs")
+
+    assert result.solver == "appsi_highs"
+    assert result.termination_condition == "optimal"
+
+
+def test_solve_block_assignment_falls_back_to_highs_when_gurobi_unavailable(
+    monkeypatch, toy_instance, caplog
+):
+    import pyomo.environ as pyo
+
+    real_solver_factory = pyo.SolverFactory
+    monkeypatch.setattr(
+        "src.solver.mip.block_assignment.pyo.SolverFactory",
+        lambda name: _UnavailableGurobiStub() if name == "gurobi" else real_solver_factory(name),
     )
-    mock_solver_factory.return_value = mock_solver
+    model = build_block_assignment_model(**toy_instance)
 
-    result = run_block_assignment_mip(**toy_instance, solver="cbc")
+    with caplog.at_level("WARNING"):
+        results = solve_block_assignment(model)
 
-    mock_solver_factory.assert_called_once_with("cbc")
-    assert result.solver == "cbc"
+    assert str(results.solver.termination_condition) == "optimal"
+    assert "falling back" in caplog.text.lower()
+
+
+def test_run_block_assignment_mip_falls_back_to_highs_when_gurobi_unavailable(
+    monkeypatch, toy_instance
+):
+    import pyomo.environ as pyo
+
+    real_solver_factory = pyo.SolverFactory
+    monkeypatch.setattr(
+        "src.solver.mip.block_assignment.pyo.SolverFactory",
+        lambda name: _UnavailableGurobiStub() if name == "gurobi" else real_solver_factory(name),
+    )
+
+    result = run_block_assignment_mip(**toy_instance)
+
+    assert result.solver == "appsi_highs"
+    assert result.termination_condition == "optimal"

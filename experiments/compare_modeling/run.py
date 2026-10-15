@@ -1,43 +1,46 @@
-"""Solve the example model with each configured solver and write a comparison table."""
+"""Solve the toy block-assignment model with each configured solver and write a comparison table."""
 
 from __future__ import annotations
 
-import time
-
-import pyomo.environ as pyo
-
 from src.persistence import SolveResult, configure_tracking, log_solve_result, write_results_csv
-from src.solver.mip.example import build_example_model, solve_example
+from src.solver.mip.block_assignment import run_block_assignment_mip
 
 # Add/remove Pyomo-registered solver names to compare different backends
 # against the same model. To compare different *formulations* instead (or in
-# addition), swap `build_example_model()` for a list of model builders and
+# addition), swap the toy instance below for a list of instances/builders and
 # loop over both.
 SOLVERS_TO_COMPARE = ["gurobi"]
 
 OUTPUT_PATH = "experiments/compare_modeling/outputs/results.csv"
 
+TOY_INSTANCE = dict(
+    sectors=[1, 2],
+    combinations=[1, 2],
+    days=[1, 2],
+    cd_sectors={1: [1, 2]},
+    daily_capacity={(1, 1): 100.0, (1, 2): 100.0},
+    projected_demand={
+        (1, 1, 1): 10.0,
+        (1, 2, 1): 0.0,
+        (1, 1, 2): 0.0,
+        (1, 2, 2): 10.0,
+        (2, 1, 1): 10.0,
+        (2, 2, 1): 0.0,
+        (2, 1, 2): 0.0,
+        (2, 2, 2): 10.0,
+    },
+    current_assignment={(1, 1): 1, (2, 2): 1},
+    max_churn=1,
+    days_by_cycle={0: [1, 2]},
+)
+
 
 def run(solvers: list[str] = SOLVERS_TO_COMPARE) -> list[SolveResult]:
     results = []
     for solver_name in solvers:
-        model = build_example_model()
-
-        start = time.perf_counter()
-        pyomo_results = solve_example(model, solver=solver_name)
-        wall_time_seconds = time.perf_counter() - start
-
-        results.append(
-            SolveResult(
-                model_name="example",
-                solver=solver_name,
-                status=str(pyomo_results.solver.status),
-                termination_condition=str(pyomo_results.solver.termination_condition),
-                objective=pyo.value(model.objective, exception=False),
-                wall_time_seconds=wall_time_seconds,
-            )
-        )
-        log_solve_result(results[-1], tags={"family": "mip"})
+        result = run_block_assignment_mip(**TOY_INSTANCE, solver=solver_name)
+        results.append(result)
+        log_solve_result(result, tags={"family": "mip"})
     return results
 
 

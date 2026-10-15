@@ -199,6 +199,7 @@ from src.forecasting.comparison import SCORE_KEYS, common_scored_keys
 from src.forecasting.evaluation import equal_weight_mae
 from src.forecasting.metrics import rmse
 
+
 def common_level_metrics(results):
     keys = common_scored_keys(results)
     if not keys:
@@ -209,14 +210,17 @@ def common_level_metrics(results):
         scored = result.scored
         selected = pd.MultiIndex.from_frame(scored[SCORE_KEYS]).isin(common)
         scored = scored.loc[selected]
-        rows.append({
-            "candidate": result.candidate_name,
-            "mae_common": equal_weight_mae(scored),
-            "rmse_common": rmse(scored["actual"], scored["items_pred"]),
-            "p90_common": float(np.percentile(scored["abs_error"], 90)),
-            "n_common": len(scored),
-        })
+        rows.append(
+            {
+                "candidate": result.candidate_name,
+                "mae_common": equal_weight_mae(scored),
+                "rmse_common": rmse(scored["actual"], scored["items_pred"]),
+                "p90_common": float(np.percentile(scored["abs_error"], 90)),
+                "n_common": len(scored),
+            }
+        )
     return pd.DataFrame(rows).sort_values("mae_common")
+
 
 # print(common_level_metrics(results).to_string(index=False))
 ~~~
@@ -271,7 +275,7 @@ print("Desenvolvimento:", development_result.summary())
 final_result = evaluate(
     REGISTRY.build(params),
     panel,
-    RollingOriginSplit(horizon=H, min_train_cycles=len(cycle_order)-H),
+    RollingOriginSplit(horizon=H, min_train_cycles=len(cycle_order) - H),
 )
 print("Final:", final_result.summary())
 ~~~

@@ -15,15 +15,14 @@ working Gurobi license can't produce that condition for real, so stub out
 just `pyo.SolverFactory("gurobi")` (e.g. a small fake with
 `available() -> False`) while leaving every other solver name — in
 particular the HiGHS fallback — going through the real `pyo.SolverFactory`.
-See `tests/solver/mip/test_example.py` and `tests/solver/mip/test_block_assignment.py`
-for the pattern, and `src/solver/README.md` for the fallback behavior being
-tested.
+See `tests/solver/mip/test_block_assignment.py` for the pattern, and
+`src/solver/README.md` for the fallback behavior being tested.
 
 ## Commands
 
 ```bash
 uv run pytest -q
-uv run pytest tests/solver/mip/test_example.py
+uv run pytest tests/solver/mip/test_block_assignment.py
 uv run pytest --cov=src
 ```
 

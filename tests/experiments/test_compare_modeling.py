@@ -7,14 +7,17 @@ from unittest.mock import MagicMock, patch
 from experiments.compare_modeling.run import run
 
 
-@patch("experiments.compare_modeling.run.solve_example")
-def test_run_produces_one_result_per_solver(mock_solve_example):
-    mock_results = MagicMock()
-    mock_results.solver.status = "ok"
-    mock_results.solver.termination_condition = "optimal"
-    mock_solve_example.return_value = mock_results
+@patch("experiments.compare_modeling.run.run_block_assignment_mip")
+def test_run_produces_one_result_per_solver(mock_run_block_assignment_mip):
+    def fake_run(*, solver, **kwargs):
+        result = MagicMock()
+        result.solver = solver
+        result.model_name = "mip_block_assignment"
+        return result
+
+    mock_run_block_assignment_mip.side_effect = fake_run
 
     results = run(solvers=["gurobi", "appsi_highs"])
 
     assert [r.solver for r in results] == ["gurobi", "appsi_highs"]
-    assert all(r.model_name == "example" for r in results)
+    assert all(r.model_name == "mip_block_assignment" for r in results)

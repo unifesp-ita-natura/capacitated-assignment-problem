@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Iterable, Mapping
 
@@ -10,6 +11,10 @@ import pyomo.environ as pyo
 from src.persistence import SolveResult
 
 ProjectedDemand = Mapping[tuple[int, int, int], float]  # (sector, day, combination) -> qty
+
+FALLBACK_SOLVER = "appsi_highs"
+
+logger = logging.getLogger(__name__)
 
 
 def build_block_assignment_model(
@@ -45,13 +50,31 @@ def build_block_assignment_model(
     return model
 
 
+def _resolve_solver(solver: str) -> tuple[pyo.SolverFactory, str]:
+    """Pyomo solver interface for `solver`, falling back to `FALLBACK_SOLVER`.
+
+    The fallback only triggers for `solver == "gurobi"` with no working
+    license/install (checked via `.available()`, never by calling `.solve()`),
+    so a locally-missing Gurobi license doesn't block running this project.
+    """
+    solver_interface = pyo.SolverFactory(solver)
+    if solver == "gurobi" and not solver_interface.available(exception_flag=False):
+        logger.warning(
+            "Gurobi is unavailable (no license or install found); falling back to %s.",
+            FALLBACK_SOLVER,
+        )
+        return pyo.SolverFactory(FALLBACK_SOLVER), FALLBACK_SOLVER
+    return solver_interface, solver
+
+
 def solve_block_assignment(model: pyo.ConcreteModel, solver: str = "gurobi") -> pyo.SolverResults:
     """Resolve `model` com `solver` via a interface de solvers do Pyomo.
 
-    `solver` é qualquer nome de solver registrado no Pyomo, seguindo o mesmo
-    padrão de `src/solver/mip/example.py`.
+    `solver` é qualquer nome de solver registrado no Pyomo. Faz fallback pra
+    `FALLBACK_SOLVER` se `solver == "gurobi"` e não houver licença/instalação
+    disponível.
     """
-    solver_interface = pyo.SolverFactory(solver)
+    solver_interface, _ = _resolve_solver(solver)
     return solver_interface.solve(model)
 
 
@@ -65,7 +88,7 @@ def run_block_assignment_mip(
     current_assignment: dict[tuple[int, int], int],
     max_churn: float,
     days_by_cycle: dict[int, list[int]],
-    solver: str = "appsi_highs",
+    solver: str = "gurobi",
 ) -> SolveResult:
     """Build and solve the block-assignment MIP, returning a timed `SolveResult`."""
     model = build_block_assignment_model(
@@ -79,12 +102,13 @@ def run_block_assignment_mip(
         max_churn=max_churn,
         days_by_cycle=days_by_cycle,
     )
+    solver_interface, resolved_solver = _resolve_solver(solver)
     start = time.perf_counter()
-    pyomo_results = solve_block_assignment(model, solver=solver)
+    pyomo_results = solver_interface.solve(model)
     wall_time_seconds = time.perf_counter() - start
     return SolveResult(
-        model_name="mip_highs",
-        solver=solver,
+        model_name="mip_block_assignment",
+        solver=resolved_solver,
         status=str(pyomo_results.solver.status),
         termination_condition=str(pyomo_results.solver.termination_condition),
         objective=pyo.value(model.objective, exception=False),
