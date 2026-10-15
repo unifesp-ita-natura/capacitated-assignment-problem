@@ -266,7 +266,7 @@ async function loadRun(run) {
   const miss = need.filter(c => !meta.fields.includes(c));
   if (miss.length) { run.rows = []; $("msg").textContent = `${run.name}: faltam colunas ${miss.join(", ")}`; return; }
   run.rows = data.map(d => ({
-    candidate: d.candidate, sector: String(d.cd_setor), cycle: String(d.CICLOS), origin: String(d.origin_cycle ?? ""),
+    candidate: d.candidate, sector: String(d.cd_setor), series: String(d.serie ?? d.cd_setor), cycle: String(d.CICLOS), origin: String(d.origin_cycle ?? ""),
     actual: +d.actual, pred: +d.items_pred,
     region: code(d.CD_RE), manager: code(d.CD_GV), cd: code(d.cd_cd), uf: d.estado ?? "",
   })).filter(r => Number.isFinite(r.actual) && Number.isFinite(r.pred));
@@ -360,8 +360,8 @@ function filtered() {
     && (!sector || r.sector === sector) && Object.entries(want).every(([k, v]) => !v || r[k] === v));
   if ($("fCommon").checked && on.length > 1) {
     const count = new Map();
-    for (const r of rs) { const k = r.sector + "|" + r.cycle; count.set(k, (count.get(k) || 0) + 1); }
-    rs = rs.filter(r => count.get(r.sector + "|" + r.cycle) === on.length);
+    for (const r of rs) { const k = r.series + "|" + r.cycle; count.set(k, (count.get(k) || 0) + 1); }
+    rs = rs.filter(r => count.get(r.series + "|" + r.cycle) === on.length);
   }
   return { rs, on };
 }
@@ -393,8 +393,8 @@ function render() {
   const cyc = [...new Set(rs.map(r => r.cycle))].sort(), x = cyc.map(cycleLabel);
   const hover = M.unit === "%" ? "%{y:.1f}%" : "%{y:,.0f}";
 
-  // Actual summed over the unique (sector, cycle) pairs in the slice.
-  const uniquePairs = new Map(rs.map(r => [r.sector + "|" + r.cycle, r]));
+  // Actual summed over the unique (series, cycle) pairs in the slice.
+  const uniquePairs = new Map(rs.map(r => [r.series + "|" + r.cycle, r]));
   const actualByCycle = groupBy([...uniquePairs.values()], r => r.cycle);
   const level = [line("Real", x, cyc.map(c => actualByCycle.get(c)?.reduce((s, r) => s + r.actual, 0) ?? null), css("--ink"), "%{y:,.0f}")];
   const err = [];

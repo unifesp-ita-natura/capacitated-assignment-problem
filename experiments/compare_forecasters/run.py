@@ -71,8 +71,8 @@ def _execute(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     raw = load_demand_base(config["paths"]["base_csv"])
     panel = build_item_panel(raw)
     print(
-        f"[compare_forecasters] panel: {panel['cd_setor'].nunique()} sectors x "
-        f"{panel['CICLOS'].nunique()} cycles"
+        f"[compare_forecasters] panel: {panel['serie'].nunique()} sector-city series "
+        f"({panel['cd_setor'].nunique()} sectors) x {panel['CICLOS'].nunique()} cycles"
     )
 
     # A `daily:` block in the config turns on per-day scoring (see src/forecasting/daily.py).
@@ -80,7 +80,8 @@ def _execute(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     results = _evaluate_all(config, panel, daily_base)
     table = compare(results)
 
-    # Region, sales management, CD and state ride along so results can be sliced by them.
+    # Region, sales management and CD ride along so results can be sliced by them;
+    # each series already carries its own state and city.
     predictions = _errors_by_candidate(results).merge(
         sector_cycle_attributes(raw), on=CYCLE_KEYS, how="left"
     )

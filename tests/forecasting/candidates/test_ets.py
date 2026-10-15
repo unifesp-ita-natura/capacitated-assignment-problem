@@ -68,7 +68,7 @@ def _panel(
     return pd.DataFrame(
         [
             {
-                "cd_setor": sector,
+                "serie": sector,
                 "CICLOS": f"2026{n:02d}",
                 "items": value,
                 "opening_date": pd.Timestamp("2026-01-05") + pd.Timedelta(days=21 * n),
@@ -83,7 +83,7 @@ def _panel(
 def _next_cycle(sectors: list[str], days: list[int] | None = None) -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "cd_setor": sectors,
+            "serie": sectors,
             "CICLOS": "202699",
             "window_start": pd.Timestamp("2026-12-01"),
             "opening_date": pd.Timestamp("2026-12-01"),
@@ -113,7 +113,7 @@ def test_shared_alpha_forecasts_every_sector_with_its_own_level():
         _panel({"A": [100.0, 200.0], "B": [10.0, 30.0]}), _next_cycle(["A", "B"])
     )
 
-    by_sector = predictions.set_index("cd_setor")["items_pred"]
+    by_sector = predictions.set_index("serie")["items_pred"]
     assert by_sector.to_dict() == pytest.approx({"A": 150.0, "B": 20.0})
 
 

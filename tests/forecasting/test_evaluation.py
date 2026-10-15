@@ -20,9 +20,10 @@ ITEMS_B = [10, 10, 10, 10, 10, 10]
 def _panel() -> pd.DataFrame:
     rows = []
     for cycle, date, a, b in zip(CYCLES, OPENING_DATES, ITEMS_A, ITEMS_B, strict=True):
-        rows.append({"cd_setor": "A", "CICLOS": cycle, "items": a, "opening_date": date})
-        rows.append({"cd_setor": "B", "CICLOS": cycle, "items": b, "opening_date": date})
-    return pd.DataFrame(rows).assign(window_start=lambda p: p["opening_date"], cycle_days=21)
+        rows.append({"serie": "A", "CICLOS": cycle, "items": a, "opening_date": date})
+        rows.append({"serie": "B", "CICLOS": cycle, "items": b, "opening_date": date})
+    panel = pd.DataFrame(rows).assign(window_start=lambda p: p["opening_date"], cycle_days=21)
+    return panel.assign(cd_setor=panel["serie"], estado="SP", cidade="X")
 
 
 class _ConstantCandidate:
@@ -35,7 +36,7 @@ class _ConstantCandidate:
         self._skip = skip_sectors
 
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
-        keep = targets[~targets["cd_setor"].isin(self._skip)]
+        keep = targets[~targets["serie"].isin(self._skip)]
         return keep[QUERY_KEYS].assign(items_pred=self._value)
 
 
@@ -122,8 +123,8 @@ def test_evaluate_counts_a_skipped_sector_as_missing_not_silently_dropped():
     summary = result.summary()
 
     assert summary["n_missing"] == 3  # sector B skipped at all 3 origins
-    assert set(result.missing["cd_setor"]) == {"B"}
-    assert set(result.scored["cd_setor"]) == {"A"}  # never silently mixed into A's error
+    assert set(result.missing["serie"]) == {"B"}
+    assert set(result.scored["serie"]) == {"A"}  # never silently mixed into A's error
 
 
 def test_ranking_metric_matches_the_primary_metric_in_summary():
@@ -170,7 +171,7 @@ def test_missing_is_an_empty_frame_with_the_right_columns_when_there_are_no_orig
 
     assert result.origins == []
     assert result.missing.empty
-    assert list(result.missing.columns) == ["cd_setor", "CICLOS", "origin_cycle"]
+    assert list(result.missing.columns) == ["serie", "CICLOS", "origin_cycle"]
 
 
 def test_mase_is_nan_for_a_fold_with_no_two_cycle_history_but_mae_stays_valid():

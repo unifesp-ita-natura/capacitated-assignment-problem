@@ -42,17 +42,18 @@ def test_build_item_panel_drops_incomplete_cycles():
     assert "202614" not in set(panel["CICLOS"])
 
 
-def test_build_item_panel_sums_items_per_sector_and_cycle():
+def test_build_item_panel_sums_items_per_sector_city_and_cycle():
     raw = load_demand_base(FIXTURE_PATH)
     panel = build_item_panel(raw)
 
-    expected = (
-        raw[raw["CICLOS"] != "202614"]
-        .groupby(["cd_setor", "CICLOS"])["total_itens_mascarado"]
-        .sum()
-    )
+    keys = ["cd_setor", "estado", "cidade", "CICLOS"]
+    expected = raw[raw["CICLOS"] != "202614"].groupby(keys)["total_itens_mascarado"].sum()
     for _, row in panel.iterrows():
-        assert row["items"] == expected[(row["cd_setor"], row["CICLOS"])]
+        assert row["items"] == expected[tuple(row[keys])]
+    # The fixture splits its first sector over two cities: two series, not one.
+    first = raw["cd_setor"].iloc[0]
+    assert panel.loc[panel["cd_setor"] == first, "serie"].nunique() == 2
+    assert panel["serie"].str.count("[|]").eq(2).all()
 
 
 def test_build_item_panel_opening_date_does_not_depend_on_block():
@@ -95,7 +96,7 @@ def test_build_item_panel_carries_order_and_volume_counts():
         .groupby(["cd_setor", "CICLOS"])["total_pedidos_mascarado"]
         .sum()
     )
-    actual = panel.set_index(["cd_setor", "CICLOS"])["orders"]
+    actual = panel.groupby(["cd_setor", "CICLOS"])["orders"].sum()
 
     assert actual.sort_index().equals(expected.sort_index().astype(actual.dtype))
     assert "volumes" in panel.columns
@@ -137,3 +138,29 @@ def test_sector_cycle_attributes_reports_the_cd_with_most_items():
     assert row.cd_cd.item() != 9999
     assert row.CD_RE.item() == "01"
     assert len(attributes) == len(raw[["cd_setor", "CICLOS"]].drop_duplicates())
+
+
+def test_a_city_that_stops_buying_gets_zero_rows_only_after_its_first_purchase():
+    raw = load_demand_base(FIXTURE_PATH)
+    first = raw["cd_setor"].iloc[0]
+    is_other = raw["cidade"] == "OUTRA CIDADE"
+    cycles = sorted(raw.loc[raw["cd_setor"] == first, "CICLOS"].unique())
+    # OUTRA CIDADE first buys in the 2nd cycle and skips the 4th.
+    dropped = is_other & raw["CICLOS"].isin([cycles[0], cycles[3]])
+    panel = build_item_panel(raw[~dropped])
+
+    other = panel[panel["cidade"] == "OUTRA CIDADE"].set_index("CICLOS")
+    assert cycles[0] not in other.index
+    assert other.loc[cycles[3], ["items", "orders", "volumes"]].tolist() == [0, 0, 0]
+    assert other.loc[cycles[3], "cycle_days"] > 0  # the sector's window still applies
+
+
+def test_sector_panel_keeps_one_series_per_sector_with_the_same_totals():
+    raw = load_demand_base(FIXTURE_PATH)
+    by_sector = build_item_panel(raw, by_city=False)
+    by_city = build_item_panel(raw)
+
+    assert (by_sector["serie"] == by_sector["cd_setor"]).all()
+    assert "cidade" not in by_sector
+    totals = by_city.groupby(["cd_setor", "CICLOS"])["items"].sum()
+    assert by_sector.set_index(["cd_setor", "CICLOS"])["items"].equals(totals)

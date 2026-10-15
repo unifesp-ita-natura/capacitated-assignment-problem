@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.config.schema import ETSParams
+from src.forecasting.dataset import SERIES_KEY
 from src.forecasting.model import (
     QUERY_KEYS,
     REGISTRY,
@@ -152,8 +153,8 @@ class _SharedAlphaCandidate:
         days = _by_sector_and_cycle(history, "cycle_days").reindex_like(items)
         levels = pd.Series(self._fit(items.to_numpy(float), days.to_numpy(float)), items.index)
 
-        rows = targets[targets["cd_setor"].isin(levels.index)]
-        predicted = rows["cd_setor"].map(levels).to_numpy()
+        rows = targets[targets[SERIES_KEY].isin(levels.index)]
+        predicted = rows[SERIES_KEY].map(levels).to_numpy()
         predicted = predicted * rows["cycle_days"].to_numpy(float) ** self.chosen_exponent
         return (
             rows[QUERY_KEYS].assign(items_pred=np.clip(predicted, 0, None)).reset_index(drop=True)
@@ -176,7 +177,7 @@ class _SharedAlphaCandidate:
 
 def _by_sector_and_cycle(history: pd.DataFrame, column: str) -> pd.DataFrame:
     return history.pivot_table(
-        index="cd_setor", columns="opening_date", values=column, aggfunc="sum"
+        index=SERIES_KEY, columns="opening_date", values=column, aggfunc="sum"
     ).sort_index(axis=1)
 
 

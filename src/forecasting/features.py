@@ -1,4 +1,4 @@
-"""Turn the (sector, cycle) panel into the feature table the pooled candidate trains on."""
+"""Turn the (series, cycle) panel into the feature table the pooled candidate trains on."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ from collections.abc import Sequence
 import numpy as np
 import pandas as pd
 
-SECTOR_FEATURE = "cd_setor"
+from src.forecasting.dataset import SERIES_KEY
+
+# Each sector-city series is its own identity: lags are taken within it and
+# the model learns a per-series effect from it.
+SECTOR_FEATURE = SERIES_KEY
 CYCLE_NUMBER_FEATURE = "cycle_number"
 MONTH_FEATURE = "opening_month"
 

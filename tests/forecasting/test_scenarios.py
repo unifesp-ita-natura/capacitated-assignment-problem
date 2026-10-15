@@ -26,7 +26,7 @@ from src.forecasting.model import (
 
 HISTORY = pd.DataFrame(
     {
-        "cd_setor": ["A", "A", "B", "B"],
+        "serie": ["A", "A", "B", "B"],
         "CICLOS": ["1", "2", "1", "2"],
         "items": [100, 200, 10, 20],
         "opening_date": pd.to_datetime(["2026-01-01", "2026-01-22"] * 2),
@@ -37,7 +37,7 @@ HISTORY = pd.DataFrame(
 # Three opening days for A in the next cycle, one of them never seen before.
 QUERIES = pd.DataFrame(
     {
-        "cd_setor": ["A", "A", "A", "B"],
+        "serie": ["A", "A", "A", "B"],
         "window_start": pd.to_datetime(["2026-02-12", "2026-02-13", "2026-02-14", "2026-02-12"]),
         "cycle_days": [21, 21, 14, 21],
         "CICLOS": "3",
@@ -64,9 +64,9 @@ class _PerDayCandidate:
     name = "per_day"
 
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
-        last = history.sort_values("opening_date").groupby("cd_setor").last()
+        last = history.sort_values("opening_date").groupby("serie").last()
         rate = last["items"] / last["cycle_days"]
-        return targets.assign(items_pred=targets["cycle_days"] * targets["cd_setor"].map(rate))
+        return targets.assign(items_pred=targets["cycle_days"] * targets["serie"].map(rate))
 
 
 def test_a_history_that_never_varied_the_length_gives_every_scenario_the_same_value():
@@ -82,7 +82,7 @@ def test_per_sector_scales_each_scenario_to_its_window_length():
     days = [21, 14, 21]
     history = pd.DataFrame(
         {
-            "cd_setor": "A",
+            "serie": "A",
             "CICLOS": ["1", "2", "3"],
             "items": [10.0 * d for d in days],
             "opening_date": pd.to_datetime(["2026-01-01", "2026-01-22", "2026-02-05"]),
@@ -91,14 +91,14 @@ def test_per_sector_scales_each_scenario_to_its_window_length():
         }
     )
 
-    answered = forecast(LAST_VALUE, history, QUERIES[QUERIES["cd_setor"] == "A"])
+    answered = forecast(LAST_VALUE, history, QUERIES[QUERIES["serie"] == "A"])
 
     assert answered["items_pred"].tolist() == pytest.approx([210, 210, 140])
 
 
 def test_cycle_days_exponent_reads_how_items_follow_the_length():
     days = [21, 14, 21, 14]
-    panel = pd.DataFrame({"cd_setor": ["A"] * 4 + ["B"] * 4, "cycle_days": days * 2})
+    panel = pd.DataFrame({"serie": ["A"] * 4 + ["B"] * 4, "cycle_days": days * 2})
 
     per_day = panel.assign(items=[10.0 * d for d in days] + [d for d in days])
     flat = panel.assign(items=[200.0] * 4 + [20.0] * 4)
@@ -117,7 +117,7 @@ def test_every_candidate_scales_to_the_window_length(params):
     history = pd.DataFrame(
         [
             {
-                "cd_setor": f"S{s}",
+                "serie": f"S{s}",
                 "CICLOS": f"2025{n:02d}",
                 "items": 10.0 * lengths[s, n] * (1 + s),
                 "opening_date": starts[n],
@@ -131,7 +131,7 @@ def test_every_candidate_scales_to_the_window_length(params):
     opening = pd.Timestamp("2025-07-21")
     queries = pd.DataFrame(
         {
-            "cd_setor": "S0",
+            "serie": "S0",
             "CICLOS": "202510",
             "opening_date": opening,
             "window_start": [opening, opening + pd.Timedelta(days=7)],
@@ -148,7 +148,7 @@ def test_every_candidate_scales_to_the_window_length(params):
 def test_opening_scenarios_move_the_window_and_keep_its_length():
     cycles = pd.DataFrame(
         {
-            "cd_setor": ["A", "B"],
+            "serie": ["A", "B"],
             "CICLOS": "3",
             "opening_date": pd.Timestamp("2026-02-12"),
             "cycle_days": [21, 14],
@@ -157,7 +157,7 @@ def test_opening_scenarios_move_the_window_and_keep_its_length():
 
     scenarios = opening_scenarios(cycles, range(3))
 
-    a = scenarios[scenarios["cd_setor"] == "A"]
+    a = scenarios[scenarios["serie"] == "A"]
     assert a["window_start"].tolist() == list(pd.date_range("2026-02-12", periods=3))
     assert a["cycle_days"].tolist() == [21, 21, 21]
     assert len(scenarios) == 6
@@ -173,7 +173,7 @@ def test_every_candidate_answers_the_same_cycle_opening_on_different_days(params
     history = pd.DataFrame(
         [
             {
-                "cd_setor": f"S{s}",
+                "serie": f"S{s}",
                 "CICLOS": f"2025{n:02d}",
                 "items": 100.0 * (1 + s) * (1.5 if opens_late[s, n] else 1.0),
                 "opening_date": openings[n],
@@ -185,7 +185,7 @@ def test_every_candidate_answers_the_same_cycle_opening_on_different_days(params
         ]
     )
     cycle = pd.DataFrame(
-        {"cd_setor": ["S0"], "CICLOS": "202510", "opening_date": openings[10], "cycle_days": 21}
+        {"serie": ["S0"], "CICLOS": "202510", "opening_date": openings[10], "cycle_days": 21}
     )
 
     answered = forecast(REGISTRY.build(params), history, opening_scenarios(cycle, [0, 15]))
@@ -195,7 +195,7 @@ def test_every_candidate_answers_the_same_cycle_opening_on_different_days(params
 
 
 def test_align_predictions_refuses_predictions_without_their_scenario():
-    predictions = QUERIES[["cd_setor", "CICLOS"]].assign(items_pred=1.0)
+    predictions = QUERIES[["serie", "CICLOS"]].assign(items_pred=1.0)
 
     with pytest.raises(ValueError, match="window_scaled"):
         align_predictions(QUERIES, predictions)
@@ -209,9 +209,9 @@ def test_a_scenario_aware_candidate_answers_each_query_on_its_own():
 
 
 def test_forecast_keeps_the_query_order_and_marks_a_skipped_sector_as_nan():
-    answered = forecast(LAST_VALUE, HISTORY[HISTORY["cd_setor"] == "A"], QUERIES)
+    answered = forecast(LAST_VALUE, HISTORY[HISTORY["serie"] == "A"], QUERIES)
 
-    assert answered["cd_setor"].tolist() == QUERIES["cd_setor"].tolist()
+    assert answered["serie"].tolist() == QUERIES["serie"].tolist()
     assert answered["items_pred"].isna().tolist() == [False, False, False, True]
 
 

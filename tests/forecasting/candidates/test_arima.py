@@ -100,7 +100,7 @@ def test_registry_builds_the_arima_candidate_from_config():
 def test_arima_predicts_through_the_per_sector_adapter():
     history = pd.DataFrame(
         {
-            "cd_setor": ["A"] * 6,
+            "serie": ["A"] * 6,
             "CICLOS": [f"20260{n}" for n in range(1, 7)],
             "items": [100.0, 120.0, 110.0, 130.0, 125.0, 135.0],
             "opening_date": pd.to_datetime(
@@ -109,7 +109,7 @@ def test_arima_predicts_through_the_per_sector_adapter():
         }
     ).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
     targets = pd.DataFrame(
-        {"cd_setor": ["A"], "CICLOS": ["202607"], "opening_date": pd.to_datetime(["2026-07-06"])}
+        {"serie": ["A"], "CICLOS": ["202607"], "opening_date": pd.to_datetime(["2026-07-06"])}
     ).assign(window_start=lambda frame: frame["opening_date"], cycle_days=21)
     candidate = REGISTRY.build(ArimaParams(order=(1, 0, 0)))
 
