@@ -32,19 +32,36 @@ SECTOR_SWEEP = list(range(40, 2000, 200)) + [2000]
 # How many forecast cycles the horizon spans, crossed with SECTOR_SWEEP.
 CYCLE_SWEEP = [1, 2, 4, 8]
 
-# combinations = days_per_cycle: each combination shifts a sector's full demand to one day-of-cycle
-DAYS_PER_CYCLE = 2
+# Each cycle's length (in days) is sampled independently (with replacement)
+# from this range, so cycles aren't all the same size.
+CYCLE_LENGTH_RANGE = (19, 23)
+
+# Combinations = the sector's choice of which of the first N_COMBINATIONS
+# days of a cycle it opens on (1st open day, 2nd open day, ...). Fixed
+# regardless of cycle length; must not exceed CYCLE_LENGTH_RANGE's minimum,
+# so every combination maps to a real day in every cycle.
+N_COMBINATIONS = 15
 N_CDS = 2
 SEED = 42
 
 
-def _build_cycle_structure(
-    n_cycles: int, days_per_cycle: int
-) -> tuple[list[int], dict[int, list[int]]]:
-    days = list(range(1, n_cycles * days_per_cycle + 1))
-    days_by_cycle = {
-        h: days[h * days_per_cycle : (h + 1) * days_per_cycle] for h in range(n_cycles)
-    }
+def _sample_cycle_lengths(n_cycles: int, rng: random.Random) -> list[int]:
+    low, high = CYCLE_LENGTH_RANGE
+    return [rng.randint(low, high) for _ in range(n_cycles)]
+
+
+def _build_cycle_structure(cycle_lengths: list[int]) -> tuple[list[int], dict[int, list[int]]]:
+    """Lays `cycle_lengths` end to end into a single day-numbered timeline.
+
+    `combinations` must span every day-of-cycle index this produces, i.e.
+    `range(1, max(cycle_lengths) + 1)` — see `generate_instance`.
+    """
+    days = list(range(1, sum(cycle_lengths) + 1))
+    days_by_cycle = {}
+    start = 0
+    for h, length in enumerate(cycle_lengths):
+        days_by_cycle[h] = days[start : start + length]
+        start += length
     return days, days_by_cycle
 
 
@@ -108,22 +125,25 @@ def _build_loose_daily_capacity(
 def generate_instance(
     n_sectors: int,
     n_cycles: int,
-    days_per_cycle: int = DAYS_PER_CYCLE,
     n_cds: int = N_CDS,
     seed: int = SEED,
 ) -> dict:
     """A synthetic block-assignment instance sized by `n_sectors`/`n_cycles`.
 
-    Each sector gets one random, fixed demand magnitude (see
-    `_build_projected_demand` for how combinations distribute it across
-    days). Daily capacity is set to a large multiple of total demand so it
-    never binds, keeping the sweep focused on assignment/balancing cost
-    rather than feasibility.
+    Each cycle's length is independently sampled from `CYCLE_LENGTH_RANGE`
+    (with replacement), so cycles vary in size rather than all being equal.
+    `combinations` stays fixed at `N_COMBINATIONS` regardless of cycle
+    length (see its module-level comment). Each sector gets one random,
+    fixed demand magnitude (see `_build_projected_demand` for how
+    combinations distribute it across days). Daily capacity is set to a
+    large multiple of total demand so it never binds, keeping the sweep
+    focused on assignment/balancing cost rather than feasibility.
     """
     rng = random.Random(seed)
     sectors = list(range(1, n_sectors + 1))
-    combinations = list(range(1, days_per_cycle + 1))
-    days, days_by_cycle = _build_cycle_structure(n_cycles, days_per_cycle)
+    cycle_lengths = _sample_cycle_lengths(n_cycles, rng)
+    combinations = list(range(1, N_COMBINATIONS + 1))
+    days, days_by_cycle = _build_cycle_structure(cycle_lengths)
     cd_sectors = _assign_sectors_to_cds(sectors, n_cds)
     sector_demand = {s: rng.uniform(5.0, 50.0) for s in sectors}
 
@@ -134,7 +154,7 @@ def generate_instance(
         cd_sectors=cd_sectors,
         daily_capacity=_build_loose_daily_capacity(sector_demand, cd_sectors, days),
         projected_demand=_build_projected_demand(sector_demand, combinations, days_by_cycle),
-        current_assignment={(s, ((s - 1) % days_per_cycle) + 1): 1 for s in sectors},
+        current_assignment={(s, ((s - 1) % len(combinations)) + 1): 1 for s in sectors},
         max_churn=n_sectors,  # loose: the sweep isn't exercising the churn budget
         days_by_cycle=days_by_cycle,
     )

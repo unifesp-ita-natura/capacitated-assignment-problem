@@ -13,6 +13,7 @@ from src.persistence import SolveResult
 ProjectedDemand = Mapping[tuple[int, int, int], float]  # (sector, day, combination) -> qty
 
 FALLBACK_SOLVER = "appsi_highs"
+DEFAULT_TIME_LIMIT_SECONDS = 10 * 60
 
 logger = logging.getLogger(__name__)
 
@@ -67,15 +68,21 @@ def _resolve_solver(solver: str) -> tuple[pyo.SolverFactory, str]:
     return solver_interface, solver
 
 
-def solve_block_assignment(model: pyo.ConcreteModel, solver: str = "gurobi") -> pyo.SolverResults:
+def solve_block_assignment(
+    model: pyo.ConcreteModel,
+    solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+) -> pyo.SolverResults:
     """Resolve `model` com `solver` via a interface de solvers do Pyomo.
 
     `solver` é qualquer nome de solver registrado no Pyomo. Faz fallback pra
     `FALLBACK_SOLVER` se `solver == "gurobi"` e não houver licença/instalação
-    disponível.
+    disponível. `time_limit_seconds` vira o `timelimit` padrão do Pyomo, que
+    todo solver legacy (gurobi, appsi_highs, ...) honra, pra nenhuma instância
+    rodar indefinidamente.
     """
     solver_interface, _ = _resolve_solver(solver)
-    return solver_interface.solve(model)
+    return solver_interface.solve(model, timelimit=time_limit_seconds)
 
 
 def run_block_assignment_mip(
@@ -89,6 +96,7 @@ def run_block_assignment_mip(
     max_churn: float,
     days_by_cycle: dict[int, list[int]],
     solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
 ) -> SolveResult:
     """Build and solve the block-assignment MIP, returning a timed `SolveResult`."""
     model = build_block_assignment_model(
@@ -104,7 +112,7 @@ def run_block_assignment_mip(
     )
     solver_interface, resolved_solver = _resolve_solver(solver)
     start = time.perf_counter()
-    pyomo_results = solver_interface.solve(model)
+    pyomo_results = solver_interface.solve(model, timelimit=time_limit_seconds)
     wall_time_seconds = time.perf_counter() - start
     return SolveResult(
         model_name="mip_block_assignment",
