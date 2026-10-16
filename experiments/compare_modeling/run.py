@@ -55,6 +55,25 @@ def _assign_sectors_to_cds(sectors: list[int], n_cds: int) -> dict[int, list[int
     return cd_sectors
 
 
+def _peak_combination_by_day(days_by_cycle: Mapping[int, list[int]]) -> dict[int, int]:
+    """Day-of-cycle `d` (1-indexed) is the day each repeating cycle peaks on combination `d`."""
+    return {
+        day: offset + 1
+        for cycle_days in days_by_cycle.values()
+        for offset, day in enumerate(cycle_days)
+    }
+
+
+def _demand_by_combination(
+    demand: float, peak_combination: int, combinations: list[int]
+) -> dict[int, float]:
+    """A sector's demand on one day: full demand under the day's peak combination, 0 otherwise."""
+    return {
+        combination: demand if combination == peak_combination else 0.0
+        for combination in combinations
+    }
+
+
 def _build_projected_demand(
     sector_demand: Mapping[int, float],
     combinations: list[int],
@@ -65,16 +84,15 @@ def _build_projected_demand(
     The pattern repeats across cycles — the generalization of the toy
     instance's two-combination, two-day shape.
     """
-    projected_demand: dict[tuple[int, int, int], float] = {}
-    for s, demand in sector_demand.items():
-        for cycle_days in days_by_cycle.values():
-            for offset, day in enumerate(cycle_days):
-                peak_combination = offset + 1
-                for combination in combinations:
-                    projected_demand[(s, day, combination)] = (
-                        demand if combination == peak_combination else 0.0
-                    )
-    return projected_demand
+    peak_combination_by_day = _peak_combination_by_day(days_by_cycle)
+    return {
+        (s, day, combination): value
+        for s, demand in sector_demand.items()
+        for day, peak_combination in peak_combination_by_day.items()
+        for combination, value in _demand_by_combination(
+            demand, peak_combination, combinations
+        ).items()
+    }
 
 
 def _build_loose_daily_capacity(
