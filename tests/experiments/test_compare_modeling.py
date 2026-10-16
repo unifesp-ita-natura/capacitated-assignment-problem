@@ -17,7 +17,7 @@ def test_run_produces_one_result_per_solver(mock_run_block_assignment_mip):
 
     mock_run_block_assignment_mip.side_effect = fake_run
 
-    results = run(solvers=["gurobi", "appsi_highs"])
+    results = run(solvers=["gurobi", "appsi_highs"], sector_sweep=[40], cycle_sweep=[1])
 
     assert [r.solver for r in results] == ["gurobi", "appsi_highs"]
     assert all(r.model_name == "mip_block_assignment" for r in results)
