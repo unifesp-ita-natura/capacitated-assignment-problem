@@ -9,7 +9,7 @@ from src.solver.mip.block_assignment import run_block_assignment_mip
 # against the same model. To compare different *formulations* instead (or in
 # addition), swap the toy instance below for a list of instances/builders and
 # loop over both.
-SOLVERS_TO_COMPARE = ["gurobi"]
+SOLVERS_TO_COMPARE = ["gurobi", "appsi_highs"]
 
 OUTPUT_PATH = "experiments/compare_modeling/outputs/results.csv"
 
