@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import csv
 import random
-from collections.abc import Mapping
+from collections.abc import Callable, Generator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from src.persistence import SolveResult, configure_tracking, log_solve_result
@@ -160,10 +161,39 @@ def generate_instance(
     )
 
 
+ResultSink = Callable[[int, int, SolveResult], None]
+
+
+@contextmanager
+def open_sweep_csv(path: str | Path) -> Generator[ResultSink]:
+    """A sink that appends+flushes one row per call, instead of buffering the
+    whole sweep in memory and writing it out at the end.
+
+    A full sweep can run for hours (some solves hit the time limit); writing
+    only on completion would mean a crash or interrupt partway through loses
+    every result computed so far. Yields a callable to pass as `run`'s
+    `on_result`.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = ["n_sectors", "n_cycles", *SolveResult.model_fields]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        f.flush()
+
+        def write_result(n_sectors: int, n_cycles: int, result: SolveResult) -> None:
+            writer.writerow({"n_sectors": n_sectors, "n_cycles": n_cycles, **result.model_dump()})
+            f.flush()
+
+        yield write_result
+
+
 def run(
     solvers: list[str] = SOLVERS_TO_COMPARE,
     sector_sweep: list[int] = SECTOR_SWEEP,
     cycle_sweep: list[int] = CYCLE_SWEEP,
+    on_result: ResultSink | None = None,
 ) -> list[SolveResult]:
     results = []
     for n_cycles in cycle_sweep:
@@ -177,38 +207,23 @@ def run(
                     params={"n_sectors": n_sectors, "n_cycles": n_cycles},
                     tags={"family": "mip", "n_sectors": str(n_sectors), "n_cycles": str(n_cycles)},
                 )
+                if on_result is not None:
+                    on_result(n_sectors, n_cycles, result)
     return results
 
 
-def write_sweep_csv(
-    results: list[SolveResult],
-    sector_sweep: list[int],
-    cycle_sweep: list[int],
-    solvers: list[str],
-    path: str | Path,
-) -> None:
-    """Like `write_results_csv`, plus the `n_sectors`/`n_cycles` each result swept over."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    sizes = [
-        (n_cycles, n_sectors)
-        for n_cycles in cycle_sweep
-        for n_sectors in sector_sweep
-        for _ in solvers
-    ]
-    fieldnames = ["n_sectors", "n_cycles", *SolveResult.model_fields]
-    with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for (n_cycles, n_sectors), result in zip(sizes, results, strict=True):
-            writer.writerow({"n_sectors": n_sectors, "n_cycles": n_cycles, **result.model_dump()})
+def _report(n_sectors: int, n_cycles: int, result: SolveResult, write_result: ResultSink) -> None:
+    write_result(n_sectors, n_cycles, result)
+    print(n_sectors, n_cycles, result)
 
 
 if __name__ == "__main__":
     # No-ops unless MLFLOW_TRACKING_URI is set (or configure_tracking is
     # called with an explicit uri) — see src/persistence/README.md.
     configure_tracking(experiment_name="compare_modeling")
-    results = run()
-    write_sweep_csv(results, SECTOR_SWEEP, CYCLE_SWEEP, SOLVERS_TO_COMPARE, OUTPUT_PATH)
-    for result in results:
-        print(result)
+    with open_sweep_csv(OUTPUT_PATH) as write_result:
+        run(
+            on_result=lambda n_sectors, n_cycles, result: _report(
+                n_sectors, n_cycles, result, write_result
+            )
+        )
