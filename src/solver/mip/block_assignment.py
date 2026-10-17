@@ -2,14 +2,62 @@
 
 from __future__ import annotations
 
+import logging
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Generator, Iterable, Mapping
+from contextlib import contextmanager
 
 import pyomo.environ as pyo
 
 from src.persistence import SolveResult
 
+try:
+    import resource  # POSIX-only; see `_memory_limit`
+except ImportError:  # Windows has no `resource` module
+    resource = None
+
 ProjectedDemand = Mapping[tuple[int, int, int], float]  # (sector, day, combination) -> qty
+
+FALLBACK_SOLVER = "appsi_highs"
+DEFAULT_TIME_LIMIT_SECONDS = 10 * 60
+DEFAULT_MEMORY_LIMIT_GB = 8.0
+
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _memory_limit(limit_gb: float) -> Generator[None]:
+    """Best-effort `RLIMIT_AS` cap on the whole process while a solve runs.
+
+    This is the only lever available for `appsi_highs`, which has no native
+    memory-limit option at all (checked against its full option dump).
+    It's POSIX-only, a no-op on Windows (no `resource` module), and
+    unreliable on macOS (the kernel doesn't enforce `RLIMIT_AS` the way
+    Linux does) — a blunt last resort, not a clean per-solve abort like
+    Gurobi's own `MemLimit` (set separately in `_solve_options`). If it does
+    trigger, the whole process can die rather than just failing one solve.
+    """
+    if resource is None:
+        yield
+        return
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (int(limit_gb * 1024**3), hard))
+    except (ValueError, OSError):
+        logger.warning("Could not set RLIMIT_AS memory guard; continuing unconstrained.")
+        yield
+        return
+    try:
+        yield
+    finally:
+        resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
+
+
+def _solve_options(resolved_solver: str, memory_limit_gb: float) -> dict[str, object]:
+    """Solver-specific options; only Gurobi has a native memory-limit knob."""
+    if resolved_solver == "gurobi":
+        return {"MemLimit": memory_limit_gb}
+    return {}
 
 
 def build_block_assignment_model(
@@ -45,14 +93,46 @@ def build_block_assignment_model(
     return model
 
 
-def solve_block_assignment(model: pyo.ConcreteModel, solver: str = "gurobi") -> pyo.SolverResults:
-    """Resolve `model` com `solver` via a interface de solvers do Pyomo.
+def _resolve_solver(solver: str) -> tuple[pyo.SolverFactory, str]:
+    """Pyomo solver interface for `solver`, falling back to `FALLBACK_SOLVER`.
 
-    `solver` é qualquer nome de solver registrado no Pyomo, seguindo o mesmo
-    padrão de `src/solver/mip/example.py`.
+    The fallback only triggers for `solver == "gurobi"` with no working
+    license/install (checked via `.available()`, never by calling `.solve()`),
+    so a locally-missing Gurobi license doesn't block running this project.
     """
     solver_interface = pyo.SolverFactory(solver)
-    return solver_interface.solve(model)
+    if solver == "gurobi" and not solver_interface.available(exception_flag=False):
+        logger.warning(
+            "Gurobi is unavailable (no license or install found); falling back to %s.",
+            FALLBACK_SOLVER,
+        )
+        return pyo.SolverFactory(FALLBACK_SOLVER), FALLBACK_SOLVER
+    return solver_interface, solver
+
+
+def solve_block_assignment(
+    model: pyo.ConcreteModel,
+    solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
+) -> pyo.SolverResults:
+    """Resolve `model` com `solver` via a interface de solvers do Pyomo.
+
+    `solver` é qualquer nome de solver registrado no Pyomo. Faz fallback pra
+    `FALLBACK_SOLVER` se `solver == "gurobi"` e não houver licença/instalação
+    disponível. `time_limit_seconds` vira o `timelimit` padrão do Pyomo, que
+    todo solver legacy (gurobi, appsi_highs, ...) honra, pra nenhuma instância
+    rodar indefinidamente. `memory_limit_gb` vira `MemLimit` nativo pro
+    Gurobi; pro resto (ex. appsi_highs, sem opção nativa de memória) é só o
+    guarda-corpo melhor-esforço de `_memory_limit`.
+    """
+    solver_interface, resolved_solver = _resolve_solver(solver)
+    with _memory_limit(memory_limit_gb):
+        return solver_interface.solve(
+            model,
+            timelimit=time_limit_seconds,
+            options=_solve_options(resolved_solver, memory_limit_gb),
+        )
 
 
 def run_block_assignment_mip(
@@ -65,7 +145,9 @@ def run_block_assignment_mip(
     current_assignment: dict[tuple[int, int], int],
     max_churn: float,
     days_by_cycle: dict[int, list[int]],
-    solver: str = "appsi_highs",
+    solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
 ) -> SolveResult:
     """Build and solve the block-assignment MIP, returning a timed `SolveResult`."""
     model = build_block_assignment_model(
@@ -79,12 +161,18 @@ def run_block_assignment_mip(
         max_churn=max_churn,
         days_by_cycle=days_by_cycle,
     )
+    solver_interface, resolved_solver = _resolve_solver(solver)
     start = time.perf_counter()
-    pyomo_results = solve_block_assignment(model, solver=solver)
+    with _memory_limit(memory_limit_gb):
+        pyomo_results = solver_interface.solve(
+            model,
+            timelimit=time_limit_seconds,
+            options=_solve_options(resolved_solver, memory_limit_gb),
+        )
     wall_time_seconds = time.perf_counter() - start
     return SolveResult(
-        model_name="mip_highs",
-        solver=solver,
+        model_name="mip_block_assignment",
+        solver=resolved_solver,
         status=str(pyomo_results.solver.status),
         termination_condition=str(pyomo_results.solver.termination_condition),
         objective=pyo.value(model.objective, exception=False),

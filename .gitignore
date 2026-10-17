@@ -57,3 +57,10 @@ experiments/**/results/
 # Raw Google Drive drops pasted directly into the repo root (client comms + data)
 /comunicações-*/
 /dados-*/
+
+# IDEs
+.vscode
+
+# External data
+data/external/*
+!data/external/.gitkeep

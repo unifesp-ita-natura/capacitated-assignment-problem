@@ -49,7 +49,12 @@ Cross-cutting references:
 
 ## Environment
 
-Avoid using a commercial solver considering we are going to propose this solution to a company. We can use open-source solvers like HiGHS, CBC, GLPK, or SCIP.
+The MIP solver defaults to Gurobi (commercial, requires a license — see
+`src/solver/README.md`). Natura, the client, already has a Gurobi license,
+so this is fine for the proposed solution. If no working Gurobi
+license/install is found on the machine running it, the code falls back to
+HiGHS automatically (open-source, bundled via `highspy`) and logs a warning,
+so the project stays runnable without a license too.
 
 ## Conventions
 

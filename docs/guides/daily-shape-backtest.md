@@ -154,10 +154,14 @@ from src.forecasting.shape_daily import build_shape_days, predict_shape
 
 history = build_shape_days(load_demand_base("data/base_tratada_v2.csv"))
 # Em produção, filtre o histórico para informações disponíveis antes da previsão.
-windows = pd.DataFrame({
-    "cd_setor": ["SEU_SETOR"], "CICLOS": ["CICLO_FUTURO"],
-    "window_start": [pd.Timestamp("2027-01-05")], "n_days": [10],
-})
+windows = pd.DataFrame(
+    {
+        "cd_setor": ["SEU_SETOR"],
+        "CICLOS": ["CICLO_FUTURO"],
+        "window_start": [pd.Timestamp("2027-01-05")],
+        "n_days": [10],
+    }
+)
 curve = predict_shape(history, windows, model="sector", n_bins=10)
 # Após juntar seu level previsto por cd_setor/CICLOS:
 # items_pred = share_pred * level_previsto
