@@ -42,9 +42,9 @@ def _validate_orders(complete: pd.DataFrame) -> None:
         raise ValueError("shape found orders outside their declared opening/closing window")
 
 
-def build_shape_days(raw: pd.DataFrame) -> pd.DataFrame:
+def build_shape_days(raw: pd.DataFrame, calendar: pd.DataFrame | None = None) -> pd.DataFrame:
     """Aggregate all CDs and fill zero days for complete sector-cycle windows."""
-    calendar = cycle_calendar(raw)
+    calendar = cycle_calendar(raw) if calendar is None else calendar
     complete = raw[raw["CICLOS"].isin(calendar.loc[calendar["is_complete"], "CICLOS"])]
     _validate_orders(complete)
     windows = complete.groupby(CYCLE_KEYS, as_index=False).agg(
