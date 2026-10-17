@@ -5,6 +5,7 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-10-16 combined daily forecast](2026-10-16-combined-daily-forecast.md) — Predicted city-cycle level × sector daily shape, isolated opening scenarios and fixed-model daily replay
 - [2026-10-14 level per sector-city series](2026-10-14-level-per-sector-city.md) — Level keyed by (sector, estado, cidade) with zero rows for quiet cycles; summing cities loses to forecasting the sector for every candidate (ETS +1.4%, LightGBM +8.6% MAE)
 - [2026-10-09 shape features](2026-10-09-shape-features.md) — Isolated LightGBM shape with selectable region, sales management, weekday and month; holidays deferred
 - [2026-10-09 standalone shape dashboard](2026-10-09-shape-dashboard.md) — Local shape-only run filters, daily and cumulative comparisons, metrics and downloads; no level integration
