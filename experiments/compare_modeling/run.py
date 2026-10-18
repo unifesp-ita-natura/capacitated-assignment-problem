@@ -25,6 +25,10 @@ from src.solver.mip.block_assignment import run_block_assignment_mip
 # instances/builders and loop over both.
 SOLVERS_TO_COMPARE = ["gurobi", "appsi_highs"]
 
+# Raised from solve_block_assignment's 10-minute default so larger instances
+# in the sweep have more room to reach/approach optimality.
+TIME_LIMIT_SECONDS = 1800
+
 OUTPUT_PATH = "experiments/compare_modeling/outputs/results.csv"
 
 # How many sectors the synthetic instance has, swept from a small toy size up
@@ -253,7 +257,9 @@ def _run_one(
     instance: ProblemInstance,
     on_result: ResultSink | None,
 ) -> SolveResult:
-    result = run_block_assignment_mip(instance, solver=solver_name)
+    result = run_block_assignment_mip(
+        instance, solver=solver_name, time_limit_seconds=TIME_LIMIT_SECONDS
+    )
     log_solve_result(
         result,
         params={"n_sectors": n_sectors, "n_cycles": n_cycles},
