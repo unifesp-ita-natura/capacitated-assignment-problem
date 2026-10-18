@@ -14,6 +14,9 @@ class of problem a different way but reporting into the same
   rather than going through `mip/`. See `cpsat/README.md`.
 - `heuristics/` — greedy/local-search/metaheuristic approaches that need no
   external solver license. See `heuristics/README.md`.
+- `matheuristics/` — Relax-and-Fix + Fix-and-Optimize: solve the same Pyomo
+  MIP as `mip/`, but by windows of CDs so each solve is much smaller. See
+  `matheuristics/README.md`.
 
 Add real families the same way: a subpackage with its own build/solve
 functions, converting its native result into a `SolveResult` at the edge

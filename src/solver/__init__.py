@@ -1,1 +1,1 @@
-"""Solver backends live under here as sibling families: mip/, cpsat/, heuristics/."""
+"""Solver families: mip/, cpsat/, heuristics/ and matheuristics/."""
