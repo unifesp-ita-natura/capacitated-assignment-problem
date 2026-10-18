@@ -5,9 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import subprocess
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Literal
 
@@ -22,6 +20,7 @@ from src.forecasting.dataset import load_demand_base
 from src.forecasting.features import feature_columns
 from src.forecasting.shape_evaluation import ShapeCandidate
 from src.forecasting.shape_learning import BASE_FEATURES
+from src.persistence.provenance import git_output, package_version, sha256_file
 
 
 class CombinedPaths(BaseModel):
@@ -67,35 +66,20 @@ def _require_validation(config: CombinedConfig) -> None:
         raise ValueError("validate mode derives as_of and recorded windows per cycle")
 
 
-def _hash(path: Path) -> str:
-    """Identify exact input bytes for reproducibility."""
-    with path.open("rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
-
-
-def _version(package: str) -> str | None:
-    """Record optional forecasting dependencies without requiring every model package."""
-    try:
-        return version(package)
-    except PackageNotFoundError:
-        return None
-
-
 def _manifest(config: CombinedConfig) -> dict:
     """Record effective models, features, input identity and code revision."""
-    status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
-    revision = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+    status = git_output("status", "--porcelain")
     return {
         "status": "running",
         "started_at": datetime.now(UTC).isoformat(),
         "parameters": config.model_dump(mode="json"),
-        "base_sha256": _hash(config.paths.base_csv),
+        "base_sha256": sha256_file(config.paths.base_csv),
         "code": {
-            "revision": revision.stdout.strip(),
-            "working_tree_status": status.stdout.splitlines(),
+            "revision": git_output("rev-parse", "HEAD"),
+            "working_tree_status": status.splitlines() if status else [],
         },
         "versions": {
-            name: _version(name)
+            name: package_version(name)
             for name in ["pandas", "numpy", "pydantic", "lightgbm", "statsmodels"]
         },
         "shape_features": _shape_features(config.shape),

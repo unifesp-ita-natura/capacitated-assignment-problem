@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import subprocess
 import sys
 from datetime import UTC, datetime
 from importlib.metadata import version
@@ -23,6 +21,7 @@ from src.forecasting.shape_evaluation import (
     evaluate_shapes,
 )
 from src.forecasting.shape_learning import BASE_FEATURES
+from src.persistence.provenance import git_output, sha256_file
 
 
 class ShapePaths(BaseModel):
@@ -42,29 +41,20 @@ class ShapeConfig(BaseModel):
     paths: ShapePaths
 
 
-def _git_revision() -> str:
-    """Record the current Git revision when available."""
-    result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
-    return result.stdout.strip()
-
-
 def _manifest(config: ShapeConfig) -> dict:
     """Describe effective parameters, inputs and implemented predictors."""
-    with config.paths.base_csv.open("rb") as source:
-        digest = hashlib.file_digest(source, "sha256").hexdigest()
+    git_status = git_output("status", "--porcelain")
     return {
         "status": "running",
         "started_at": datetime.now(UTC).isoformat(),
-        "git_revision": _git_revision(),
-        "git_status": subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True
-        ).stdout.splitlines(),
+        "git_revision": git_output("rev-parse", "HEAD"),
+        "git_status": git_status.splitlines() if git_status else [],
         "python_version": sys.version,
         "package_versions": {
             name: version(name) for name in ["pandas", "numpy", "pydantic", "pyyaml"]
         },
         "lightgbm_version": _learning_version(config),
-        "base_sha256": digest,
+        "base_sha256": sha256_file(config.paths.base_csv),
         "parameters": config.model_dump(mode="json"),
         "target_granularity": ["cd_setor", "CICLOS", "date"],
         "ranking_metric": "share_mae_pp",

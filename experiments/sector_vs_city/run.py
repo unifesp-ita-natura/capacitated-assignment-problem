@@ -7,13 +7,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from experiments.compare_forecasters.records import prepare_record, update_record
-from experiments.compare_forecasters.run import (
-    _errors_by_candidate,
-    _evaluate_all,
-    _load_config,
-    _write,
-)
 from src.forecasting.comparison import compare
 from src.forecasting.dataset import (
     CYCLE_KEYS,
@@ -23,6 +16,14 @@ from src.forecasting.dataset import (
     sector_cycle_attributes,
 )
 from src.forecasting.evaluation import EvaluationResult, OriginResult
+from src.forecasting.harness import (
+    errors_by_candidate,
+    evaluate_all,
+    load_config,
+    prepare_record,
+    update_record,
+    write_csv,
+)
 
 DEFAULT_CONFIG_PATH = "configs/experiments/sector_vs_city/all.yaml"
 SECTOR_LABEL = "[setor]"
@@ -76,9 +77,9 @@ def _execute(config: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         flush=True,
     )
     print("[sector_vs_city] per sector:", flush=True)
-    sector_results = _evaluate_all(config, sector_panel)
+    sector_results = evaluate_all(config, sector_panel)
     print("[sector_vs_city] per sector-city:", flush=True)
-    city_results = _evaluate_all(config, city_panel)
+    city_results = evaluate_all(config, city_panel)
 
     sector_items = sector_panel.set_index(CYCLE_KEYS)["items"]
     results = [relabel(result, SECTOR_LABEL) for result in sector_results] + [
@@ -86,21 +87,21 @@ def _execute(config: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         for city, sector in zip(city_results, sector_results, strict=True)
     ]
     # Both versions as sector totals, sliceable in the dashboard like any run.
-    sector_rows = _errors_by_candidate(results).merge(
+    sector_rows = errors_by_candidate(results).merge(
         sector_cycle_attributes(raw), on=CYCLE_KEYS, how="left"
     )
-    return compare(results), sector_rows, _errors_by_candidate(city_results)
+    return compare(results), sector_rows, errors_by_candidate(city_results)
 
 
 def run(config_path: str | Path = DEFAULT_CONFIG_PATH) -> pd.DataFrame:
-    config = _load_config(config_path)
+    config = load_config(config_path)
     directory, manifest = prepare_record(config_path, config)
     print(f"[sector_vs_city] run directory: {directory.resolve()}", flush=True)
     try:
         table, sector_rows, city_rows = _execute(config)
-        _write(table, directory / "comparison.csv")
-        _write(sector_rows, directory / "predictions.csv")
-        _write(city_rows, directory / "city_predictions.csv")
+        write_csv(table, directory / "comparison.csv")
+        write_csv(sector_rows, directory / "predictions.csv")
+        write_csv(city_rows, directory / "city_predictions.csv")
         update_record(directory, manifest, "complete", n_predictions=len(sector_rows))
     except Exception as error:
         update_record(directory, manifest, "failed", error=str(error))

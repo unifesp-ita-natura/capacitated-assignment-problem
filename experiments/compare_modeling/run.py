@@ -27,9 +27,8 @@ SOLVERS_TO_COMPARE = ["gurobi", "appsi_highs"]
 OUTPUT_PATH = "experiments/compare_modeling/outputs/results.csv"
 
 # How many sectors the synthetic instance has, swept from a small toy size up
-# to a large one. Step of 200 with 2000 appended so the range always lands
-# exactly on both endpoints.
-SECTOR_SWEEP = list(range(40, 2000, 200)) + [2000]
+# to a large one.
+SECTOR_SWEEP = list(range(40, 1000, 200))
 
 # How many forecast cycles the horizon spans, crossed with SECTOR_SWEEP.
 CYCLE_SWEEP = [1, 2, 4, 8]
@@ -39,10 +38,8 @@ CYCLE_SWEEP = [1, 2, 4, 8]
 CYCLE_LENGTH_RANGE = (19, 23)
 
 # Combinations = the sector's choice of which day its own campaign starts
-# on (combination `c` starts a new campaign on day `c`, every cycle). Demand
-# isn't a single spike on that start day — see `_combination_profile_value`
-# for how it spreads across the rest of the (shifted) cycle. Fixed regardless
-# of cycle length; must not exceed CYCLE_LENGTH_RANGE's minimum, so every
+# on (combination `c` starts a new campaign on day `c`, every cycle).
+# Fixed regardless of cycle length; must not exceed CYCLE_LENGTH_RANGE's minimum, so every
 # combination has a valid start day in every cycle.
 N_COMBINATIONS = 15
 N_CDS = 2
