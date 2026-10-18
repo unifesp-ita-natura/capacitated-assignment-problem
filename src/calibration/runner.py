@@ -90,7 +90,7 @@ def run_sa(instance: CalibrationInstance, spec: RunSpec, budget: BudgetSettings)
     params = resolve_params(spec.config, budget)
     recorder = TraceRecorder(every=budget.trace_every)
     result = solve(
-        **instance.sa_kwargs(), params=params, rng=random.Random(spec.seed), callback=recorder
+        instance.to_instance(), params=params, rng=random.Random(spec.seed), callback=recorder
     )
     return SARun(spec=spec, params=params, result=result, trace=recorder.rows)
 

@@ -8,7 +8,6 @@ import pytest
 from src.generate import generator
 from src.solver.inputs import (
     build_cd_sectors,
-    build_current_assignment_mip,
     build_current_assignment_sa,
     build_daily_capacity,
     build_id_maps,
@@ -124,19 +123,6 @@ def test_build_cd_sectors_groups_sector_ids_by_cd(sectors):
     cd_sectors = build_cd_sectors(sector_to_cd, sector_ids)
 
     assert cd_sectors == {2700: [1, 2], 5300: [3]}
-
-
-def test_build_current_assignment_mip_produces_sparse_indicator_dict(sectors):
-    sector_ids, combo_slots = build_id_maps(sectors)
-    combo_ids = {slot: combo_id for combo_id, slot in combo_slots.items()}
-    assignment = {"S01": generator.SLOTS[0], "S02": generator.SLOTS[3]}
-
-    current_assignment_mip = build_current_assignment_mip(assignment, sector_ids, combo_ids)
-
-    assert current_assignment_mip == {
-        (sector_ids["S01"], combo_ids[generator.SLOTS[0]]): 1,
-        (sector_ids["S02"], combo_ids[generator.SLOTS[3]]): 1,
-    }
 
 
 def test_build_current_assignment_sa_produces_dense_sector_to_combo_dict(sectors):

@@ -16,7 +16,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from src.persistence import SolveResult, configure_tracking, log_solve_result
-from src.solver.mip.block_assignment import ProjectedDemand, run_block_assignment_mip
+from src.solver.inputs import ProblemInstance, ProjectedDemand
+from src.solver.mip.block_assignment import run_block_assignment_mip
 
 # Add/remove Pyomo-registered solver names to compare different backends
 # against the same model. To compare different *formulations* instead (or in
@@ -145,7 +146,7 @@ def generate_instance(
     n_cycles: int,
     n_cds: int = N_CDS,
     seed: int = SEED,
-) -> dict:
+) -> ProblemInstance:
     """A synthetic block-assignment instance sized by `n_sectors`/`n_cycles`.
 
     Each cycle's length is independently sampled from `CYCLE_LENGTH_RANGE`
@@ -165,14 +166,14 @@ def generate_instance(
     cd_sectors = _assign_sectors_to_cds(sectors, n_cds)
     sector_demand = {s: rng.uniform(5.0, 50.0) for s in sectors}
 
-    return dict(
+    return ProblemInstance(
         sectors=sectors,
         combinations=combinations,
         days=days,
         cd_sectors=cd_sectors,
         daily_capacity=_build_loose_daily_capacity(sector_demand, cd_sectors, days),
         projected_demand=_build_projected_demand(sector_demand, combinations, days_by_cycle),
-        current_assignment={(s, ((s - 1) % len(combinations)) + 1): 1 for s in sectors},
+        current_assignment={s: ((s - 1) % len(combinations)) + 1 for s in sectors},
         max_churn=n_sectors,  # loose: the sweep isn't exercising the churn budget
         days_by_cycle=days_by_cycle,
     )
@@ -246,9 +247,13 @@ def _pending_solvers(
 
 
 def _run_one(
-    n_sectors: int, n_cycles: int, solver_name: str, instance: dict, on_result: ResultSink | None
+    n_sectors: int,
+    n_cycles: int,
+    solver_name: str,
+    instance: ProblemInstance,
+    on_result: ResultSink | None,
 ) -> SolveResult:
-    result = run_block_assignment_mip(**instance, solver=solver_name)
+    result = run_block_assignment_mip(instance, solver=solver_name)
     log_solve_result(
         result,
         params={"n_sectors": n_sectors, "n_cycles": n_cycles},

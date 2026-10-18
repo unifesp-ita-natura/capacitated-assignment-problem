@@ -51,8 +51,7 @@ COLUMNS = [
 
 def problem_of(instance: CalibrationInstance) -> AssignmentProblem:
     """Os dados da instância indexados pro avaliador da matheurística."""
-    kwargs = instance.mip_kwargs()
-    return build_problem(**{k: v for k, v in kwargs.items() if k not in ("combinations", "days")})
+    return build_problem(instance.to_instance())
 
 
 def _spec(settings: InstanceSettings, capacity_multiplier: float) -> InstanceSpec:
@@ -125,7 +124,7 @@ def run_instance(name: str, settings: InstanceSettings, config: RelaxAndFixConfi
     rows = [mip_row(name, settings, problem, outcome)]
     for window in config.windows:
         result = solve(
-            **instance.mip_kwargs(),
+            instance.to_instance(),
             params=_params(config, window),
             solve_subproblem=pyomo_subproblem_solver(
                 config.subproblem_solver, config.mip.mip_rel_gap
@@ -140,7 +139,7 @@ def reference_mip(
     instance: CalibrationInstance, settings: MipSettings, time_limit: float
 ) -> MipOutcome:
     """O MIP completo com o solver pedido; igual a `solve_mip`, mas com a opção de gap dele."""
-    model = build_block_assignment_model(**instance.mip_kwargs())
+    model = build_block_assignment_model(instance.to_instance())
     solver = pyo.SolverFactory(settings.solver)
     start = time.perf_counter()
     results = solver.solve(

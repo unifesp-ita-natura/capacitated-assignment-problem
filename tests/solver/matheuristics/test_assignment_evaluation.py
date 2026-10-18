@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from src.solver.inputs import ProblemInstance
 from src.solver.matheuristics.evaluation import capacity_utilization, evaluate_assignment
 from src.solver.matheuristics.problem import build_problem
 
@@ -16,19 +17,21 @@ def _problem(**overrides):
         demand[(sector, 2, 2)] = 10.0
     base = dict(
         sectors=[1, 2, 3, 4],
+        combinations=[1, 2],
+        days=[1, 2],
         cd_sectors={1: [1, 2], 2: [3, 4]},
         daily_capacity={(1, 1): 100.0, (1, 2): 100.0, (2, 1): 100.0, (2, 2): 100.0},
         projected_demand=demand,
-        current_assignment={(s, 1): 1 for s in (1, 2, 3, 4)},
+        current_assignment={s: 1 for s in (1, 2, 3, 4)},
         max_churn=1,
         days_by_cycle={0: [1, 2]},
     )
     base.update(overrides)
-    return build_problem(**base)
+    return build_problem(ProblemInstance(**base))
 
 
-def test_build_problem_converts_the_sparse_as_is_to_sector_to_combination():
-    problem = _problem(current_assignment={(1, 1): 1, (2, 2): 1, (3, 1): 0})
+def test_build_problem_keeps_the_dense_as_is_assignment():
+    problem = _problem(current_assignment={1: 1, 2: 2})
 
     assert problem.as_is == {1: 1, 2: 2}
 
@@ -72,7 +75,7 @@ def test_objective_averages_the_range_over_cycles():
         cd_sectors={1: [1]},
         daily_capacity={},
         projected_demand=demand,
-        current_assignment={(1, 1): 1},
+        current_assignment={1: 1},
         days_by_cycle={0: [1, 2], 1: [3, 4]},
     )
 
@@ -127,6 +130,6 @@ def test_churn_budget_charges_two_per_changed_sector():
 
 
 def test_sector_without_as_is_charges_one():
-    problem = _problem(current_assignment={(1, 1): 1})
+    problem = _problem(current_assignment={1: 1})
 
     assert evaluate_assignment(problem, {1: 1, 2: 1}).churn_budget_used == 1.0

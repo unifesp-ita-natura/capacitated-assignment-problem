@@ -9,8 +9,9 @@ from dataclasses import dataclass
 import pyomo.environ as pyo
 
 from src.persistence import SolveResult
+from src.solver.inputs import ProblemInstance
 from src.solver.matheuristics.evaluation import TOLERANCE, Evaluation, evaluate_assignment
-from src.solver.matheuristics.problem import AssignmentProblem, ProjectedDemand, build_problem
+from src.solver.matheuristics.problem import AssignmentProblem, build_problem
 from src.solver.matheuristics.subproblem import (
     SubproblemSolver,
     apply_variable_modes,
@@ -74,43 +75,21 @@ class RelaxAndFixResult:
 
 
 def solve(
-    sectors: Sequence[int],
-    combinations: Sequence[int],
-    days: Sequence[int],
-    cd_sectors: Mapping[int, Sequence[int]],
-    daily_capacity: Mapping[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: Mapping[tuple[int, int], int],
-    max_churn: float,
-    days_by_cycle: Mapping[int, Sequence[int]],
+    instance: ProblemInstance,
     params: RelaxAndFixParams | None = None,
     solve_subproblem: SubproblemSolver | None = None,
     cd_order: Sequence[int] | None = None,
 ) -> RelaxAndFixResult:
     """Roda o Relax-and-Fix e depois o Fix-and-Optimize sobre grupos de setores (CDs ou fatias).
 
-    Os argumentos de instância são os de `build_block_assignment_model` (por isso
-    `CalibrationInstance.mip_kwargs()` serve direto). `cd_order` define a ordem em
-    que os CDs entram nas janelas (padrão: a de `cd_sectors`); `solve_subproblem`
-    troca o solver dos subproblemas (padrão: HiGHS via Pyomo).
+    `cd_order` define a ordem em que os CDs entram nas janelas (padrão: a de
+    `instance.cd_sectors`); `solve_subproblem` troca o solver dos subproblemas
+    (padrão: HiGHS via Pyomo).
     """
     params = params or RelaxAndFixParams()
     start = time.perf_counter()
-    problem = build_problem(
-        sectors, cd_sectors, daily_capacity, projected_demand, current_assignment,
-        max_churn, days_by_cycle,
-    )  # fmt: skip
-    model = build_block_assignment_model(
-        sectors=sectors,
-        combinations=combinations,
-        days=days,
-        cd_sectors=cd_sectors,
-        daily_capacity=daily_capacity,
-        projected_demand=projected_demand,
-        current_assignment=current_assignment,
-        max_churn=max_churn,
-        days_by_cycle=days_by_cycle,
-    )
+    problem = build_problem(instance)
+    model = build_block_assignment_model(instance)
     solver = solve_subproblem or pyomo_subproblem_solver(mip_rel_gap=params.mip_rel_gap)
     order = _cd_order(problem, cd_order)
     ctx = _Context(
@@ -124,30 +103,14 @@ def solve(
 
 
 def run_relax_and_fix(
-    sectors: list[int],
-    combinations: list[int],
-    days: list[int],
-    cd_sectors: dict[int, list[int]],
-    daily_capacity: dict[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: dict[tuple[int, int], int],
-    max_churn: float,
-    days_by_cycle: dict[int, list[int]],
+    instance: ProblemInstance,
     solver: str = "appsi_highs",
     params: RelaxAndFixParams | None = None,
 ) -> SolveResult:
     """Roda a matheurística e devolve um `SolveResult` comparável ao do MIP e ao do SA."""
     params = params or RelaxAndFixParams()
     result = solve(
-        sectors=sectors,
-        combinations=combinations,
-        days=days,
-        cd_sectors=cd_sectors,
-        daily_capacity=daily_capacity,
-        projected_demand=projected_demand,
-        current_assignment=current_assignment,
-        max_churn=max_churn,
-        days_by_cycle=days_by_cycle,
+        instance,
         params=params,
         solve_subproblem=pyomo_subproblem_solver(solver, params.mip_rel_gap),
     )

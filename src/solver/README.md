@@ -2,7 +2,14 @@
 
 Solver backends live under here as sibling families, each solving the same
 class of problem a different way but reporting into the same
-`SolveResult` (`src/persistence/results.py`) so they're directly comparable:
+`SolveResult` (`src/persistence/results.py`) so they're directly comparable.
+
+`inputs.py`'s `ProblemInstance` is the one instance type all three families
+take (`build_block_assignment_model`, `matheuristics.solve`,
+`heuristics.simulated_annealing.solve`, and their `run_*` wrappers), instead
+of each repeating the same 9-argument list. `current_assignment` is always
+the dense As-Is (`{setor: combinação}`); `mip/block_assignment.py` derives
+the sparse form its churn constraint needs internally.
 
 - `mip/` — exact MIP solvers via Pyomo (Gurobi, HiGHS, ...). `mip/block_assignment.py`
   shows the pattern: build a `ConcreteModel`, hand it to

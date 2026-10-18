@@ -81,9 +81,10 @@ janela nem enche. `resolve_params` aplica os dois em toda execução.
 
 - `ForecastChoice` — estratégias de nível/forma pedidas no YAML (`None` = automática).
 - `SyntheticHistory` — o que o gerador devolve para uma instância.
-- `CalibrationInstance` — os dicionários de entrada do SA e do MIP.
-  `sa_kwargs()`/`mip_kwargs()` devolvem os argumentos nomeados de `solve` e de
-  `build_block_assignment_model`; `metadata()` resume a instância e as estratégias usadas.
+- `CalibrationInstance` — os dados de entrada compartilhados pelo SA e pelo MIP.
+  `to_instance()` devolve o `ProblemInstance` (`src/solver/inputs.py`) que `solve` e
+  `build_block_assignment_model` esperam; `metadata()` resume a instância e as
+  estratégias usadas.
 - `synthesize_history(spec)` — `build_sectors`, `generate_synthetic_demand` e
   `build_sector_cd_assignment`, com o rng consumido na mesma ordem de `src/main.py` (a
   mesma seed gera a mesma instância que o pipeline principal).
@@ -93,7 +94,7 @@ janela nem enche. `resolve_params` aplica os dois em toda execução.
   `forecast_items`.
 - `build_instance(name, spec, choice)` — as três anteriores + `_to_solver_inputs`, que
   usa `build_id_maps`, `build_projected_demand`, `build_cd_sectors`,
-  `build_daily_capacity`, `build_current_assignment_sa/_mip` e `group_days_by_cycle`.
+  `build_daily_capacity`, `build_current_assignment_sa` e `group_days_by_cycle`.
 
 > A **sequência** de chamadas repete a de `src/main.py` (é o mesmo pipeline), mas
 > nenhuma função foi copiada. A alternativa — extrair uma função de `main.py` e
@@ -103,7 +104,7 @@ janela nem enche. `resolve_params` aplica os dois em toda execução.
 
 - `MipOutcome` — status (`termination`), `objective`, `lower_bound`, `upper_bound`, `gap`
   residual, `time`, `x`; `closed`, `has_incumbent`, `to_dict()`.
-- `solve_mip(instance, settings, time_limit)` — `build_block_assignment_model(**mip_kwargs)`
+- `solve_mip(instance, settings, time_limit)` — `build_block_assignment_model(instance.to_instance())`
   + `SolverFactory("appsi_highs").solve(model, timelimit=..., options={"mip_rel_gap": ...},
   load_solutions=False)`; carrega a solução só se houver incumbente (`_load_incumbent`).
 - `finite_or_none`, `relative_gap`, `assignment_from_model` — auxiliares puros.
@@ -176,7 +177,7 @@ full.yaml ──load_calibration_config──► SACalibrationConfig
                                             ▼
                                    CalibrationInstance
                   ┌─────────────────────────┴──────────────────────────┐
-     mip_kwargs() ▼                                        sa_kwargs() ▼
+   to_instance() ▼                                         to_instance() ▼
   build_block_assignment_model                      space: lhs_configs / TPE ─► configs
   + SolverFactory("appsi_highs")                    runner: expand_specs ─► RunSpec
             ▼                                       resolve_params ─► AnnealingParams

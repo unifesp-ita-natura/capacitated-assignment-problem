@@ -14,6 +14,7 @@ from src.generate import generator
 from src.persistence import write_results_csv
 from src.solver import inputs as solver_inputs
 from src.solver.heuristics.simulated_annealing import run_simulated_annealing
+from src.solver.inputs import ProblemInstance
 from src.solver.mip.block_assignment import run_block_assignment_mip
 
 RESULTS_FILENAME = "main_pipeline_comparison.csv"
@@ -80,37 +81,24 @@ def main(
     cd_sectors = solver_inputs.build_cd_sectors(sector_to_cd, sector_ids)
     daily_capacity = solver_inputs.build_daily_capacity(list(cd_sectors), days, capacity_multiplier)
 
-    current_assignment_mip = solver_inputs.build_current_assignment_mip(
-        assignment, sector_ids, combo_ids
-    )
-    current_assignment_sa = solver_inputs.build_current_assignment_sa(
+    current_assignment = solver_inputs.build_current_assignment_sa(
         assignment, sector_ids, combo_ids
     )
     max_churn_sectors = max_churn * n_sectors  # max_churn is a fraction of sectors allowed to move
 
-    mip_result = run_block_assignment_mip(
-        sector_ids_list,
-        combo_ids_list,
-        days,
-        cd_sectors,
-        daily_capacity,
-        projected_demand,
-        current_assignment_mip,
-        max_churn_sectors,
-        days_by_cycle,
+    instance = ProblemInstance(
+        sectors=sector_ids_list,
+        combinations=combo_ids_list,
+        days=days,
+        cd_sectors=cd_sectors,
+        daily_capacity=daily_capacity,
+        projected_demand=projected_demand,
+        current_assignment=current_assignment,
+        max_churn=max_churn_sectors,
+        days_by_cycle=days_by_cycle,
     )
-    sa_result = run_simulated_annealing(
-        sector_ids_list,
-        combo_ids_list,
-        days,
-        cd_sectors,
-        daily_capacity,
-        projected_demand,
-        current_assignment_sa,
-        max_churn_sectors,
-        days_by_cycle,
-        seed,
-    )
+    mip_result = run_block_assignment_mip(instance)
+    sa_result = run_simulated_annealing(instance, seed)
 
     config_file = config_file or DEFAULT_CONFIG
     config = load_config(DEFAULT_CONFIG)

@@ -9,7 +9,7 @@ from experiments.compare_modeling.run import run
 
 @patch("experiments.compare_modeling.run.run_block_assignment_mip")
 def test_run_produces_one_result_per_solver(mock_run_block_assignment_mip):
-    def fake_run(*, solver, **kwargs):
+    def fake_run(instance, *, solver, **kwargs):
         result = MagicMock()
         result.solver = solver
         result.model_name = "mip_block_assignment"

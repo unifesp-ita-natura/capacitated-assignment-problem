@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-ProjectedDemand = Mapping[tuple[int, int, int], float]  # (setor, dia, combinação) -> qtd
+from src.solver.inputs import ProblemInstance, ProjectedDemand
 
 
 @dataclass(frozen=True)
@@ -25,31 +25,25 @@ class AssignmentProblem:
     ]  # (s, d) -> ((dia, qtd), ...)
 
 
-def build_problem(
-    sectors: Iterable[int],
-    cd_sectors: Mapping[int, Iterable[int]],
-    daily_capacity: Mapping[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: Mapping[tuple[int, int], int],
-    max_churn: float,
-    days_by_cycle: Mapping[int, Iterable[int]],
-) -> AssignmentProblem:
-    """Indexa os dados do MIP (mesmos argumentos de `build_block_assignment_model`).
+def build_problem(instance: ProblemInstance) -> AssignmentProblem:
+    """Indexa os dados do `ProblemInstance` pro avaliador da matheurística.
 
-    `current_assignment` é o As-Is esparso do MIP, `{(setor, combinação): 1}`.
+    Ignora `instance.combinations`/`instance.days` (não usados fora da
+    construção do modelo Pyomo); `instance.current_assignment` já é o As-Is
+    denso (setor -> combinação).
     """
-    sectors = tuple(sectors)
-    cd_sectors = {cd: tuple(members) for cd, members in cd_sectors.items()}
+    sectors = tuple(instance.sectors)
+    cd_sectors = {cd: tuple(members) for cd, members in instance.cd_sectors.items()}
     sector_cd = _sector_cd(sectors, cd_sectors)
     return AssignmentProblem(
         sectors=sectors,
         cd_sectors=cd_sectors,
         sector_cd=sector_cd,
-        daily_capacity=daily_capacity,
-        as_is={s: d for (s, d), flag in current_assignment.items() if flag},
-        max_churn=float(max_churn),
-        days_by_cycle={h: tuple(days) for h, days in days_by_cycle.items()},
-        demand_by_pair=_index_demand(projected_demand),
+        daily_capacity=instance.daily_capacity,
+        as_is=dict(instance.current_assignment),
+        max_churn=float(instance.max_churn),
+        days_by_cycle={h: tuple(days) for h, days in instance.days_by_cycle.items()},
+        demand_by_pair=_index_demand(instance.projected_demand),
     )
 
 
