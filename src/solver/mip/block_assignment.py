@@ -53,10 +53,19 @@ def _memory_limit(limit_gb: float) -> Generator[None]:
         resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
 
 
-def _solve_options(resolved_solver: str, memory_limit_gb: float) -> dict[str, object]:
-    """Solver-specific options; only Gurobi has a native memory-limit knob."""
+def _solve_options(
+    resolved_solver: str, memory_limit_gb: float, time_limit_seconds: float
+) -> dict[str, object]:
+    """Solver-specific options.
+
+    Pyomo's generic `timelimit=` kwarg to `.solve()` is only honored by a
+    handful of shell plugins (CPLEX, GLPK, SCIPAMPL, CBC); Gurobi's shell
+    plugin (`pyomo.solvers.plugins.solvers.GUROBI`) never reads
+    `self._timelimit` and silently ignores it, so `TimeLimit` must be passed
+    through `options` instead, same as `MemLimit`.
+    """
     if resolved_solver == "gurobi":
-        return {"MemLimit": memory_limit_gb}
+        return {"MemLimit": memory_limit_gb, "TimeLimit": time_limit_seconds}
     return {}
 
 
@@ -120,18 +129,20 @@ def solve_block_assignment(
 
     `solver` é qualquer nome de solver registrado no Pyomo. Faz fallback pra
     `FALLBACK_SOLVER` se `solver == "gurobi"` e não houver licença/instalação
-    disponível. `time_limit_seconds` vira o `timelimit` padrão do Pyomo, que
-    todo solver legacy (gurobi, appsi_highs, ...) honra, pra nenhuma instância
-    rodar indefinidamente. `memory_limit_gb` vira `MemLimit` nativo pro
-    Gurobi; pro resto (ex. appsi_highs, sem opção nativa de memória) é só o
-    guarda-corpo melhor-esforço de `_memory_limit`.
+    disponível. `time_limit_seconds` vira o `timelimit` padrão do Pyomo
+    (honrado por `appsi_highs`) e também é repassado como `TimeLimit` nativo
+    via `_solve_options` pro Gurobi, cujo plugin shell ignora o `timelimit`
+    genérico — sem isso, nenhuma instância teria limite de tempo nessa solver.
+    `memory_limit_gb` vira `MemLimit` nativo pro Gurobi; pro resto (ex.
+    appsi_highs, sem opção nativa de memória) é só o guarda-corpo
+    melhor-esforço de `_memory_limit`.
     """
     solver_interface, resolved_solver = _resolve_solver(solver)
     with _memory_limit(memory_limit_gb):
         return solver_interface.solve(
             model,
             timelimit=time_limit_seconds,
-            options=_solve_options(resolved_solver, memory_limit_gb),
+            options=_solve_options(resolved_solver, memory_limit_gb, time_limit_seconds),
         )
 
 
@@ -163,11 +174,34 @@ def run_block_assignment_mip(
     )
     solver_interface, resolved_solver = _resolve_solver(solver)
     start = time.perf_counter()
-    with _memory_limit(memory_limit_gb):
-        pyomo_results = solver_interface.solve(
-            model,
-            timelimit=time_limit_seconds,
-            options=_solve_options(resolved_solver, memory_limit_gb),
+    try:
+        with _memory_limit(memory_limit_gb):
+            pyomo_results = solver_interface.solve(
+                model,
+                timelimit=time_limit_seconds,
+                options=_solve_options(resolved_solver, memory_limit_gb, time_limit_seconds),
+            )
+    except RuntimeError as exc:
+        # Both the legacy (`environ.SolverFactory`) and `appsi_highs`
+        # interfaces raise this when the solver stopped (usually hitting
+        # `time_limit_seconds`) without ever finding a feasible solution, so
+        # there's nothing to load into `model`'s variables/objective.
+        if "feasible solution was not found" not in str(exc):
+            raise
+        wall_time_seconds = time.perf_counter() - start
+        logger.warning(
+            "%s found no feasible solution within %ss: %s",
+            resolved_solver,
+            time_limit_seconds,
+            exc,
+        )
+        return SolveResult(
+            model_name="mip_block_assignment",
+            solver=resolved_solver,
+            status=str(pyo.SolverStatus.aborted),
+            termination_condition=str(pyo.TerminationCondition.noSolution),
+            objective=None,
+            wall_time_seconds=wall_time_seconds,
         )
     wall_time_seconds = time.perf_counter() - start
     return SolveResult(

@@ -146,6 +146,39 @@ def test_run_block_assignment_mip_dispatches_to_requested_solver(toy_instance):
     assert result.termination_condition == "optimal"
 
 
+def test_run_block_assignment_mip_reports_no_solution_instead_of_raising():
+    """Capacity far below demand makes this infeasible, so HiGHS/Gurobi find no
+    feasible solution to load — `run_block_assignment_mip` should report that
+    via `SolveResult`, not propagate Pyomo's `RuntimeError`.
+    """
+    infeasible_instance = dict(
+        sectors=[1, 2],
+        combinations=[1, 2],
+        days=[1, 2],
+        cd_sectors={1: [1, 2]},
+        daily_capacity={(1, 1): 1.0, (1, 2): 1.0},
+        projected_demand={
+            (1, 1, 1): 10.0,
+            (1, 2, 1): 0.0,
+            (1, 1, 2): 0.0,
+            (1, 2, 2): 10.0,
+            (2, 1, 1): 10.0,
+            (2, 2, 1): 0.0,
+            (2, 1, 2): 0.0,
+            (2, 2, 2): 10.0,
+        },
+        current_assignment={(1, 1): 1, (2, 2): 1},
+        max_churn=1,
+        days_by_cycle={0: [1, 2]},
+    )
+
+    result = run_block_assignment_mip(**infeasible_instance, solver="appsi_highs")
+
+    assert result.status == "aborted"
+    assert result.termination_condition == "noSolution"
+    assert result.objective is None
+
+
 def test_solve_block_assignment_falls_back_to_highs_when_gurobi_unavailable(
     monkeypatch, toy_instance, caplog
 ):
