@@ -16,9 +16,6 @@ the sparse form its churn constraint needs internally.
   `pyo.SolverFactory(solver_name).solve(...)`. `solver_name` is any
   Pyomo-registered name, so switching backends is a config value, not a
   rewrite.
-- `cpsat/` — OR-Tools CP-SAT. Not Pyomo-based — CP-SAT builds its own
-  `cp_model.CpModel` and has its own solve loop — so it gets its own module
-  rather than going through `mip/`. See `cpsat/README.md`.
 - `heuristics/` — greedy/local-search/metaheuristic approaches that need no
   external solver license. See `heuristics/README.md`.
 - `matheuristics/` — Relax-and-Fix + Fix-and-Optimize: solve the same Pyomo

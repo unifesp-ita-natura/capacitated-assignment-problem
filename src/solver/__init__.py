@@ -1,1 +1,1 @@
-"""Solver families: mip/, cpsat/, heuristics/ and matheuristics/."""
+"""Solver families: mip/, heuristics/ and matheuristics/."""
