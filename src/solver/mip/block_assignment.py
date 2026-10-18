@@ -10,13 +10,12 @@ from contextlib import contextmanager
 import pyomo.environ as pyo
 
 from src.persistence import SolveResult
+from src.solver.inputs import ProblemInstance, ProjectedDemand
 
 try:
     import resource  # POSIX-only; see `_memory_limit`
 except ImportError:  # Windows has no `resource` module
     resource = None
-
-ProjectedDemand = Mapping[tuple[int, int, int], float]  # (sector, day, combination) -> qty
 
 FALLBACK_SOLVER = "appsi_highs"
 DEFAULT_TIME_LIMIT_SECONDS = 10 * 60
@@ -69,36 +68,28 @@ def _solve_options(
     return {}
 
 
-def build_block_assignment_model(
-    sectors: Iterable[int],
-    combinations: Iterable[int],
-    days: Iterable[int],
-    cd_sectors: Mapping[int, Iterable[int]],
-    daily_capacity: Mapping[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: Mapping[tuple[int, int], int],
-    max_churn: float,
-    days_by_cycle: Mapping[int, Iterable[int]],
-) -> pyo.ConcreteModel:
+def build_block_assignment_model(instance: ProblemInstance) -> pyo.ConcreteModel:
     """Atribui cada setor a um Bloco/Subloco pra nivelar a demanda diária no horizonte.
 
-    `daily_capacity` e `current_assignment` são indexados por `(cd, dia)` e
-    `(setor, combinação)`, respectivamente; ambos assumem 0 pra chaves ausentes.
-    `days_by_cycle` agrupa `days` por ciclo futuro (0-indexado): a amplitude
-    z_max - z_min é calculada por ciclo e depois tirada a média, pra não confundir
-    tendência entre ciclos com desbalanceamento dentro de um ciclo.
+    `instance.daily_capacity` é indexado por `(cd, dia)`, assumindo 0 pra chaves
+    ausentes. `instance.days_by_cycle` agrupa `instance.days` por ciclo futuro
+    (0-indexado): a amplitude z_max - z_min é calculada por ciclo e depois
+    tirada a média, pra não confundir tendência entre ciclos com
+    desbalanceamento dentro de um ciclo.
     """
-    cd_sectors = {cd: list(members) for cd, members in cd_sectors.items()}
-    days_by_cycle = {h: list(members) for h, members in days_by_cycle.items()}
+    cd_sectors = {cd: list(members) for cd, members in instance.cd_sectors.items()}
+    days_by_cycle = {h: list(members) for h, members in instance.days_by_cycle.items()}
 
     model = pyo.ConcreteModel()
-    _add_sets(model, sectors, combinations, days, cd_sectors, days_by_cycle)
+    _add_sets(
+        model, instance.sectors, instance.combinations, instance.days, cd_sectors, days_by_cycle
+    )
     _add_variables(model)
     _add_objective(model)
     _add_assignment_constraint(model)
-    _add_demand_range_constraints(model, projected_demand, days_by_cycle)
-    _add_capacity_constraints(model, cd_sectors, daily_capacity, projected_demand)
-    _add_churn_constraint(model, current_assignment, max_churn)
+    _add_demand_range_constraints(model, instance.projected_demand, days_by_cycle)
+    _add_capacity_constraints(model, cd_sectors, instance.daily_capacity, instance.projected_demand)
+    _add_churn_constraint(model, instance.current_assignment, instance.max_churn)
     return model
 
 
@@ -147,31 +138,13 @@ def solve_block_assignment(
 
 
 def run_block_assignment_mip(
-    sectors: list[int],
-    combinations: list[int],
-    days: list[int],
-    cd_sectors: dict[int, list[int]],
-    daily_capacity: dict[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: dict[tuple[int, int], int],
-    max_churn: float,
-    days_by_cycle: dict[int, list[int]],
+    instance: ProblemInstance,
     solver: str = "gurobi",
     time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
     memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
 ) -> SolveResult:
     """Build and solve the block-assignment MIP, returning a timed `SolveResult`."""
-    model = build_block_assignment_model(
-        sectors=sectors,
-        combinations=combinations,
-        days=days,
-        cd_sectors=cd_sectors,
-        daily_capacity=daily_capacity,
-        projected_demand=projected_demand,
-        current_assignment=current_assignment,
-        max_churn=max_churn,
-        days_by_cycle=days_by_cycle,
-    )
+    model = build_block_assignment_model(instance)
     solver_interface, resolved_solver = _resolve_solver(solver)
     start = time.perf_counter()
     try:
@@ -307,12 +280,13 @@ def _add_capacity_constraints(
 
 def _add_churn_constraint(
     model: pyo.ConcreteModel,
-    current_assignment: Mapping[tuple[int, int], int],
+    current_assignment: Mapping[int, int],
     max_churn: float,
 ) -> None:
     """Limita a max_churn o número de setores que mudam em relação ao As-Is (§3.5.5).
 
-    Cada par (s, d) contribui com 1 - x[s,d] se era a atribuição As-Is (0 se
+    `current_assignment` é o As-Is denso (setor -> combinação). Cada par
+    (s, d) contribui com 1 - x[s,d] se era a atribuição As-Is do setor (0 se
     o setor manteve, 1 se abandonou) ou com x[s,d] caso contrário (1 se o
     setor escolheu essa combinação agora). Um setor que mudou contribui com
     exatamente 2 somando todos os seus pares (s, d); um que não mudou
@@ -321,8 +295,8 @@ def _add_churn_constraint(
 
     def rule(m: pyo.ConcreteModel) -> bool:
         changed = sum(
-            current_assignment.get((s, d), 0)
-            + (1 - 2 * current_assignment.get((s, d), 0)) * m.x[s, d]
+            (1 if current_assignment.get(s) == d else 0)
+            + (1 - 2 * (1 if current_assignment.get(s) == d else 0)) * m.x[s, d]
             for s in m.S
             for d in m.D
         )

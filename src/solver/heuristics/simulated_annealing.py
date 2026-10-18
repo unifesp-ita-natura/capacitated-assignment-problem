@@ -12,8 +12,8 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from src.persistence import SolveResult
+from src.solver.inputs import ProblemInstance, ProjectedDemand
 
-ProjectedDemand = Mapping[tuple[int, int, int], float]  # (setor, dia, combinação) -> qtd
 # chamado a cada iteração com iteration=, energy=, temperature=, assignment=
 IterationCallback = Callable[..., None]
 
@@ -56,15 +56,7 @@ class AnnealingResult:
 
 
 def solve(
-    sectors: Iterable[int],
-    combinations: Iterable[int],
-    days: Iterable[int],
-    cd_sectors: Mapping[int, Iterable[int]],
-    daily_capacity: Mapping[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: Mapping[int, int],
-    max_churn: float,
-    days_by_cycle: Mapping[int, Iterable[int]],
+    instance: ProblemInstance,
     valid_combinations: Mapping[int, Iterable[int]] | None = None,
     params: AnnealingParams | None = None,
     rng: random.Random | None = None,
@@ -72,27 +64,28 @@ def solve(
 ) -> AnnealingResult:
     """Roda o Simulated Annealing (Seção 4) e devolve a melhor atribuição encontrada.
 
-    `current_assignment` mapeia setor -> combinação atual (o vetor As-Is), e também
-    é o ponto de partida da busca. `valid_combinations` mapeia CD -> combinações
-    permitidas (D_c); quando omitido, toda combinação vale pra todo CD.
-    `days_by_cycle` agrupa `days` por ciclo futuro (0-indexado), pra que o
-    objetivo (amplitude de demanda) seja calculado por ciclo e depois tirado a
-    média, em vez de globalmente sobre todo o horizonte. `callback`, se dado, é
-    chamado ao fim de cada iteração com `iteration`, `energy` (energia corrente),
-    `temperature` e `assignment` (índices internos; não modifique o array).
+    `instance.current_assignment` mapeia setor -> combinação atual (o vetor
+    As-Is), e também é o ponto de partida da busca. `valid_combinations` mapeia
+    CD -> combinações permitidas (D_c); quando omitido, toda combinação vale
+    pra todo CD. `instance.days_by_cycle` agrupa `instance.days` por ciclo
+    futuro (0-indexado), pra que o objetivo (amplitude de demanda) seja
+    calculado por ciclo e depois tirado a média, em vez de globalmente sobre
+    todo o horizonte. `callback`, se dado, é chamado ao fim de cada iteração
+    com `iteration`, `energy` (energia corrente), `temperature` e `assignment`
+    (índices internos; não modifique o array).
     """
     params = params or AnnealingParams()
     rng = rng or random.Random()
     problem = _build_problem(
-        sectors,
-        combinations,
-        days,
-        cd_sectors,
-        daily_capacity,
-        projected_demand,
-        current_assignment,
-        max_churn,
-        days_by_cycle,
+        instance.sectors,
+        instance.combinations,
+        instance.days,
+        instance.cd_sectors,
+        instance.daily_capacity,
+        instance.projected_demand,
+        instance.current_assignment,
+        instance.max_churn,
+        instance.days_by_cycle,
         valid_combinations,
     )
     start = time.perf_counter()
@@ -123,32 +116,10 @@ def iterations_for_schedule(
     return math.ceil(math.log(min_temperature / initial_temperature) / math.log(cooling_rate))
 
 
-def run_simulated_annealing(
-    sectors: list[int],
-    combinations: list[int],
-    days: list[int],
-    cd_sectors: dict[int, list[int]],
-    daily_capacity: dict[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: dict[int, int],
-    max_churn: float,
-    days_by_cycle: dict[int, list[int]],
-    seed: int,
-) -> SolveResult:
+def run_simulated_annealing(instance: ProblemInstance, seed: int) -> SolveResult:
     """Run the simulated-annealing heuristic, returning a timed `SolveResult`."""
     start = time.perf_counter()
-    result = solve(
-        sectors=sectors,
-        combinations=combinations,
-        days=days,
-        cd_sectors=cd_sectors,
-        daily_capacity=daily_capacity,
-        projected_demand=projected_demand,
-        current_assignment=current_assignment,
-        max_churn=max_churn,
-        days_by_cycle=days_by_cycle,
-        rng=random.Random(seed),
-    )
+    result = solve(instance, rng=random.Random(seed))
     wall_time_seconds = time.perf_counter() - start
     return SolveResult(
         model_name="simulated_annealing",

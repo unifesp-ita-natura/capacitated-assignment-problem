@@ -70,7 +70,7 @@ def solve_mip(
     instance: CalibrationInstance, settings: MipSettings, time_limit: float
 ) -> MipOutcome:
     """Monta o modelo de `block_assignment` e o resolve com o solver e as opções dados."""
-    model = build_block_assignment_model(**instance.mip_kwargs())
+    model = build_block_assignment_model(instance.to_instance())
     solver = pyo.SolverFactory(settings.solver)
     start = time.perf_counter()
     results = solver.solve(

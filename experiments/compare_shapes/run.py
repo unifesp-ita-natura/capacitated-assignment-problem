@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
-import subprocess
 import sys
 from datetime import UTC, datetime
-from importlib.metadata import version
 from pathlib import Path
 
 import yaml
@@ -23,6 +19,7 @@ from src.forecasting.shape_evaluation import (
     evaluate_shapes,
 )
 from src.forecasting.shape_learning import BASE_FEATURES
+from src.persistence.provenance import code_provenance, package_version, save_manifest, sha256_file
 
 
 class ShapePaths(BaseModel):
@@ -42,29 +39,20 @@ class ShapeConfig(BaseModel):
     paths: ShapePaths
 
 
-def _git_revision() -> str:
-    """Record the current Git revision when available."""
-    result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
-    return result.stdout.strip()
-
-
 def _manifest(config: ShapeConfig) -> dict:
     """Describe effective parameters, inputs and implemented predictors."""
-    with config.paths.base_csv.open("rb") as source:
-        digest = hashlib.file_digest(source, "sha256").hexdigest()
+    provenance = code_provenance()
     return {
         "status": "running",
         "started_at": datetime.now(UTC).isoformat(),
-        "git_revision": _git_revision(),
-        "git_status": subprocess.run(
-            ["git", "status", "--porcelain"], capture_output=True, text=True
-        ).stdout.splitlines(),
+        "git_revision": provenance["revision"],
+        "git_status": provenance["working_tree_status"],
         "python_version": sys.version,
         "package_versions": {
-            name: version(name) for name in ["pandas", "numpy", "pydantic", "pyyaml"]
+            name: package_version(name) for name in ["pandas", "numpy", "pydantic", "pyyaml"]
         },
         "lightgbm_version": _learning_version(config),
-        "base_sha256": digest,
+        "base_sha256": sha256_file(config.paths.base_csv),
         "parameters": config.model_dump(mode="json"),
         "target_granularity": ["cd_setor", "CICLOS", "date"],
         "ranking_metric": "share_mae_pp",
@@ -78,7 +66,7 @@ def _manifest(config: ShapeConfig) -> dict:
 def _learning_version(config: ShapeConfig) -> str | None:
     """Record the optional dependency only when a learned shape candidate is selected."""
     if any(candidate.model == "lightgbm" for candidate in config.candidates):
-        return version("lightgbm")
+        return package_version("lightgbm")
     return None
 
 
@@ -113,13 +101,6 @@ def _organization_inputs(config: ShapeConfig, days) -> None:
         )
 
 
-def _save_manifest(directory: Path, record: dict) -> None:
-    """Write execution metadata as readable UTF-8 JSON."""
-    (directory / "run_manifest.json").write_text(
-        json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
-
-
 def _execute(config: ShapeConfig, directory: Path) -> None:
     """Load real demand, evaluate curves and export daily predictions and metrics."""
     days = build_shape_days(load_demand_base(config.paths.base_csv))
@@ -139,7 +120,7 @@ def run(config_path: str | Path) -> Path:
     directory = config.paths.run_dir
     directory.mkdir(parents=True, exist_ok=False)
     (directory / "config_snapshot.yaml").write_text(contents, encoding="utf-8")
-    _save_manifest(directory, record)
+    save_manifest(directory / "run_manifest.json", record)
     print(f"Shape output: {directory.resolve()}")
     try:
         _execute(config, directory)
@@ -150,7 +131,7 @@ def run(config_path: str | Path) -> Path:
         record.update(status="completed")
     finally:
         record["finished_at"] = datetime.now(UTC).isoformat()
-        _save_manifest(directory, record)
+        save_manifest(directory / "run_manifest.json", record)
     return directory
 
 

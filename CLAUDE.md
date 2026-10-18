@@ -65,6 +65,15 @@ These apply whenever you touch code, commit, or write a paper. Each is short —
 - `docs/conventions/function-design.md` — small, single-purpose function guidelines
 - `docs/conventions/testing.md` — mocking the solver, coverage targets, ruff/radon commands
 
+**Before writing a new helper in `experiments/`, check if `src/` already has one.**
+Experiment scripts are orchestration/glue around real logic; if you're writing
+config loading, data loading/validation, metric computation, plotting, or
+file/manifest I/O, search `src/` first (`grep -r` for the operation, or check
+the relevant `src/*/README.md`). Only write it in `experiments/` if it's
+genuinely specific to that one experiment. If two or more experiment scripts
+end up with similar helper code, that's a signal to move it to `src/`
+immediately rather than letting a third copy appear.
+
 ## Formal proofs (optional)
 
 `formal/` has a Lean 4 / Mathlib scaffold for formalizing paper theorems. See `formal/README.md`. 

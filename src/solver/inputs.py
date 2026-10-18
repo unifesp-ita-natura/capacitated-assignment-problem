@@ -2,9 +2,34 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pandas as pd
 
 from src.generate import generator
+
+ProjectedDemand = dict[tuple[int, int, int], float]  # (sector, day, combination) -> qty
+
+
+@dataclass(frozen=True)
+class ProblemInstance:
+    """Block-assignment instance shared by the MIP, matheuristic, and SA solvers.
+
+    `current_assignment` is the dense As-Is map (sector -> combination); the
+    MIP's sparse `{(sector, combination): 1}` churn-constraint form is derived
+    internally from it where needed, instead of being carried as a second
+    representation here.
+    """
+
+    sectors: list[int]
+    combinations: list[int]
+    days: list[int]
+    cd_sectors: dict[int, list[int]]
+    daily_capacity: dict[tuple[int, int], float]
+    projected_demand: ProjectedDemand
+    current_assignment: dict[int, int]
+    max_churn: float
+    days_by_cycle: dict[int, list[int]]
 
 
 def build_id_maps(sectors: list[str]) -> tuple[dict[str, int], dict[int, tuple[int, int]]]:
@@ -78,15 +103,6 @@ def build_cd_sectors(
     for sector, cd_code in sector_to_cd.items():
         cd_sectors.setdefault(cd_code, []).append(sector_ids[sector])
     return cd_sectors
-
-
-def build_current_assignment_mip(
-    assignment: dict[str, tuple[int, int]],
-    sector_ids: dict[str, int],
-    combo_ids: dict[tuple[int, int], int],
-) -> dict[tuple[int, int], int]:
-    """As-is assignment as the sparse {(sector_id, combo_id): 1} mapping the MIP model expects."""
-    return {(sector_ids[sector], combo_ids[slot]): 1 for sector, slot in assignment.items()}
 
 
 def build_current_assignment_sa(

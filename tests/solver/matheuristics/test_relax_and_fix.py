@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from src.persistence import SolveResult
+from src.solver.inputs import ProblemInstance
 from src.solver.matheuristics.relax_and_fix import (
     COMPLETED,
     NO_SOLUTION_WINDOW,
@@ -16,7 +17,7 @@ from src.solver.matheuristics.relax_and_fix import (
 )
 
 
-def _instance(n_cds: int = 2, sectors_per_cd: int = 2, **overrides) -> dict:
+def _instance(n_cds: int = 2, sectors_per_cd: int = 2, **overrides) -> ProblemInstance:
     """`sectors_per_cd` setores por CD; combinação 1 -> 10 itens no dia 1, 2 -> 10 no dia 2.
 
     O As-Is põe todo mundo na combinação 1 (dia 1 = 10 * n_setores, dia 2 = 0), então
@@ -30,12 +31,12 @@ def _instance(n_cds: int = 2, sectors_per_cd: int = 2, **overrides) -> dict:
         cd_sectors=_cd_sectors(n_cds, sectors_per_cd),
         daily_capacity=_capacity(n_cds),
         projected_demand=_demand(sectors),
-        current_assignment={(s, 1): 1 for s in sectors},
+        current_assignment={s: 1 for s in sectors},
         max_churn=len(sectors),
         days_by_cycle={0: [1, 2]},
     )
     base.update(overrides)
-    return base
+    return ProblemInstance(**base)
 
 
 def _cd_sectors(n_cds: int, per_cd: int) -> dict[int, list[int]]:
@@ -106,7 +107,7 @@ def test_relax_and_fix_windows_set_variable_modes_per_iteration():
     solver = ScriptedSolver([{1: 2, 2: 1}, {3: 2, 4: 1}])
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0)
 
-    solve(**_instance(), params=params, solve_subproblem=solver)
+    solve(_instance(), params=params, solve_subproblem=solver)
 
     assert solver.snapshots == [
         {"fixed": set(), "binary": {1, 2}, "relaxed": {3, 4}},
@@ -119,7 +120,7 @@ def test_overlapping_windows_reoptimize_the_cd_left_unfrozen():
     solver = ScriptedSolver([{1: 2, 2: 1, 3: 2, 4: 1}, {3: 1, 4: 2, 5: 2, 6: 1}])
     params = RelaxAndFixParams(window=2, step=1, optimize_passes=0)
 
-    result = solve(**_instance(3), params=params, solve_subproblem=solver)
+    result = solve(_instance(3), params=params, solve_subproblem=solver)
 
     assert solver.snapshots == [
         {"fixed": set(), "binary": {1, 2, 3, 4}, "relaxed": {5, 6}},
@@ -133,7 +134,7 @@ def test_construction_result_is_the_union_of_the_frozen_steps():
     solver = ScriptedSolver([{1: 2, 2: 2}, {3: 1, 4: 1}])
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0)
 
-    result = solve(**_instance(), params=params, solve_subproblem=solver)
+    result = solve(_instance(), params=params, solve_subproblem=solver)
 
     outcome = (result.assignment, result.objective, result.feasible)
     assert outcome == ({1: 2, 2: 2, 3: 1, 4: 1}, 0.0, True)
@@ -150,7 +151,7 @@ def test_fix_and_optimize_accepts_an_improving_window_and_keeps_the_rest_fixed()
     )
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=1)
 
-    result = solve(**_instance(), params=params, solve_subproblem=solver)
+    result = solve(_instance(), params=params, solve_subproblem=solver)
 
     assert result.construction.objective == 20.0
     assert result.objective == 0.0
@@ -170,7 +171,7 @@ def test_fix_and_optimize_never_returns_something_worse_than_the_construction():
     )
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=1)
 
-    result = solve(**_instance(), params=params, solve_subproblem=solver)
+    result = solve(_instance(), params=params, solve_subproblem=solver)
 
     assert result.assignment == {1: 2, 2: 2, 3: 1, 4: 1}
     assert result.objective == result.construction.objective == 0.0
@@ -187,7 +188,7 @@ def test_fix_and_optimize_rejects_a_candidate_that_breaks_the_churn_budget():
     )
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=1)
 
-    result = solve(**_instance(max_churn=1), params=params, solve_subproblem=solver)
+    result = solve(_instance(max_churn=1), params=params, solve_subproblem=solver)
 
     assert result.assignment == {1: 1, 2: 1, 3: 1, 4: 1}
     assert result.objective == 40.0
@@ -199,7 +200,7 @@ def test_fix_and_optimize_stops_after_a_pass_without_improvement():
     solver = ScriptedSolver(optimum + optimum)
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=5)
 
-    result = solve(**_instance(), params=params, solve_subproblem=solver)
+    result = solve(_instance(), params=params, solve_subproblem=solver)
 
     assert result.subproblems == 4
     assert result.objective == 0.0
@@ -209,7 +210,7 @@ def test_fix_and_optimize_can_be_disabled():
     solver = ScriptedSolver([{1: 2, 2: 1}, {3: 1, 4: 1}])
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0)
 
-    result = solve(**_instance(), params=params, solve_subproblem=solver)
+    result = solve(_instance(), params=params, solve_subproblem=solver)
 
     assert result.subproblems == 2
     assert result.construction == result.evaluation
@@ -219,7 +220,7 @@ def test_window_without_solution_returns_the_as_is_and_says_why():
     solver = ScriptedSolver([])  # o 1o subproblema já não acha solução
     params = RelaxAndFixParams(window=1, step=1)
 
-    result = solve(**_instance(), params=params, solve_subproblem=solver)
+    result = solve(_instance(), params=params, solve_subproblem=solver)
 
     assert result.stop_reason == NO_SOLUTION_WINDOW
     assert result.assignment == {1: 1, 2: 1, 3: 1, 4: 1}
@@ -231,7 +232,7 @@ def test_subproblem_time_limit_is_forwarded_to_every_solve():
     solver = ScriptedSolver([{1: 2, 2: 1}, {3: 2, 4: 1}])
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0, subproblem_time_limit=7.0)
 
-    solve(**_instance(), params=params, solve_subproblem=solver)
+    solve(_instance(), params=params, solve_subproblem=solver)
 
     assert solver.time_limits == [7.0, 7.0]
 
@@ -240,7 +241,7 @@ def test_cd_order_changes_which_cds_enter_the_first_window():
     solver = ScriptedSolver([{3: 2, 4: 1}, {1: 2, 2: 1}])
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0)
 
-    solve(**_instance(), params=params, solve_subproblem=solver, cd_order=[2, 1])
+    solve(_instance(), params=params, solve_subproblem=solver, cd_order=[2, 1])
 
     assert solver.snapshots[0]["binary"] == {3, 4}
 
@@ -248,14 +249,14 @@ def test_cd_order_changes_which_cds_enter_the_first_window():
 @pytest.mark.parametrize("cd_order", [[1], [1, 1], [1, 2, 3]])
 def test_cd_order_must_list_every_cd_exactly_once(cd_order):
     with pytest.raises(ValueError, match="cd_order"):
-        solve(**_instance(), solve_subproblem=ScriptedSolver([]), cd_order=cd_order)
+        solve(_instance(), solve_subproblem=ScriptedSolver([]), cd_order=cd_order)
 
 
 def test_sector_without_cd_is_rejected_before_any_solve():
     solver = ScriptedSolver([])
 
     with pytest.raises(ValueError, match="sem CD"):
-        solve(**_instance(cd_sectors={1: [1, 2], 2: [3]}), solve_subproblem=solver)
+        solve(_instance(cd_sectors={1: [1, 2], 2: [3]}), solve_subproblem=solver)
 
     assert solver.snapshots == []
 
@@ -265,7 +266,7 @@ def test_max_group_sectors_splits_each_cd_into_slices_that_form_the_windows():
     solver = ScriptedSolver([_all_in(range(1, 9), 1)] * 4)
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0, max_group_sectors=2)
 
-    solve(**_instance(2, sectors_per_cd=4), params=params, solve_subproblem=solver)
+    solve(_instance(2, sectors_per_cd=4), params=params, solve_subproblem=solver)
 
     assert [s["binary"] for s in solver.snapshots] == [{1, 2}, {3, 4}, {5, 6}, {7, 8}]
     assert solver.snapshots[1] == {"fixed": {1, 2}, "binary": {3, 4}, "relaxed": {5, 6, 7, 8}}
@@ -275,7 +276,7 @@ def test_slices_of_one_cd_are_balanced():
     solver = ScriptedSolver([_all_in(range(1, 6), 1)] * 2)
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0, max_group_sectors=3)
 
-    solve(**_instance(1, sectors_per_cd=5), params=params, solve_subproblem=solver)
+    solve(_instance(1, sectors_per_cd=5), params=params, solve_subproblem=solver)
 
     # 5 setores em fatias de no máximo 3 -> 2 fatias de 2 e 3 setores (não 3 + 2 nem 3 + 1 + 1).
     assert [len(s["binary"]) for s in solver.snapshots] == [2, 3]
@@ -285,7 +286,7 @@ def test_cd_smaller_than_the_slice_size_stays_whole():
     solver = ScriptedSolver([{1: 2, 2: 1}, {3: 2, 4: 1}])
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0, max_group_sectors=10)
 
-    solve(**_instance(), params=params, solve_subproblem=solver)
+    solve(_instance(), params=params, solve_subproblem=solver)
 
     assert [s["binary"] for s in solver.snapshots] == [{1, 2}, {3, 4}]
 
@@ -308,7 +309,7 @@ def test_failed_window_is_retried_with_the_last_frozen_group_released():
     )
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0, max_backtracks=1)
 
-    result = solve(**_instance(3), params=params, solve_subproblem=solver)
+    result = solve(_instance(3), params=params, solve_subproblem=solver)
 
     assert solver.snapshots[2:] == [
         {"fixed": set(), "binary": {1, 2, 3, 4}, "relaxed": {5, 6}},
@@ -322,7 +323,7 @@ def test_backtracking_gives_up_after_max_backtracks_retries():
     solver = ScriptedSolver([{1: 2, 2: 1}, None, None])
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0, max_backtracks=1)
 
-    result = solve(**_instance(3), params=params, solve_subproblem=solver)
+    result = solve(_instance(3), params=params, solve_subproblem=solver)
 
     assert result.stop_reason == NO_SOLUTION_WINDOW
     assert result.subproblems == 3
@@ -332,7 +333,7 @@ def test_backtracking_can_be_disabled():
     solver = ScriptedSolver([{1: 2, 2: 1}, None])
     params = RelaxAndFixParams(window=1, step=1, optimize_passes=0, max_backtracks=0)
 
-    result = solve(**_instance(3), params=params, solve_subproblem=solver)
+    result = solve(_instance(3), params=params, solve_subproblem=solver)
 
     assert result.stop_reason == NO_SOLUTION_WINDOW
     assert result.subproblems == 2
@@ -342,7 +343,7 @@ def test_first_window_has_nothing_to_release_so_it_is_not_retried():
     solver = ScriptedSolver([None, None, None])
     params = RelaxAndFixParams(window=1, step=1, max_backtracks=5)
 
-    result = solve(**_instance(3), params=params, solve_subproblem=solver)
+    result = solve(_instance(3), params=params, solve_subproblem=solver)
 
     assert result.stop_reason == NO_SOLUTION_WINDOW
     assert result.subproblems == 1
@@ -357,7 +358,7 @@ def test_max_backtracks_must_not_be_negative():
 def test_run_relax_and_fix_reports_a_solve_result_for_a_feasible_run(mock_solve):
     mock_solve.return_value = _fake_result(feasible=True)
 
-    result = run_relax_and_fix(**_instance())
+    result = run_relax_and_fix(_instance())
 
     assert isinstance(result, SolveResult)
     assert (result.model_name, result.solver, result.status) == (
@@ -373,7 +374,7 @@ def test_run_relax_and_fix_reports_a_solve_result_for_a_feasible_run(mock_solve)
 def test_run_relax_and_fix_hides_the_objective_of_an_infeasible_run(mock_solve):
     mock_solve.return_value = _fake_result(feasible=False)
 
-    result = run_relax_and_fix(**_instance())
+    result = run_relax_and_fix(_instance())
 
     assert result.termination_condition == "infeasible"
     assert result.objective is None

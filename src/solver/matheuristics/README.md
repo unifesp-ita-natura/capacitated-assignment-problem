@@ -50,14 +50,15 @@ For `|C| = 6`, `W = 3`, `P = 2`, R&F runs three windows: `{1,2,3}` freezing
 ```python
 from src.solver.matheuristics import RelaxAndFixParams, solve
 
-result = solve(**instance.mip_kwargs(), params=RelaxAndFixParams(window=3, step=2))
+result = solve(instance.to_instance(), params=RelaxAndFixParams(window=3, step=2))
 result.assignment  # {sector: combination}
 result.objective  # mean over cycles of (max - min daily demand)
 result.feasible  # capacity and churn respected
 ```
 
-`instance.mip_kwargs()` (a `CalibrationInstance`) matches the arguments of
-`build_block_assignment_model`, which `solve` takes too. `run_relax_and_fix`
+`instance.to_instance()` (a `CalibrationInstance`) builds the `ProblemInstance`
+shared by the MIP (`build_block_assignment_model`), the matheuristic (`solve`),
+and the SA (`src.solver.heuristics.simulated_annealing.solve`). `run_relax_and_fix`
 wraps `solve` and returns a timed `SolveResult` (`model_name="relax_and_fix"`;
 `objective` is `None` when the final solution is infeasible).
 

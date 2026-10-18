@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pyomo.environ as pyo
 import pytest
 
+from src.solver.inputs import ProblemInstance
 from src.solver.matheuristics.subproblem import (
     apply_variable_modes,
     mip_gap_option,
@@ -19,15 +20,17 @@ from src.solver.mip.block_assignment import build_block_assignment_model
 @pytest.fixture
 def model() -> pyo.ConcreteModel:
     return build_block_assignment_model(
-        sectors=[1, 2, 3],
-        combinations=[1, 2],
-        days=[1, 2],
-        cd_sectors={1: [1, 2], 2: [3]},
-        daily_capacity={(1, 1): 100.0, (1, 2): 100.0, (2, 1): 100.0, (2, 2): 100.0},
-        projected_demand={(s, 1, 1): 10.0 for s in (1, 2, 3)},
-        current_assignment={(s, 1): 1 for s in (1, 2, 3)},
-        max_churn=3,
-        days_by_cycle={0: [1, 2]},
+        ProblemInstance(
+            sectors=[1, 2, 3],
+            combinations=[1, 2],
+            days=[1, 2],
+            cd_sectors={1: [1, 2], 2: [3]},
+            daily_capacity={(1, 1): 100.0, (1, 2): 100.0, (2, 1): 100.0, (2, 2): 100.0},
+            projected_demand={(s, 1, 1): 10.0 for s in (1, 2, 3)},
+            current_assignment={s: 1 for s in (1, 2, 3)},
+            max_churn=3,
+            days_by_cycle={0: [1, 2]},
+        )
     )
 
 
