@@ -174,11 +174,34 @@ def run_block_assignment_mip(
     )
     solver_interface, resolved_solver = _resolve_solver(solver)
     start = time.perf_counter()
-    with _memory_limit(memory_limit_gb):
-        pyomo_results = solver_interface.solve(
-            model,
-            timelimit=time_limit_seconds,
-            options=_solve_options(resolved_solver, memory_limit_gb, time_limit_seconds),
+    try:
+        with _memory_limit(memory_limit_gb):
+            pyomo_results = solver_interface.solve(
+                model,
+                timelimit=time_limit_seconds,
+                options=_solve_options(resolved_solver, memory_limit_gb, time_limit_seconds),
+            )
+    except RuntimeError as exc:
+        # Both the legacy (`environ.SolverFactory`) and `appsi_highs`
+        # interfaces raise this when the solver stopped (usually hitting
+        # `time_limit_seconds`) without ever finding a feasible solution, so
+        # there's nothing to load into `model`'s variables/objective.
+        if "feasible solution was not found" not in str(exc):
+            raise
+        wall_time_seconds = time.perf_counter() - start
+        logger.warning(
+            "%s found no feasible solution within %ss: %s",
+            resolved_solver,
+            time_limit_seconds,
+            exc,
+        )
+        return SolveResult(
+            model_name="mip_block_assignment",
+            solver=resolved_solver,
+            status=str(pyo.SolverStatus.aborted),
+            termination_condition=str(pyo.TerminationCondition.noSolution),
+            objective=None,
+            wall_time_seconds=wall_time_seconds,
         )
     wall_time_seconds = time.perf_counter() - start
     return SolveResult(
