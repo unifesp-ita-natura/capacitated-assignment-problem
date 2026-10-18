@@ -25,15 +25,17 @@ class ValidationResult(NamedTuple):
     windows: pd.DataFrame
 
 
-def _recorded_windows(raw: pd.DataFrame, cycles: list[str], target: str) -> pd.DataFrame:
+def recorded_windows(
+    raw: pd.DataFrame, cycles: list[str], targets: list[str], scenario_id: str
+) -> pd.DataFrame:
     """Reconstruct recorded sector windows without supplying any holdout counts to models."""
     selected = raw[raw["CICLOS"].isin(cycles)]
     windows = selected.groupby(["cd_setor", "CICLOS"], as_index=False).agg(
         window_start=("Dt Abertura", "min"), window_end=("Dt Fechamento", "max")
     )
     windows = windows.merge(cycle_calendar(raw)[["CICLOS", "opening_date"]], on="CICLOS")
-    windows["scenario_id"] = f"observed_{target}"
-    windows["emit"] = windows["CICLOS"].eq(target)
+    windows["scenario_id"] = scenario_id
+    windows["emit"] = windows["CICLOS"].isin(targets)
     return windows
 
 
@@ -44,7 +46,7 @@ def _replay_windows(raw, calendar, target, history):
         calendar["opening_date"].gt(history.level["opening_date"].max())
         & calendar["opening_date"].le(opening)
     ]
-    windows = _recorded_windows(raw, future["CICLOS"].tolist(), target)
+    windows = recorded_windows(raw, future["CICLOS"].tolist(), [target], f"observed_{target}")
     complete = windows.groupby("cd_setor")["CICLOS"].nunique().eq(len(future))
     known = set(history.cities["cd_setor"]).intersection(complete[complete].index)
     return windows[windows["cd_setor"].isin(known)].copy(), windows[windows["emit"]].copy()

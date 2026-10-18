@@ -5,6 +5,7 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-10-18 end-to-end pipeline](2026-10-18-end-to-end-pipeline.md) — `src.main` runs raw CSV -> combined forecast -> mip/matheuristic/sa -> As-Is vs To-Be report; As-Is slots inferred from opening dates (approximation)
 - [2026-10-17 Relax-and-Fix + Fix-and-Optimize matheuristic](2026-10-17-relax-and-fix-matheuristic.md) — Windows of sector groups over the MIP, HiGHS and Gurobi; always feasible and within 0.08% of the optimum, slower than the MIP when it closes, but returns a feasible solution when the HiGHS MIP finds none (capacity-binding instances); persistent solver (3x), sector-slice windows and backtracking came from the failures
 - [2026-10-16 combined daily forecast](2026-10-16-combined-daily-forecast.md) — Predicted city-cycle level × sector daily shape, isolated opening scenarios and fixed-model daily replay
 - [2026-10-14 level per sector-city series](2026-10-14-level-per-sector-city.md) — Level keyed by (sector, estado, cidade) with zero rows for quiet cycles; summing cities loses to forecasting the sector for every candidate (ETS +1.4%, LightGBM +8.6% MAE)

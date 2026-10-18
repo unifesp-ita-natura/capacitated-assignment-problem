@@ -144,6 +144,21 @@ def run_block_assignment_mip(
     memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
 ) -> SolveResult:
     """Build and solve the block-assignment MIP, returning a timed `SolveResult`."""
+    return solve_with_assignment(instance, solver, time_limit_seconds, memory_limit_gb)[0]
+
+
+def extract_assignment(model: pyo.ConcreteModel) -> dict[int, int]:
+    """The sector -> combination map encoded by the model's binary `x` (after a solve)."""
+    return {s: d for s in model.S for d in model.D if pyo.value(model.x[s, d]) > 0.5}
+
+
+def solve_with_assignment(
+    instance: ProblemInstance,
+    solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
+) -> tuple[SolveResult, dict[int, int] | None]:
+    """Like `run_block_assignment_mip`, but also returns the assignment (None if no solution)."""
     model = build_block_assignment_model(instance)
     solver_interface, resolved_solver = _resolve_solver(solver)
     start = time.perf_counter()
@@ -175,9 +190,9 @@ def run_block_assignment_mip(
             termination_condition=str(pyo.TerminationCondition.noSolution),
             objective=None,
             wall_time_seconds=wall_time_seconds,
-        )
+        ), None
     wall_time_seconds = time.perf_counter() - start
-    return SolveResult(
+    result = SolveResult(
         model_name="mip_block_assignment",
         solver=resolved_solver,
         status=str(pyomo_results.solver.status),
@@ -185,6 +200,7 @@ def run_block_assignment_mip(
         objective=pyo.value(model.objective, exception=False),
         wall_time_seconds=wall_time_seconds,
     )
+    return result, (extract_assignment(model) if result.objective is not None else None)
 
 
 def _add_sets(

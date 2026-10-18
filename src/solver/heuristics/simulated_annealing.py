@@ -200,8 +200,8 @@ def _per_cycle_mean(
     problem: _Problem, daily_totals: np.ndarray, reducer: Callable[[np.ndarray], float]
 ) -> float:
     """Aplica `reducer` à demanda diária de cada ciclo do horizonte e tira a média."""
-    n_cycles = int(problem.cycle_of_day.max()) + 1
-    values = [reducer(daily_totals[problem.cycle_of_day == h]) for h in range(n_cycles)]
+    cycles = np.unique(problem.cycle_of_day[problem.cycle_of_day >= 0])
+    values = [reducer(daily_totals[problem.cycle_of_day == h]) for h in cycles]
     return float(np.mean(values))
 
 
@@ -399,7 +399,7 @@ def _cycle_of_day_array(
     days_by_cycle: Mapping[int, Iterable[int]], day_ix: Mapping[int, int]
 ) -> np.ndarray:
     """(n_dias,) índice do ciclo do horizonte (0-indexado) de cada dia, na ordem de `day_ix`."""
-    cycle_of_day = np.zeros(len(day_ix), dtype=int)
+    cycle_of_day = np.full(len(day_ix), -1, dtype=int)  # -1: day outside every balance window
     for h, day_labels in days_by_cycle.items():
         for a in day_labels:
             cycle_of_day[day_ix[a]] = h
