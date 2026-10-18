@@ -8,7 +8,6 @@ metadata, so a run directory is self-contained and reproducible. Used by
 
 from __future__ import annotations
 
-import json
 import platform
 import shutil
 from dataclasses import asdict
@@ -26,7 +25,7 @@ from src.forecasting.dataset import DailyBase
 from src.forecasting.evaluation import EvaluationResult, RollingOriginSplit, evaluate
 from src.forecasting.features import feature_columns
 from src.forecasting.model import REGISTRY
-from src.persistence.provenance import git_output, package_version, sha256_file
+from src.persistence.provenance import code_provenance, package_version, save_manifest, sha256_file
 
 _ADAPTER = TypeAdapter(ForecastParams)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -128,10 +127,7 @@ def prepare_record(config_path: str | Path, config: dict) -> tuple[Path, dict]:
         "split": asdict(RollingOriginSplit(**config["split"])),
         "daily": config.get("daily"),
         "candidates": _candidate_records(config["candidates"]),
-        "code": {
-            "commit": git_output("rev-parse", "HEAD", cwd=_REPO_ROOT),
-            "working_tree_status": git_output("status", "--porcelain", cwd=_REPO_ROOT),
-        },
+        "code": code_provenance(cwd=_REPO_ROOT),
         "runtime": {
             "python": platform.python_version(),
             "packages": {
@@ -157,6 +153,4 @@ def prepare_record(config_path: str | Path, config: dict) -> tuple[Path, dict]:
 def update_record(directory: Path, manifest: dict, status: str, **details) -> None:
     """Write the run status and results without serializing nonstandard JSON NaN values."""
     record = {**manifest, **details, "status": status, "updated_at": _now()}
-    (directory / "manifest.json").write_text(
-        json.dumps(record, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8"
-    )
+    save_manifest(directory / "manifest.json", record)

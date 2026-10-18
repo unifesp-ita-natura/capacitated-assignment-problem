@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -20,7 +19,7 @@ from src.forecasting.dataset import load_demand_base
 from src.forecasting.features import feature_columns
 from src.forecasting.shape_evaluation import ShapeCandidate
 from src.forecasting.shape_learning import BASE_FEATURES
-from src.persistence.provenance import git_output, package_version, sha256_file
+from src.persistence.provenance import code_provenance, package_version, save_manifest, sha256_file
 
 
 class CombinedPaths(BaseModel):
@@ -68,16 +67,12 @@ def _require_validation(config: CombinedConfig) -> None:
 
 def _manifest(config: CombinedConfig) -> dict:
     """Record effective models, features, input identity and code revision."""
-    status = git_output("status", "--porcelain")
     return {
         "status": "running",
         "started_at": datetime.now(UTC).isoformat(),
         "parameters": config.model_dump(mode="json"),
         "base_sha256": sha256_file(config.paths.base_csv),
-        "code": {
-            "revision": git_output("rev-parse", "HEAD"),
-            "working_tree_status": status.splitlines() if status else [],
-        },
+        "code": code_provenance(),
         "versions": {
             name: package_version(name)
             for name in ["pandas", "numpy", "pydantic", "lightgbm", "statsmodels"]
@@ -154,13 +149,6 @@ def _validation(config: CombinedConfig, raw: pd.DataFrame, directory: Path) -> d
     }
 
 
-def _save_manifest(directory: Path, record: dict) -> None:
-    """Persist execution status even when model fitting fails."""
-    (directory / "run_manifest.json").write_text(
-        json.dumps(record, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8"
-    )
-
-
 def _snapshot(config: CombinedConfig, contents: str, directory: Path, record: dict) -> None:
     """Keep the original YAML and the exact window schedule used in forecasting."""
     (directory / "config_snapshot.yaml").write_text(contents, encoding="utf-8")
@@ -177,7 +165,7 @@ def run(config_path: str | Path) -> Path:
     record = _manifest(config)
     directory = config.paths.run_dir
     directory.mkdir(parents=True, exist_ok=False)
-    _save_manifest(directory, record)
+    save_manifest(directory / "run_manifest.json", record)
     print(f"Combined output: {directory.resolve()}", flush=True)
     try:
         _snapshot(config, contents, directory, record)
@@ -192,7 +180,7 @@ def run(config_path: str | Path) -> Path:
         record["status"] = "completed"
     finally:
         record["finished_at"] = datetime.now(UTC).isoformat()
-        _save_manifest(directory, record)
+        save_manifest(directory / "run_manifest.json", record)
     return directory
 
 

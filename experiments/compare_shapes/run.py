@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from datetime import UTC, datetime
-from importlib.metadata import version
 from pathlib import Path
 
 import yaml
@@ -21,7 +19,7 @@ from src.forecasting.shape_evaluation import (
     evaluate_shapes,
 )
 from src.forecasting.shape_learning import BASE_FEATURES
-from src.persistence.provenance import git_output, sha256_file
+from src.persistence.provenance import code_provenance, package_version, save_manifest, sha256_file
 
 
 class ShapePaths(BaseModel):
@@ -43,15 +41,15 @@ class ShapeConfig(BaseModel):
 
 def _manifest(config: ShapeConfig) -> dict:
     """Describe effective parameters, inputs and implemented predictors."""
-    git_status = git_output("status", "--porcelain")
+    provenance = code_provenance()
     return {
         "status": "running",
         "started_at": datetime.now(UTC).isoformat(),
-        "git_revision": git_output("rev-parse", "HEAD"),
-        "git_status": git_status.splitlines() if git_status else [],
+        "git_revision": provenance["revision"],
+        "git_status": provenance["working_tree_status"],
         "python_version": sys.version,
         "package_versions": {
-            name: version(name) for name in ["pandas", "numpy", "pydantic", "pyyaml"]
+            name: package_version(name) for name in ["pandas", "numpy", "pydantic", "pyyaml"]
         },
         "lightgbm_version": _learning_version(config),
         "base_sha256": sha256_file(config.paths.base_csv),
@@ -68,7 +66,7 @@ def _manifest(config: ShapeConfig) -> dict:
 def _learning_version(config: ShapeConfig) -> str | None:
     """Record the optional dependency only when a learned shape candidate is selected."""
     if any(candidate.model == "lightgbm" for candidate in config.candidates):
-        return version("lightgbm")
+        return package_version("lightgbm")
     return None
 
 
@@ -103,13 +101,6 @@ def _organization_inputs(config: ShapeConfig, days) -> None:
         )
 
 
-def _save_manifest(directory: Path, record: dict) -> None:
-    """Write execution metadata as readable UTF-8 JSON."""
-    (directory / "run_manifest.json").write_text(
-        json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
-
-
 def _execute(config: ShapeConfig, directory: Path) -> None:
     """Load real demand, evaluate curves and export daily predictions and metrics."""
     days = build_shape_days(load_demand_base(config.paths.base_csv))
@@ -129,7 +120,7 @@ def run(config_path: str | Path) -> Path:
     directory = config.paths.run_dir
     directory.mkdir(parents=True, exist_ok=False)
     (directory / "config_snapshot.yaml").write_text(contents, encoding="utf-8")
-    _save_manifest(directory, record)
+    save_manifest(directory / "run_manifest.json", record)
     print(f"Shape output: {directory.resolve()}")
     try:
         _execute(config, directory)
@@ -140,7 +131,7 @@ def run(config_path: str | Path) -> Path:
         record.update(status="completed")
     finally:
         record["finished_at"] = datetime.now(UTC).isoformat()
-        _save_manifest(directory, record)
+        save_manifest(directory / "run_manifest.json", record)
     return directory
 
 

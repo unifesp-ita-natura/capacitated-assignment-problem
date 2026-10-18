@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import subprocess
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -33,3 +34,19 @@ def package_version(package: str) -> str | None:
         return version(package)
     except PackageNotFoundError:
         return None
+
+
+def code_provenance(cwd: str | Path | None = None) -> dict:
+    """Current git commit and working-tree status, for recording what code produced a run."""
+    status = git_output("status", "--porcelain", cwd=cwd)
+    return {
+        "revision": git_output("rev-parse", "HEAD", cwd=cwd),
+        "working_tree_status": status.splitlines() if status else [],
+    }
+
+
+def save_manifest(path: str | Path, record: dict) -> None:
+    """Write a run manifest as readable, NaN-free UTF-8 JSON."""
+    Path(path).write_text(
+        json.dumps(record, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8"
+    )
