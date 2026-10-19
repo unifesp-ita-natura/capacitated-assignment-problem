@@ -1,0 +1,47 @@
+experiment_name: solver_comparison
+description:
+  goal: >
+    Quanto o SA calibrado (lhs_32) fica do ótimo provado, e quanto Gurobi e
+    HiGHS levam para fechar o MIP, nas mesmas instâncias e com as duas
+    tolerâncias (0,01 e 1e-4)?
+  hypothesis: >
+    Em 40/80 setores os dois MIPs fecham a 1e-4 em segundos e concordam no
+    ótimo; a tolerância 0,01 subestima o gap do SA em até ~1 p.p. O SA com a
+    fitness peak_std_breach (pesos não calibrados) fica pior na amplitude que
+    o modo range, que otimiza a própria amplitude.
+  design_note: >
+    MIPs um por vez (appsi_gurobi e appsi_highs, threads default), depois o SA
+    (lhs_32 nas duas fitness, seeds 101-108, 200 mil iterações, estagnação
+    desligada). z_ref = ótimo provado a 1e-4; a coluna gap_vs_highs0.01 repete
+    o gap contra a referência da calibração anterior.
+  status: in-progress
+
+output_dir: experiments/sa_calibration/outputs/solver_comparison
+n_workers: 6  # máquina de 7 GB com navegador aberto: metade dos núcleos
+
+# Fixados (antes: null = seleção automática, que muda com o statsmodels instalado).
+level_strategy: naive_last
+shape_strategy: plain_average
+
+budget:
+  max_iterations: 200000
+  trace_every: 1000
+
+instances:
+  base40: {n_sectors: 40, n_cycles_horizon: 2, seed: 42, mip_time_limit: 600}
+  tight40: {n_sectors: 40, n_cycles_horizon: 2, seed: 42, capacity_multiplier: 0.0027, tight: true, mip_time_limit: 600}
+  base80: {n_sectors: 80, n_cycles_horizon: 3, seed: 7, mip_time_limit: 1800}
+  tight80: {n_sectors: 80, n_cycles_horizon: 3, seed: 7, capacity_multiplier: 0.0072, tight: true, mip_time_limit: 1800}
+
+mip_solvers: [appsi_gurobi, appsi_highs]
+mip_rel_gaps: [0.01, 0.0001]
+
+# lhs_32 (recomendada em REPORT.md), alfa derivado do orçamento. No modo novo os pesos
+# são os defaults (w_peak=1, w_std=1, w_range=0), ainda sem calibração.
+sa_configs:
+  lhs_32_range:
+    {initial_temperature: 257.24750757958907, min_temperature: 0.011046064901330649, sector_bias: 0.7693508846294949, destination_bias: 0.24677194539982686, penalty_coefficient: 146.35163758759955, energy_mode: range}
+  lhs_32_peak_std:
+    {initial_temperature: 257.24750757958907, min_temperature: 0.011046064901330649, sector_bias: 0.7693508846294949, destination_bias: 0.24677194539982686, penalty_coefficient: 146.35163758759955, energy_mode: peak_std_breach}
+
+sa_seeds: [101, 102, 103, 104, 105, 106, 107, 108]
