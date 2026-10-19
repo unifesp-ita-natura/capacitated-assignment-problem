@@ -147,6 +147,36 @@ class LightGBMParams(BaseModel):
     validation_cycles: int = 1
 
 
+class LightGBMExternalParams(LightGBMParams):
+    """Pooled LightGBM plus static per-UF socioeconomic features (requires panel external=True)."""
+
+    model: Literal["lightgbm_external"] = "lightgbm_external"
+    external_features: list[
+        Literal["uf_populacao", "uf_densidade", "uf_salario_medio", "uf_desemprego"]
+    ] = ["uf_populacao", "uf_densidade", "uf_salario_medio", "uf_desemprego"]
+
+
+class LightGBMDynamicsParams(LightGBMParams):
+    """Pooled LightGBM plus derived momentum and opening-quarter features."""
+
+    model: Literal["lightgbm_dynamics"] = "lightgbm_dynamics"
+    momentum: bool = True
+    calendar_quarter: bool = True
+
+
+class ProphetParams(BaseModel):
+    """Prophet fitted per (sector, city) series; seasonality off by default (per-cycle panel)."""
+
+    model: Literal["prophet"] = "prophet"
+    growth: Literal["linear", "flat"] = "linear"
+    n_changepoints: int = 5
+    changepoint_prior_scale: float = 0.05
+    seasonality_mode: Literal["additive", "multiplicative"] = "additive"
+    yearly_seasonality: bool = False
+    weekly_seasonality: bool = False
+    daily_seasonality: bool = False
+
+
 class CycleFactorParams(BaseModel):
     model: Literal["cycle_factor"] = "cycle_factor"
     # "last" repeats the most recent observed factor; "mean" averages the
@@ -157,7 +187,14 @@ class CycleFactorParams(BaseModel):
 
 
 ForecastParams = Annotated[
-    NaiveParams | ArimaParams | ETSParams | LightGBMParams | CycleFactorParams,
+    NaiveParams
+    | ArimaParams
+    | ETSParams
+    | ProphetParams
+    | LightGBMParams
+    | LightGBMExternalParams
+    | LightGBMDynamicsParams
+    | CycleFactorParams,
     Field(discriminator="model"),
 ]
 

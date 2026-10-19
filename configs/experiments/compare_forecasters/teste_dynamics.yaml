@@ -1,0 +1,78 @@
+experiment_name: teste_dynamics
+description:
+  goal: >
+    Testar features derivadas de momentum (direcao de curto prazo da serie)
+    e de calendario (trimestre de abertura) sobre o target ratio, atraves de
+    um candidato novo (lightgbm_dynamics) que NAO altera o LightGBM base.
+  hypothesis: >
+    As features estaticas por grupo (regiao/gerencia/estado) e por UF nao
+    ajudaram. A hipotese agora e que sinal que VARIA (momentum da propria
+    serie, trimestre) tem mais chance, porque um gradient-boosted tree nao
+    deriva "esta subindo/caindo" dos lags brutos sozinho — igual ao
+    items_per_order ja entregue pronto.
+  design_note: >
+    Momentum = lag_1 - lag_2 e lag_1 / rolling_mean_3 (precisa de lags [1,2]
+    e janela 3). Calendario = trimestre de opening_date. Tudo derivado de
+    colunas que build_features ja cria, nada novo no painel. Ranking por
+    mae_common. Base e dynamics rodam sobre target: ratio, a parametrizacao
+    vencedora dos testes anteriores (lgbm_ratio 159.6).
+  status: in_progress
+
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+
+  # Base (ratio), referencia
+  - model: lightgbm
+    label: lgbm_base_ratio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    target: ratio
+
+  # So momentum
+  - model: lightgbm_dynamics
+    label: lgbm_momentum
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    target: ratio
+    momentum: true
+    calendar_quarter: false
+
+  # So trimestre
+  - model: lightgbm_dynamics
+    label: lgbm_quarter
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    target: ratio
+    momentum: false
+    calendar_quarter: true
+
+  # Momentum + trimestre (o pacote indicado)
+  - model: lightgbm_dynamics
+    label: lgbm_momentum_quarter
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    target: ratio
+    momentum: true
+    calendar_quarter: true
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-19_dynamics

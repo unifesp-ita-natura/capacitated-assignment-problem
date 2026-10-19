@@ -89,7 +89,10 @@ def cycle_calendar(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_item_panel(
-    raw: pd.DataFrame, calendar: pd.DataFrame | None = None, by_city: bool = True
+    raw: pd.DataFrame,
+    calendar: pd.DataFrame | None = None,
+    by_city: bool = True,
+    external: bool = False,
 ) -> pd.DataFrame:
     """Aggregate the raw base into one row per (sector, city, cycle): items, orders, volumes, date.
 
@@ -126,11 +129,23 @@ def build_item_panel(
     panel = panel.merge(calendar[["CICLOS", "opening_date"]], on="CICLOS", how="left")
     panel = panel.merge(_sector_windows(complete), on=CYCLE_KEYS)
     panel = _attach_organization(panel, complete)
+    if external:
+        panel = _attach_external(panel)
     series = panel["cd_setor"].astype(str)
     if by_city:
         series = series + "|" + panel["estado"] + "|" + panel["cidade"]
     panel.insert(0, SERIES_KEY, series)
     return panel.sort_values([SERIES_KEY, "opening_date"]).reset_index(drop=True)
+
+
+def _attach_external(panel: pd.DataFrame) -> pd.DataFrame:
+    """Join the static per-UF socioeconomic features onto the panel by `estado`."""
+    if "estado" not in panel.columns:
+        raise ValueError("external features need the by_city panel (no `estado` column)")
+    from src.forecasting.external import load_uf_features
+
+    uf = load_uf_features(panel["opening_date"])
+    return panel.merge(uf, on="estado", how="left", validate="many_to_one")
 
 
 def _fill_quiet_cycles(panel: pd.DataFrame) -> pd.DataFrame:

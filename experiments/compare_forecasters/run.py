@@ -69,7 +69,10 @@ def run(config_path: str | Path = DEFAULT_CONFIG_PATH) -> pd.DataFrame:
 def _execute(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     raw = load_demand_base(config["paths"]["base_csv"])
-    panel = build_item_panel(raw)
+    needs_external = any(
+        entry.get("model") == "lightgbm_external" for entry in config["candidates"]
+    )
+    panel = build_item_panel(raw, external=needs_external)
     print(
         f"[compare_forecasters] panel: {panel['serie'].nunique()} sector-city series "
         f"({panel['cd_setor'].nunique()} sectors) x {panel['CICLOS'].nunique()} cycles"

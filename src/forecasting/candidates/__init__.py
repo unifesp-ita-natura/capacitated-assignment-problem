@@ -7,5 +7,8 @@ from src.forecasting.candidates import (  # noqa: F401
     cycle_factor,
     ets,
     lightgbm,
+    lightgbm_dynamics,
+    lightgbm_external,
     naive,
+    prophet,
 )

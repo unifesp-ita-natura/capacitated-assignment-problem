@@ -1,0 +1,63 @@
+﻿"Tabela 5439 - Rendimento médio mensal real das pessoas de 14 anos ou mais de idade ocupadas na semana de referência com rendimento de trabalho, habitualmente e efetivamente recebidos no trabalho principal, por posição na ocupação no trabalho principal"
+"Variável - Rendimento médio mensal real das pessoas de 14 anos ou mais de idade ocupadas na semana de referência com rendimento de trabalho, habitualmente recebido no trabalho principal (Reais)"
+"Nível";"Cód.";"Grande Região e Unidade da Federação";"Trimestre x Posição na ocupação no trabalho principal"
+"Nível";"Cód.";"Grande Região e Unidade da Federação";"1º trimestre 2024";"2º trimestre 2024";"3º trimestre 2024";"4º trimestre 2024";"1º trimestre 2025";"2º trimestre 2025";"3º trimestre 2025";"4º trimestre 2025";"1º trimestre 2026";"2º trimestre 2026"
+"Nível";"Cód.";"Grande Região e Unidade da Federação";"Total";"Total";"Total";"Total";"Total";"Total";"Total";"Total";"Total";"Total"
+"GR";"1";"Norte";"2631";"2644";"2619";"2655";"2718";"2706";"2702";"2845";"2834";"2835"
+"GR";"2";"Nordeste";"2250";"2354";"2315";"2362";"2419";"2424";"2440";"2484";"2562";"2536"
+"GR";"3";"Sudeste";"3833";"3865";"3870";"3895";"3928";"3975";"3944";"4058";"4084";"4002"
+"GR";"4";"Sul";"3631";"3722";"3747";"3849";"3922";"3931";"4071";"4099";"4152";"4117"
+"GR";"5";"Centro-Oeste";"3861";"3866";"3891";"3939";"3933";"3987";"4106";"4200";"4337";"4239"
+"UF";"11";"Rondônia";"2969";"3231";"3285";"3227";"3142";"3244";"3243";"3534";"3497";"3720"
+"UF";"12";"Acre";"2725";"2682";"2678";"2723";"2746";"2592";"2819";"2958";"2853";"3039"
+"UF";"13";"Amazonas";"2516";"2460";"2497";"2548";"2574";"2486";"2644";"2744";"2773";"2704"
+"UF";"14";"Roraima";"2998";"2859";"2787";"3103";"3143";"3175";"3329";"3293";"3462";"3395"
+"UF";"15";"Pará";"2508";"2491";"2424";"2438";"2539";"2542";"2431";"2577";"2514";"2506"
+"UF";"16";"Amapá";"2864";"3017";"2976";"2978";"3017";"3097";"3102";"3417";"3416";"3058"
+"UF";"17";"Tocantins";"2832";"2904";"2906";"3018";"3143";"3133";"3108";"3151";"3252";"3351"
+"UF";"21";"Maranhão";"2060";"2223";"2202";"2174";"2160";"2193";"2217";"2153";"2240";"2218"
+"UF";"22";"Piauí";"2327";"2395";"2376";"2387";"2459";"2435";"2346";"2501";"2501";"2413"
+"UF";"23";"Ceará";"2179";"2308";"2221";"2256";"2319";"2355";"2372";"2429";"2536";"2636"
+"UF";"24";"Rio Grande do Norte";"2612";"2765";"2658";"2643";"2694";"2864";"2792";"2811";"2881";"2737"
+"UF";"25";"Paraíba";"2480";"2404";"2501";"2499";"2466";"2370";"2530";"2595";"2703";"2644"
+"UF";"26";"Pernambuco";"2235";"2397";"2431";"2605";"2723";"2756";"2643";"2731";"2778";"2645"
+"UF";"27";"Alagoas";"2234";"2256";"2397";"2424";"2501";"2553";"2453";"2518";"2476";"2466"
+"UF";"28";"Sergipe";"2254";"2378";"2405";"2600";"2592";"2546";"2835";"2807";"2926";"2865"
+"UF";"29";"Bahia";"2222";"2310";"2176";"2202";"2279";"2234";"2316";"2354";"2453";"2469"
+"UF";"31";"Minas Gerais";"3095";"3157";"3114";"3065";"3169";"3228";"3232";"3358";"3406";"3341"
+"UF";"32";"Espírito Santo";"3354";"3393";"3477";"3427";"3515";"3495";"3443";"3507";"3630";"3505"
+"UF";"33";"Rio de Janeiro";"3989";"3998";"3935";"3913";"4186";"4251";"4142";"4204";"4287";"4001"
+"UF";"35";"São Paulo";"4147";"4179";"4221";"4298";"4210";"4260";"4236";"4361";"4347";"4336"
+"UF";"41";"Paraná";"3609";"3627";"3702";"3789";"3812";"3837";"4072";"4116";"4119";"4083"
+"UF";"42";"Santa Catarina";"3710";"3782";"3869";"3940";"4169";"4187";"4285";"4249";"4307";"4301"
+"UF";"43";"Rio Grande do Sul";"3594";"3778";"3700";"3842";"3852";"3833";"3905";"3966";"4070";"4009"
+"UF";"50";"Mato Grosso do Sul";"3523";"3528";"3584";"3645";"3707";"3602";"3612";"3715";"3753";"3731"
+"UF";"51";"Mato Grosso";"3738";"3723";"3745";"3736";"3724";"3666";"3816";"3910";"3934";"3994"
+"UF";"52";"Goiás";"3408";"3440";"3391";"3503";"3438";"3515";"3621";"3713";"3855";"3844"
+"UF";"53";"Distrito Federal";"5452";"5451";"5679";"5602";"5680";"5974";"6176";"6231";"6563";"6007"
+"Fonte: IBGE - Pesquisa Nacional por Amostra de Domicílios Contínua trimestral"
+
+"Notas"
+"A partir do 4º trimestre de 2015, em acordo com as recomendações da 19ª Conferência Internacional de Estatísticos do Trabalho - CIET, da OIT, pessoas em licença remunerada, independentemente do tempo de afastamento, passaram a ser classificadas como ""ocupadas"" e seus rendimentos do trabalho foram coletados normalmente. Anteriormente, as pessoas em licença remunerada na semana de referência da pesquisa e que estavam afastadas por período inferior a 4 meses eram classificadas como ""ocupadas"". Caso esse afastamento fosse igual ou superior a 4 meses, essas pessoas eram definidas como ""fora da força de trabalho"" e, portanto, não se investigava o rendimento do trabalho.
+Além disso, a partir do 4º trimestre de 2015, também passaram a ser classificadas como ""ocupadas"" as pessoas que ajudaram, sem receber remuneração, no trabalho remunerado de parente, adicionalmente àquelas que ajudaram no trabalho remunerado de outro morador do mesmo domicílio. Anteriormente, eram consideradas ""ocupadas"" apenas as pessoas que ajudaram, sem receber remuneração, no trabalho remunerado de outro morador do mesmo domicílio.
+A posição na ocupação ""Empregado"" se refere às categorias ""Empregado no setor privado, exclusive trabalhador doméstico"", ""Trabalhador doméstico"" e ""Empregado no setor publico"" no trabalho principal.
+O valor efetivo se refere ao valor recebido no mês anterior ao da coleta.
+Para cálculo do valor real é utilizado o deflator da média do último trimestre de coleta divulgado, conforme a Nota Técnica (maio/2015 - atualizada em 16/10/2018).
+A partir de 15 de agosto de 2025, as estimativas deste tema passaram a ser divulgadas com base na nova ponderação da pesquisa, conforme a Nota Técnica 02/2025. Consequentemente, a série histórica dos indicadores foi atualizada."
+""
+"Legenda"
+"Símbolo";"Significado"
+"-";"Zero absoluto, não resultante de um cálculo ou arredondamento.
+Ex: Em determinado município não existem pessoas de 14 anos de idade sem instrução."
+"0";"Zero resultante de um cálculo ou arredondamento.
+Ex: A inflação do feijão em determinada Região Metropolitana foi 0.
+Determinado município produziu 400 kg de sementes de girassol e os dados da tabela são expressos em toneladas."
+"X";"Valor inibido para não identificar o informante.
+Ex: Determinado município só possui uma empresa produtora de cimento, logo o valor de sua produção deve ser inibido."
+"..";"Valor não se aplica.
+Ex: Não se pode obter o total da produção agrícola em determinado município quando os produtos agrícolas são contabilizados com unidades de medida distintas."
+"...";"Valor não disponível.
+Ex: A produção de feijão em determinado município não foi pesquisada ou determinado município não existia no ano da pesquisa."
+"A a Z
+(exceto X)";"Significa uma faixa de valores. Varia em função da tabela (se for o caso).
+Ex: O nível de precisão da produção estimada de combustíveis está na faixa A (95 a 100%)"
