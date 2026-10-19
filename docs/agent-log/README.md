@@ -5,6 +5,7 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-10-19 external features and temporal models on the level](2026-10-19-features-externas-e-temporais.md) — Region/management/state categoricals don't help (all within 0.1 MAE of baseline); the `ratio` target wins (159.6 MAE); companion lags hurt; cycle_factor nearly ties LightGBM and beats ETS/ARIMA
 - [2026-10-14 level per sector-city series](2026-10-14-level-per-sector-city.md) — Level keyed by (sector, estado, cidade) with zero rows for quiet cycles; summing cities loses to forecasting the sector for every candidate (ETS +1.4%, LightGBM +8.6% MAE)
 - [2026-10-09 shape features](2026-10-09-shape-features.md) — Isolated LightGBM shape with selectable region, sales management, weekday and month; holidays deferred
 - [2026-10-09 standalone shape dashboard](2026-10-09-shape-dashboard.md) — Local shape-only run filters, daily and cumulative comparisons, metrics and downloads; no level integration
