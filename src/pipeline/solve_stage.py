@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import time
 from collections.abc import Callable
@@ -14,6 +15,8 @@ from src.solver.inputs import ProblemInstance
 from src.solver.matheuristics import RelaxAndFixParams, relax_and_fix
 from src.solver.matheuristics.subproblem import pyomo_subproblem_solver
 from src.solver.mip.block_assignment import solve_with_assignment
+
+logger = logging.getLogger(__name__)
 
 MATHEURISTIC_SOLVER = "appsi_gurobi"
 
@@ -43,6 +46,23 @@ def _sa(instance: ProblemInstance, config: RunConfig) -> Solved:
     return Solved(result, found.assignment)
 
 
+def _sa_mip(instance: ProblemInstance, config: RunConfig) -> Solved:
+    """Run SA, then the MIP warm-started from SA's assignment (cold MIP if SA found none)."""
+    sa = _sa(instance, config)
+    if sa.assignment is None:
+        logger.warning("SA found no assignment; solving the MIP cold.")
+    mip_result, assignment = solve_with_assignment(
+        instance, solver=config.solver, warm_start=sa.assignment
+    )
+    result = mip_result.model_copy(
+        update={
+            "model_name": "sa_warmstart_mip",
+            "wall_time_seconds": sa.result.wall_time_seconds + mip_result.wall_time_seconds,
+        }
+    )
+    return Solved(result, assignment)
+
+
 def _matheuristic(instance: ProblemInstance, config: RunConfig) -> Solved:
     params = RelaxAndFixParams()
     found = relax_and_fix.solve(
@@ -65,9 +85,10 @@ SOLVERS: dict[str, Callable[[ProblemInstance, RunConfig], Solved]] = {
     "mip": _mip,
     "matheuristic": _matheuristic,
     "sa": _sa,
+    "sa_mip": _sa_mip,
 }
 
 
 def run_solver(family: str, instance: ProblemInstance, config: RunConfig) -> Solved:
-    """Dispatch to the `mip`, `matheuristic` or `sa` runner."""
+    """Dispatch to the `mip`, `matheuristic`, `sa` or `sa_mip` runner."""
     return SOLVERS[family](instance, config)
