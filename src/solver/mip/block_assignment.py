@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def _memory_limit(limit_gb: float) -> Generator[None]:
+def _memory_limit(limit_gb: float, resolved_solver: str) -> Generator[None]:
     """Best-effort `RLIMIT_AS` cap on the whole process while a solve runs.
 
     This is the only lever available for `appsi_highs`, which has no native
@@ -36,8 +36,9 @@ def _memory_limit(limit_gb: float) -> Generator[None]:
     Linux does) — a blunt last resort, not a clean per-solve abort like
     Gurobi's own `MemLimit` (set separately in `_solve_options`). If it does
     trigger, the whole process can die rather than just failing one solve.
+    Skipped for Gurobi, which enforces its own `MemLimit`.
     """
-    if resource is None:
+    if resource is None or resolved_solver == "gurobi":
         yield
         return
     soft, hard = resource.getrlimit(resource.RLIMIT_AS)
@@ -130,7 +131,7 @@ def solve_block_assignment(
     melhor-esforço de `_memory_limit`.
     """
     solver_interface, resolved_solver = _resolve_solver(solver)
-    with _memory_limit(memory_limit_gb):
+    with _memory_limit(memory_limit_gb, resolved_solver):
         return solver_interface.solve(
             model,
             timelimit=time_limit_seconds,
@@ -217,7 +218,7 @@ def solve_with_assignment(
         apply_warm_start(model, instance, warm_start)
     start = time.perf_counter()
     try:
-        with _memory_limit(memory_limit_gb):
+        with _memory_limit(memory_limit_gb, resolved_solver):
             pyomo_results = solver_interface.solve(
                 model,
                 timelimit=time_limit_seconds,

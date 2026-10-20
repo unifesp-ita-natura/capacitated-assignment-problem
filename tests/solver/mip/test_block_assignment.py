@@ -8,6 +8,9 @@ machine can't produce for real: Gurobi being unavailable.
 
 from __future__ import annotations
 
+import logging
+
+import pyomo.environ as pyo
 import pytest
 
 from src.solver.inputs import ProblemInstance
@@ -236,3 +239,19 @@ def test_solve_with_assignment_accepts_warm_start_on_highs(toy_instance):
 
     assert result.objective == pytest.approx(0.0)
     assert assignment is not None
+
+
+def _gurobi_is_licensed() -> bool:
+    return pyo.SolverFactory("gurobi").available(exception_flag=False)
+
+
+@pytest.mark.skipif(not _gurobi_is_licensed(), reason="requires a working Gurobi license")
+def test_run_block_assignment_mip_solves_with_gurobi_without_memory_guard_warning(
+    toy_instance, caplog
+):
+    with caplog.at_level(logging.WARNING, logger="src.solver.mip.block_assignment"):
+        result = run_block_assignment_mip(toy_instance, solver="gurobi")
+
+    assert result.solver == "gurobi"
+    assert result.termination_condition == "optimal"
+    assert "Could not set RLIMIT_AS" not in caplog.text
