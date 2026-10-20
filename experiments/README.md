@@ -8,6 +8,14 @@ into `src/`. Keep experiment-specific glue here; keep reusable logic in
 Run artifacts belong under `<experiment>/outputs/` or `<experiment>/results/`
 — both are gitignored — not committed alongside the driver script.
 
+## Never import from another experiment
+
+An experiment must not import from another experiment's directory, even when
+it needs the same helper. Anything shared between experiments belongs in
+`src/`: move it there (with tests) and have every experiment import it from
+there. This keeps each experiment self-contained, so deleting or changing one
+cannot break another.
+
 ## Make experiments resumable and incremental
 
 Long runs get interrupted (timeouts, crashes, a closed laptop). Where it
