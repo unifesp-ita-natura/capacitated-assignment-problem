@@ -24,16 +24,17 @@ def block_assignment_model_size(
 ) -> ModelSize:
     """Counts mirror `_add_variables` and the `_add_*_constraint(s)` helpers one to one.
 
-    Variables: `x[s, d]` (binary) plus `z_max[h]`, `z_min[h]` per cycle.
-    Constraints: one assignment per sector, a demand upper and lower bound per
-    day, a capacity row per (CD, day), and the single churn row. Days are
-    the sum of the cycle lengths, so the model is sized by the cycles'
-    lengths and not only by how many there are.
+    Variables: `x[s, d]` (binary), `y[s, c]` (continuous share) plus `z_max[h]`,
+    `z_min[h]` per cycle.
+    Constraints: one assignment and one share-sums-to-one row per sector, a
+    demand upper and lower bound per day, a capacity row per (CD, day), and
+    the single churn row. Days are the sum of the cycle lengths, so the model
+    is sized by the cycles' lengths and not only by how many there are.
     """
     n_days = sum(cycle_lengths)
     populated_cds = min(n_cds, n_sectors)
     return ModelSize(
         binary_variables=n_sectors * n_combinations,
-        continuous_variables=2 * len(cycle_lengths),
-        constraints=n_sectors + 2 * n_days + populated_cds * n_days + 1,
+        continuous_variables=n_sectors * n_cds + 2 * len(cycle_lengths),
+        constraints=2 * n_sectors + 2 * n_days + populated_cds * n_days + 1,
     )
