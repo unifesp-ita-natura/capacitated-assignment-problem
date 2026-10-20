@@ -1,0 +1,48 @@
+experiment_name: ets_level_two_year
+description:
+  goal: >
+    On the two-year panel, is ETS(A,N,N) the fairer recency baseline the
+    two_year_panel experiment asked for, and how much of the pooled model's
+    win over naive:mean survives against it?
+  hypothesis: >
+    (1) ETS(A,N,N) beats naive:mean, landing near the "mean of the last 6
+    cycles" figure measured in two_year_panel (2677.6 against 2775.4), since
+    smoothing captures the level shift between 2025 and 2026 that the
+    all-history mean averages over. (2) The pooled LightGBM still beats it by
+    more than 5%, because two_year_panel found two thirds of its win beyond
+    recency.
+  design_note: >
+    Same panel, split and LightGBM configuration as two_year_panel, so its
+    naive:mean and LightGBM figures should reproduce. There is no daily
+    scoring, because the two-year CSV is a separate extract and the daily
+    base has only been checked against base_tratada. Seasonal ETS (m = 19)
+    is still absent: two full seasons need 38 training cycles, and this
+    panel has 32 in total.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 20
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+  - model: ets
+  - model: ets
+    trend: add
+    damped_trend: true
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3, 19]
+    lags: [1, 2, 3, 4, 19]
+    target: ratio
+    label: "razao + lag 19 + media anual"
+
+paths:
+  base_csv: data/processed/demand_two_years.csv
+  output_csv: experiments/ets_level/outputs/comparison_two_year.csv
+  errors_csv: experiments/ets_level/outputs/errors_two_year.csv

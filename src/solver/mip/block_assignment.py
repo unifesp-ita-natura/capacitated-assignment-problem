@@ -2,94 +2,205 @@
 
 from __future__ import annotations
 
+import logging
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Generator, Iterable, Mapping
+from contextlib import contextmanager
 
 import pyomo.environ as pyo
 
 from src.persistence import SolveResult
+from src.solver.inputs import ProblemInstance, ProjectedDemand
 
-ProjectedDemand = Mapping[tuple[int, int, int], float]  # (sector, day, combination) -> qty
+try:
+    import resource  # POSIX-only; see `_memory_limit`
+except ImportError:  # Windows has no `resource` module
+    resource = None
+
+FALLBACK_SOLVER = "appsi_highs"
+DEFAULT_TIME_LIMIT_SECONDS = 10 * 60
+DEFAULT_MEMORY_LIMIT_GB = 8.0
+
+logger = logging.getLogger(__name__)
 
 
-def build_block_assignment_model(
-    sectors: Iterable[int],
-    combinations: Iterable[int],
-    days: Iterable[int],
-    cd_sectors: Mapping[int, Iterable[int]],
-    daily_capacity: Mapping[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: Mapping[tuple[int, int], int],
-    max_churn: float,
-    days_by_cycle: Mapping[int, Iterable[int]],
-) -> pyo.ConcreteModel:
+@contextmanager
+def _memory_limit(limit_gb: float) -> Generator[None]:
+    """Best-effort `RLIMIT_AS` cap on the whole process while a solve runs.
+
+    This is the only lever available for `appsi_highs`, which has no native
+    memory-limit option at all (checked against its full option dump).
+    It's POSIX-only, a no-op on Windows (no `resource` module), and
+    unreliable on macOS (the kernel doesn't enforce `RLIMIT_AS` the way
+    Linux does) — a blunt last resort, not a clean per-solve abort like
+    Gurobi's own `MemLimit` (set separately in `_solve_options`). If it does
+    trigger, the whole process can die rather than just failing one solve.
+    """
+    if resource is None:
+        yield
+        return
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (int(limit_gb * 1024**3), hard))
+    except (ValueError, OSError):
+        logger.warning("Could not set RLIMIT_AS memory guard; continuing unconstrained.")
+        yield
+        return
+    try:
+        yield
+    finally:
+        resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
+
+
+def _solve_options(
+    resolved_solver: str, memory_limit_gb: float, time_limit_seconds: float
+) -> dict[str, object]:
+    """Solver-specific options.
+
+    Pyomo's generic `timelimit=` kwarg to `.solve()` is only honored by a
+    handful of shell plugins (CPLEX, GLPK, SCIPAMPL, CBC); Gurobi's shell
+    plugin (`pyomo.solvers.plugins.solvers.GUROBI`) never reads
+    `self._timelimit` and silently ignores it, so `TimeLimit` must be passed
+    through `options` instead, same as `MemLimit`.
+    """
+    if resolved_solver == "gurobi":
+        return {"MemLimit": memory_limit_gb, "TimeLimit": time_limit_seconds}
+    return {}
+
+
+def build_block_assignment_model(instance: ProblemInstance) -> pyo.ConcreteModel:
     """Atribui cada setor a um Bloco/Subloco pra nivelar a demanda diária no horizonte.
 
-    `daily_capacity` e `current_assignment` são indexados por `(cd, dia)` e
-    `(setor, combinação)`, respectivamente; ambos assumem 0 pra chaves ausentes.
-    `days_by_cycle` agrupa `days` por ciclo futuro (0-indexado): a amplitude
-    z_max - z_min é calculada por ciclo e depois tirada a média, pra não confundir
-    tendência entre ciclos com desbalanceamento dentro de um ciclo.
+    `instance.daily_capacity` é indexado por `(cd, dia)`, assumindo 0 pra chaves
+    ausentes. `instance.days_by_cycle` agrupa `instance.days` por ciclo futuro
+    (0-indexado): a amplitude z_max - z_min é calculada por ciclo e depois
+    tirada a média, pra não confundir tendência entre ciclos com
+    desbalanceamento dentro de um ciclo.
     """
-    cd_sectors = {cd: list(members) for cd, members in cd_sectors.items()}
-    days_by_cycle = {h: list(members) for h, members in days_by_cycle.items()}
+    cd_sectors = {cd: list(members) for cd, members in instance.cd_sectors.items()}
+    days_by_cycle = {h: list(members) for h, members in instance.days_by_cycle.items()}
 
     model = pyo.ConcreteModel()
-    _add_sets(model, sectors, combinations, days, cd_sectors, days_by_cycle)
+    _add_sets(
+        model, instance.sectors, instance.combinations, instance.days, cd_sectors, days_by_cycle
+    )
     _add_variables(model)
     _add_objective(model)
     _add_assignment_constraint(model)
-    _add_demand_range_constraints(model, projected_demand, days_by_cycle)
-    _add_capacity_constraints(model, cd_sectors, daily_capacity, projected_demand)
-    _add_churn_constraint(model, current_assignment, max_churn)
+    _add_demand_range_constraints(model, instance.projected_demand, days_by_cycle)
+    _add_capacity_constraints(model, cd_sectors, instance.daily_capacity, instance.projected_demand)
+    _add_churn_constraint(model, instance.current_assignment, instance.max_churn)
     return model
 
 
-def solve_block_assignment(model: pyo.ConcreteModel, solver: str = "gurobi") -> pyo.SolverResults:
-    """Resolve `model` com `solver` via a interface de solvers do Pyomo.
+def _resolve_solver(solver: str) -> tuple[pyo.SolverFactory, str]:
+    """Pyomo solver interface for `solver`, falling back to `FALLBACK_SOLVER`.
 
-    `solver` é qualquer nome de solver registrado no Pyomo, seguindo o mesmo
-    padrão de `src/solver/mip/example.py`.
+    The fallback only triggers for `solver == "gurobi"` with no working
+    license/install (checked via `.available()`, never by calling `.solve()`),
+    so a locally-missing Gurobi license doesn't block running this project.
     """
     solver_interface = pyo.SolverFactory(solver)
-    return solver_interface.solve(model)
+    if solver == "gurobi" and not solver_interface.available(exception_flag=False):
+        logger.warning(
+            "Gurobi is unavailable (no license or install found); falling back to %s.",
+            FALLBACK_SOLVER,
+        )
+        return pyo.SolverFactory(FALLBACK_SOLVER), FALLBACK_SOLVER
+    return solver_interface, solver
+
+
+def solve_block_assignment(
+    model: pyo.ConcreteModel,
+    solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
+) -> pyo.SolverResults:
+    """Resolve `model` com `solver` via a interface de solvers do Pyomo.
+
+    `solver` é qualquer nome de solver registrado no Pyomo. Faz fallback pra
+    `FALLBACK_SOLVER` se `solver == "gurobi"` e não houver licença/instalação
+    disponível. `time_limit_seconds` vira o `timelimit` padrão do Pyomo
+    (honrado por `appsi_highs`) e também é repassado como `TimeLimit` nativo
+    via `_solve_options` pro Gurobi, cujo plugin shell ignora o `timelimit`
+    genérico — sem isso, nenhuma instância teria limite de tempo nessa solver.
+    `memory_limit_gb` vira `MemLimit` nativo pro Gurobi; pro resto (ex.
+    appsi_highs, sem opção nativa de memória) é só o guarda-corpo
+    melhor-esforço de `_memory_limit`.
+    """
+    solver_interface, resolved_solver = _resolve_solver(solver)
+    with _memory_limit(memory_limit_gb):
+        return solver_interface.solve(
+            model,
+            timelimit=time_limit_seconds,
+            options=_solve_options(resolved_solver, memory_limit_gb, time_limit_seconds),
+        )
 
 
 def run_block_assignment_mip(
-    sectors: list[int],
-    combinations: list[int],
-    days: list[int],
-    cd_sectors: dict[int, list[int]],
-    daily_capacity: dict[tuple[int, int], float],
-    projected_demand: ProjectedDemand,
-    current_assignment: dict[tuple[int, int], int],
-    max_churn: float,
-    days_by_cycle: dict[int, list[int]],
-    solver: str = "appsi_highs",
+    instance: ProblemInstance,
+    solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
 ) -> SolveResult:
     """Build and solve the block-assignment MIP, returning a timed `SolveResult`."""
-    model = build_block_assignment_model(
-        sectors=sectors,
-        combinations=combinations,
-        days=days,
-        cd_sectors=cd_sectors,
-        daily_capacity=daily_capacity,
-        projected_demand=projected_demand,
-        current_assignment=current_assignment,
-        max_churn=max_churn,
-        days_by_cycle=days_by_cycle,
-    )
+    return solve_with_assignment(instance, solver, time_limit_seconds, memory_limit_gb)[0]
+
+
+def extract_assignment(model: pyo.ConcreteModel) -> dict[int, int]:
+    """The sector -> combination map encoded by the model's binary `x` (after a solve)."""
+    return {s: d for s in model.S for d in model.D if pyo.value(model.x[s, d]) > 0.5}
+
+
+def solve_with_assignment(
+    instance: ProblemInstance,
+    solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
+) -> tuple[SolveResult, dict[int, int] | None]:
+    """Like `run_block_assignment_mip`, but also returns the assignment (None if no solution)."""
+    model = build_block_assignment_model(instance)
+    solver_interface, resolved_solver = _resolve_solver(solver)
     start = time.perf_counter()
-    pyomo_results = solve_block_assignment(model, solver=solver)
+    try:
+        with _memory_limit(memory_limit_gb):
+            pyomo_results = solver_interface.solve(
+                model,
+                timelimit=time_limit_seconds,
+                options=_solve_options(resolved_solver, memory_limit_gb, time_limit_seconds),
+            )
+    except RuntimeError as exc:
+        # Both the legacy (`environ.SolverFactory`) and `appsi_highs`
+        # interfaces raise this when the solver stopped (usually hitting
+        # `time_limit_seconds`) without ever finding a feasible solution, so
+        # there's nothing to load into `model`'s variables/objective.
+        if "feasible solution was not found" not in str(exc):
+            raise
+        wall_time_seconds = time.perf_counter() - start
+        logger.warning(
+            "%s found no feasible solution within %ss: %s",
+            resolved_solver,
+            time_limit_seconds,
+            exc,
+        )
+        return SolveResult(
+            model_name="mip_block_assignment",
+            solver=resolved_solver,
+            status=str(pyo.SolverStatus.aborted),
+            termination_condition=str(pyo.TerminationCondition.noSolution),
+            objective=None,
+            wall_time_seconds=wall_time_seconds,
+        ), None
     wall_time_seconds = time.perf_counter() - start
-    return SolveResult(
-        model_name="mip_highs",
-        solver=solver,
+    result = SolveResult(
+        model_name="mip_block_assignment",
+        solver=resolved_solver,
         status=str(pyomo_results.solver.status),
         termination_condition=str(pyomo_results.solver.termination_condition),
         objective=pyo.value(model.objective, exception=False),
         wall_time_seconds=wall_time_seconds,
     )
+    return result, (extract_assignment(model) if result.objective is not None else None)
 
 
 def _add_sets(
@@ -185,12 +296,13 @@ def _add_capacity_constraints(
 
 def _add_churn_constraint(
     model: pyo.ConcreteModel,
-    current_assignment: Mapping[tuple[int, int], int],
+    current_assignment: Mapping[int, int],
     max_churn: float,
 ) -> None:
     """Limita a max_churn o número de setores que mudam em relação ao As-Is (§3.5.5).
 
-    Cada par (s, d) contribui com 1 - x[s,d] se era a atribuição As-Is (0 se
+    `current_assignment` é o As-Is denso (setor -> combinação). Cada par
+    (s, d) contribui com 1 - x[s,d] se era a atribuição As-Is do setor (0 se
     o setor manteve, 1 se abandonou) ou com x[s,d] caso contrário (1 se o
     setor escolheu essa combinação agora). Um setor que mudou contribui com
     exatamente 2 somando todos os seus pares (s, d); um que não mudou
@@ -199,8 +311,8 @@ def _add_churn_constraint(
 
     def rule(m: pyo.ConcreteModel) -> bool:
         changed = sum(
-            current_assignment.get((s, d), 0)
-            + (1 - 2 * current_assignment.get((s, d), 0)) * m.x[s, d]
+            (1 if current_assignment.get(s) == d else 0)
+            + (1 - 2 * (1 if current_assignment.get(s) == d else 0)) * m.x[s, d]
             for s in m.S
             for d in m.D
         )

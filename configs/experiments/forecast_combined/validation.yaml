@@ -1,0 +1,17 @@
+# Um par fixo de modelos: não compara candidatos nem busca hiperparâmetros.
+mode: validate
+history_cycles: 20
+validation_cycles: ["202612"]
+
+level:
+  model: naive
+  strategy: mean
+
+shape:
+  name: sector_10_bins
+  model: sector
+  n_bins: 10
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/forecast_combined/outputs/validation_v02

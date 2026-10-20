@@ -1,129 +1,101 @@
-"""Orchestrate the generate -> forecast -> solve pipeline to compare the MIP and SA solvers."""
+"""Run the end-to-end pipeline: raw data -> forecast -> chosen solver -> explained metric."""
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
-import numpy as np
+import pandas as pd
 
-from src.config import load_config
-from src.forecasting.data import forecast_items, items_per_order_by_sector
-from src.forecasting.model import forecast_future_cycles
-from src.forecasting.scoring import score_and_select_strategies
-from src.generate import generator
+from src.config import RunConfig, load_config
+from src.forecasting.dataset import load_demand_base
 from src.persistence import write_results_csv
-from src.solver import inputs as solver_inputs
-from src.solver.heuristics.simulated_annealing import run_simulated_annealing
-from src.solver.mip.block_assignment import run_block_assignment_mip
+from src.pipeline import explain as explain_stage
+from src.pipeline.forecast_stage import (
+    HorizonPlan,
+    forecast_accuracy,
+    forecast_horizon,
+    plan_horizon,
+)
+from src.pipeline.solve_stage import SOLVERS, Solved, run_solver
+from src.solver.real_inputs import RealInstance, build_real_instance
 
-RESULTS_FILENAME = "main_pipeline_comparison.csv"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG = PROJECT_ROOT / "configs/default.yaml"
+DEFAULT_CONFIG = PROJECT_ROOT / "configs/pipeline.yaml"
 
 
-def main(
-    n_sectors: int = 40,
-    cycle_length: int = 21,
-    n_cycles_history: int = 6,
-    n_cycles_horizon: int = 1,
-    max_churn: float = 0.2,
-    capacity_multiplier: float = 1.0,
-    seed: int = 42,
-    config_file: str | None = None,
-) -> None:
-    """Run the full generate -> forecast -> solve pipeline and compare both solvers.
-
-    `n_cycles_history` is how many historical cycles to synthesize and forecast
-    from; `n_cycles_horizon` is how many future cycles to forecast and check the
-    (single, shared) assignment against.
-    """
-    rng = np.random.default_rng(seed)
-    sectors = generator.build_sectors(n_sectors)
-
-    demand_level, demand_shape, cycle_starts, assignment = generator.generate_synthetic_demand(
-        rng, sectors, cycle_length, n_cycles_history
+def _assignment_table(solved: Solved, real: RealInstance, instance_as_is: dict[int, int]):
+    """Sector, CD, As-Is and To-Be slot (combination id = slot day) as a frame."""
+    to_be = solved.assignment or {}
+    return pd.DataFrame(
+        {
+            "cd_setor": list(real.sector_ids),
+            "cd_cd": [real.sector_to_cd[s] for s in real.sector_ids],
+            "as_is_slot": [instance_as_is[i] for i in real.sector_ids.values()],
+            "to_be_slot": [to_be.get(i) for i in real.sector_ids.values()],
+        }
     )
 
-    best_level_name, best_shape_name = score_and_select_strategies(
-        demand_level, demand_shape, cycle_starts, assignment, n_cycles_history, n_cycles_horizon
-    )
-    print(f"Selected strategies: level={best_level_name!r}, shape={best_shape_name!r}")
 
-    calendar_forecast = forecast_future_cycles(
-        demand_level,
-        demand_shape,
-        cycle_starts,
-        assignment,
-        n_cycles_history,
-        cycle_length,
-        best_level_name,
-        best_shape_name,
-        n_cycles_horizon,
+def _build_instance(raw: pd.DataFrame, plan: HorizonPlan, config: RunConfig, daily, cycles):
+    pipeline = config.pipeline
+    return build_real_instance(
+        daily,
+        raw,
+        plan.targets,
+        as_is_cycle=cycles[-1],
+        max_churn=pipeline.max_churn,
+        capacity_multiplier=pipeline.capacity_multiplier,
+        max_sectors=pipeline.max_sectors,
     )
 
-    sector_ids, combo_slots = solver_inputs.build_id_maps(sectors)
-    combo_ids = {slot: combo_id for combo_id, slot in combo_slots.items()}
-    sector_ids_list = list(sector_ids.values())
-    combo_ids_list = list(combo_slots.keys())
 
-    items_per_order = items_per_order_by_sector(demand_level)
-    calendar_forecast = forecast_items(calendar_forecast, items_per_order)
+def run_pipeline(config: RunConfig) -> explain_stage.Explanation:
+    """Execute every stage for `config` and write the results under `config.paths.results`."""
+    pipeline = config.pipeline
+    level = config.forecast.params
+    raw = load_demand_base(pipeline.base_csv)
 
-    cycle_span = generator.cycle_span_business_days(cycle_length)
-    projected_demand = solver_inputs.build_projected_demand(
-        calendar_forecast, sector_ids, combo_slots, cycle_span, n_cycles_history + 1
+    plan = plan_horizon(raw, pipeline.horizon_cycles, pipeline.history_cycles)
+    print(f"Forecasting {plan.targets} as of {plan.as_of:%Y-%m-%d} with level={level.model}")
+    forecast = forecast_horizon(raw, plan, pipeline, level)
+    real = _build_instance(raw, plan, config, forecast.daily, forecast.training_cycles)
+    instance = real.instance
+    print(f"Instance: {len(instance.sectors)} sectors, {len(instance.days)} days")
+    print(f"Solving with {pipeline.solver_family}")
+
+    solved = run_solver(pipeline.solver_family, instance, config)
+    accuracy = forecast_accuracy(raw, plan, pipeline, level) if pipeline.report_accuracy else {}
+    explanation = explain_stage.explain(instance, solved, accuracy)
+
+    results = Path(config.paths.results)
+    write_results_csv([solved.result], results / "pipeline_solve.csv")
+    explain_stage.write_explanation(explanation, results / "pipeline_explanation.csv")
+    _assignment_table(solved, real, instance.current_assignment).to_csv(
+        results / "pipeline_assignment.csv", index=False
     )
-    days = sorted({day for _, day, _ in projected_demand})
-    days_by_cycle = solver_inputs.group_days_by_cycle(days, cycle_span)
+    print(explain_stage.render(explanation))
+    return explanation
 
-    sector_cd_shares = generator.build_sector_cd_shares(rng, sectors)
-    sector_to_cd = solver_inputs.top_cd_per_sector(sector_cd_shares)
-    cd_sectors = solver_inputs.build_cd_sectors(sector_to_cd, sector_ids)
-    daily_capacity = solver_inputs.build_daily_capacity(list(cd_sectors), days, capacity_multiplier)
 
-    current_assignment_mip = solver_inputs.build_current_assignment_mip(
-        assignment, sector_ids, combo_ids
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument(
+        "--solver", choices=sorted(SOLVERS), help="overrides pipeline.solver_family"
     )
-    current_assignment_sa = solver_inputs.build_current_assignment_sa(
-        assignment, sector_ids, combo_ids
-    )
-    max_churn_sectors = max_churn * n_sectors  # max_churn is a fraction of sectors allowed to move
+    parser.add_argument("--max-sectors", type=int, help="overrides pipeline.max_sectors")
+    return parser.parse_args(argv)
 
-    mip_result = run_block_assignment_mip(
-        sector_ids_list,
-        combo_ids_list,
-        days,
-        cd_sectors,
-        daily_capacity,
-        projected_demand,
-        current_assignment_mip,
-        max_churn_sectors,
-        days_by_cycle,
-    )
-    sa_result = run_simulated_annealing(
-        sector_ids_list,
-        combo_ids_list,
-        days,
-        cd_sectors,
-        daily_capacity,
-        projected_demand,
-        current_assignment_sa,
-        max_churn_sectors,
-        days_by_cycle,
-        seed,
-    )
 
-    config_file = config_file or DEFAULT_CONFIG
-    config = load_config(DEFAULT_CONFIG)
-    results_path = f"{config.paths.results}/{RESULTS_FILENAME}"
-    write_results_csv([mip_result, sa_result], results_path)
-    print(f"Wrote comparison results to {results_path}")
-    print("\nSolver comparison:")
-    for result in (mip_result, sa_result):
-        print(
-            f"  {result.model_name:<20} objective={result.objective!s:>12} "
-            f"wall_time_s={result.wall_time_seconds:.3f} status={result.status}"
-        )
+def main(argv: list[str] | None = None) -> None:
+    """Load the config, apply CLI overrides and run the pipeline."""
+    args = _parse_args(argv)
+    config = load_config(args.config)
+    overrides = {"solver_family": args.solver, "max_sectors": args.max_sectors}
+    updates = {key: value for key, value in overrides.items() if value is not None}
+    config = config.model_copy(update={"pipeline": config.pipeline.model_copy(update=updates)})
+    run_pipeline(config)
 
 
 if __name__ == "__main__":

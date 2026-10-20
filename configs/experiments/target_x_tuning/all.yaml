@@ -1,0 +1,172 @@
+experiment_name: target_x_tuning
+description:
+  goal: >
+    Stage 4's grid ran on top of stage 3, so the two were never crossed.
+    Stage 3 itself ended in a tie on the common basis (1833.9 vs 1834.3),
+    which left the ratio target adopted on the strength of its missing-fold
+    behaviour rather than its accuracy. Does the ratio target still earn
+    its place once the model is tuned?
+  hypothesis: >
+    The ratio target matters MORE after tuning, not less. Its job is to
+    stop the model spending capacity relearning 633 sector levels, and
+    tuning raised the round budget from 100 to whatever early stopping
+    picks - a longer budget is exactly what lets an untamed level target
+    memorise those levels. If that is right, the tuned level arm should
+    lose to the tuned ratio arm by more than the 0.4 items that separated
+    them untuned.
+  design_note: >
+    Two factors crossed on the one-year panel: target (level vs ratio) and
+    configuration (untuned stage-2/3 settings vs the stage-4 winner). The
+    untuned rows reproduce stages 2 and 3 exactly, so they are the control.
+    Tuned rows run 5 seeds each because feature_fraction 0.7 makes
+    random_state live. Known limitation, inherited: scored on the folds
+    earlier stages selected on.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    label: "sem afinar + nivel (etapa 2)"
+
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    label: "sem afinar + razao (etapa 3)"
+
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    random_state: 0
+    label: "afinado + nivel (s0)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    random_state: 1
+    label: "afinado + nivel (s1)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    random_state: 2
+    label: "afinado + nivel (s2)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    random_state: 3
+    label: "afinado + nivel (s3)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    random_state: 4
+    label: "afinado + nivel (s4)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    random_state: 0
+    label: "afinado + razao (s0)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    random_state: 1
+    label: "afinado + razao (s1)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    random_state: 2
+    label: "afinado + razao (s2)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    random_state: 3
+    label: "afinado + razao (s3)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 2000
+    early_stopping_rounds: 50
+    validation_cycles: 1
+    learning_rate: 0.02
+    feature_fraction: 0.7
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    random_state: 4
+    label: "afinado + razao (s4)"
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/target_x_tuning/outputs/comparison.csv
+  errors_csv: experiments/target_x_tuning/outputs/errors_by_candidate.csv
+

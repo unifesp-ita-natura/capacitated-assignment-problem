@@ -1,7 +1,7 @@
-"""Expose the example Pyomo-based exact MIP solve entrypoint."""
+"""Expose the block-assignment Pyomo-based exact MIP solve entrypoint."""
 
 from __future__ import annotations
 
-from src.solver.mip.example import solve_example
+from src.solver.mip.block_assignment import run_block_assignment_mip
 
-__all__ = ["solve_example"]
+__all__ = ["run_block_assignment_mip"]
