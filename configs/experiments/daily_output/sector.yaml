@@ -1,0 +1,50 @@
+experiment_name: daily_output_sector
+description:
+  goal: >
+    Score every candidate per day instead of per cycle: spread each cycle
+    forecast over the days of the sector's window (curve: sector) and split it
+    across the sector's CDs, then rank by MAE per CD-day, the level the
+    capacity constraint acts on.
+  hypothesis: >
+    (1) The per-sector curve beats the uniform curve at CD-day level, but by
+    little (under 5%): a CD-day sums hundreds of sectors, so most curve noise
+    cancels, and the measured curve is nearly flat (18-22% of items per fifth
+    of the window). (2) The ranking of candidates by CD-day error matches the
+    per-cycle ranking, because the cycle total is the only thing that differs
+    between candidates; the curve and the CD split are shared.
+  design_note: >
+    Same panel, split and candidates as relative_target; only `daily:` is
+    new. The curve and the sector-to-CD split are learned from the fold's
+    training cycles alone. Under the current convention the training cycles
+    include cycle k-1 whole, whose window runs past the target cycle's own
+    opening (cycles overlap ~27 days), so this measures the day-level error
+    of the SAME information the per-cycle harness already used, not a
+    stricter one.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+daily:
+  curve: sector
+
+candidates:
+  - model: naive
+    strategy: last_value
+  - model: naive
+    strategy: mean
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    label: "razao (etapa 3)"
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/daily_output/outputs/comparison_sector.csv
+  errors_csv: experiments/daily_output/outputs/errors_sector.csv

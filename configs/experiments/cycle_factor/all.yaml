@@ -1,0 +1,60 @@
+experiment_name: cycle_factor
+description:
+  goal: >
+    Does a factor shared by every sector in a cycle carry usable signal?
+    Concretely: does multiplying each sector's own mean by a forecast of
+    that shared factor beat simply using the sector's mean?
+  hypothesis: >
+    It wins. Total items per cycle swing about +/-20% around their mean and
+    the swing hits every sector at once — most likely the magazine and the
+    promotions the client sets at each cycle's opening, for which no
+    calendar exists. A per-sector model can only see that through its own
+    series, where it is buried under the 79% of variance that is a sector
+    bouncing around. Pulled out, it is one series of a dozen points, and
+    forecasting one short series is far easier than forecasting 633.
+  design_note: >
+    The candidate is level x factor, where the level is each sector's mean
+    over everything observed — exactly what naive:mean forecasts. A factor
+    forecast of 1.0 therefore reproduces naive:mean exactly, so every
+    difference against that row is attributable to the factor and nothing
+    else. Four factor forecasts are compared: "last" (repeat the most
+    recent observed factor), "mean" over the last 2 and 3, and "all"
+    (average every factor seen, a constant correction). The factor itself
+    is estimated as a ratio of sums, not a mean of ratios — the mean of
+    ratios is badly biased upward early in the series, see the README. The
+    stage 3 LightGBM is carried along for context, not as the thing being
+    varied. Known limitation: with one year of history the factor series
+    has at most 11 points, and no seasonal structure is estimable from it.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+  - model: cycle_factor
+    strategy: last
+  - model: cycle_factor
+    strategy: mean
+    window: 2
+  - model: cycle_factor
+    strategy: mean
+    window: 3
+  - model: cycle_factor
+    strategy: all
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    label: "lightgbm razao (etapa 3)"
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/cycle_factor/outputs/comparison.csv
+  errors_csv: experiments/cycle_factor/outputs/errors_by_candidate.csv

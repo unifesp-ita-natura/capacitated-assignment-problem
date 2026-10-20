@@ -1,0 +1,56 @@
+experiment_name: lightgbm_short_window
+description:
+  goal: >
+    Does shortening the rolling-mean windows from [3, 6] to [2, 3] recover
+    the fold the pooled LightGBM currently cannot predict at all, without
+    costing accuracy on the folds it already predicts?
+  hypothesis: >
+    It recovers coverage and does not hurt. A 6-cycle rolling mean needs 6
+    prior complete cycles, so the first fold's training table comes out
+    empty and 606 target points are forfeited. Shortening the window moves
+    the binding constraint to lag_4 (4 prior cycles), which the first fold
+    can satisfy. Accuracy is expected to be roughly flat, because the
+    stage-1 result showed the model is capacity-limited rather than
+    information-limited.
+  design_note: >
+    One variable changes: rolling_windows, [3, 6] -> [2, 3]. Everything
+    stage 1 approved is held fixed, including companion_lags [1, 2, 3, 4],
+    and so are the split, the target, the objective and every
+    hyperparameter. Unlike stage 1, this experiment deliberately changes
+    coverage — that is what it is testing — so the two LightGBM rows do NOT
+    score the same points. src.forecasting.comparison.compare ranks them on
+    the intersection, which is the honest accuracy comparison, while
+    n_missing carries the coverage result. naive:mean is the benchmark.
+    Known limitation: same folds earlier stages selected on, so the numbers
+    are optimistic until stage 0's holdout exists.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+  # The stage 1 winner, unchanged: this is the baseline to beat.
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    label: "lightgbm+orders w[3,6]"
+  # The same model with shorter rolling means. This row is the experiment.
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    label: "lightgbm+orders w[2,3]"
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/lightgbm_short_window/outputs/comparison.csv
+  errors_csv: experiments/lightgbm_short_window/outputs/errors_by_candidate.csv

@@ -1,0 +1,28 @@
+# Same candidates and folds run twice: one series per sector, and one per
+# sector-city summed back to the sector. Both are scored against the sector's
+# real total, on the points every version predicted.
+# uv run python -m experiments.sector_vs_city.run configs/experiments/sector_vs_city/all.yaml
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+
+  - model: ets
+    alpha: pooled
+    cycle_days_exponent: pooled
+
+  - model: lightgbm
+    n_estimators: 300
+    num_leaves: 31
+    lags: [1, 2, 3]
+    rolling_windows: [3]
+    early_stopping_rounds: 30
+    label: lightgbm
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  output_csv: experiments/sector_vs_city/outputs/comparison.csv

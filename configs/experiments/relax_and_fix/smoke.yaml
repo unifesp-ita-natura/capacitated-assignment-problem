@@ -1,0 +1,29 @@
+experiment_name: relax_and_fix_smoke
+description:
+  goal: >
+    O Relax-and-Fix + Fix-and-Optimize roda de ponta a ponta com o HiGHS e acha a mesma
+    solução do MIP em instâncias pequenas?
+  hypothesis: >
+    Com 40 setores o MIP fecha em segundos e o R&F fica a menos de 1% do ótimo, inclusive
+    quando o As-Is estoura a capacidade, porque a janela de 3 a 5 CDs já cobre quase todo o
+    problema acoplado.
+  design_note: >
+    Verificação rápida (não é o experimento): uma instância folgada e uma apertada de 40
+    setores, uma seed, MIP com 60 s. Só confere que o driver funciona; os números de
+    verdade vêm de full.yaml.
+  status: exploratory
+
+output_dir: experiments/relax_and_fix/outputs/smoke
+mip:
+  solver: appsi_highs
+  mip_rel_gap: 0.0001
+optimize_passes: 2
+subproblem_time_limit: 60
+
+instances:
+  loose40: {n_sectors: 40, n_cycles_horizon: 2, seed: 42, capacity: loose, mip_time_limit: 60}
+  tight40: {n_sectors: 40, n_cycles_horizon: 2, seed: 42, capacity: tight, mip_time_limit: 60}
+
+windows:
+  - {window: 3, step: 2}
+  - {window: 5, step: 3}

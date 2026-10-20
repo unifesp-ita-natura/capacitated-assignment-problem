@@ -1,0 +1,16 @@
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: lightgbm
+    label: lgbm_gerencia
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    categorical_features: [CD_GV]
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-06_gerencia_v01

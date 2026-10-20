@@ -1,0 +1,58 @@
+experiment_name: panel_order_counts
+description:
+  goal: >
+    Does giving the pooled LightGBM the order and volume counts of earlier
+    cycles — series the panel used to throw away — lower its error against
+    the naive:mean benchmark it currently loses to?
+  hypothesis: >
+    It helps. Measured on 6,705 (sector, cycle -> next cycle) pairs of the
+    real base, the previous cycle's order count correlates 0.230 (Spearman)
+    with the next cycle's items, against 0.180 for the previous cycle's
+    items. An order is roughly a consultant who bought at all, which is
+    stable; items per order is volatile. The item series mixes the stable
+    signal with the noisy one, so the panel was discarding the better
+    predictor of the two.
+  design_note: >
+    One variable changes: LightGBMParams.companion_lags goes from empty to
+    [1, 2, 3, 4]. Split, target, objective and every hyperparameter are held
+    fixed, and the two LightGBM rows differ in nothing else. Because the
+    companion lags reach exactly as far back as the item lags, both rows
+    drop the same training rows and score the same points, so the
+    comparison is not confounded by coverage. naive:mean is carried along
+    as the benchmark to beat and naive:last_value as the floor. Known
+    limitations: a single seed (the configuration has no stochastic
+    component — feature_fraction and bagging_fraction sit at their default
+    of 1.0 — so seeds are not yet informative, see the README), and the
+    folds are the same ones earlier experiments selected on, so the numbers
+    are optimistic as an estimate of unseen-data error until the holdout
+    from stage 0 of docs/plans/forecasting-feature-roadmap.md exists.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+  - model: naive
+    strategy: last_value
+  # The baseline: exactly the configuration that placed 2nd in
+  # compare_forecasters, items only.
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+  # The same model, plus lagged order counts, volume counts and the
+  # items-per-order ratio. This row is the experiment.
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/panel_order_counts/outputs/comparison.csv
+  errors_csv: experiments/panel_order_counts/outputs/errors_by_candidate.csv

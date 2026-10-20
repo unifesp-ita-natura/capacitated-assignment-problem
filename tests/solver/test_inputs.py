@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from itertools import chain
+
 import pandas as pd
 import pytest
 
 from src.generate import generator
 from src.solver.inputs import (
+    balance_days_by_cycle,
     build_cd_sector_shares,
     build_cd_sectors,
-    build_current_assignment_mip,
     build_current_assignment_sa,
     build_daily_capacity,
     build_id_maps,
@@ -152,19 +154,6 @@ def test_build_cd_sector_shares_inverts_sector_to_cd_maps(sectors):
     }
 
 
-def test_build_current_assignment_mip_produces_sparse_indicator_dict(sectors):
-    sector_ids, combo_slots = build_id_maps(sectors)
-    combo_ids = {slot: combo_id for combo_id, slot in combo_slots.items()}
-    assignment = {"S01": generator.SLOTS[0], "S02": generator.SLOTS[3]}
-
-    current_assignment_mip = build_current_assignment_mip(assignment, sector_ids, combo_ids)
-
-    assert current_assignment_mip == {
-        (sector_ids["S01"], combo_ids[generator.SLOTS[0]]): 1,
-        (sector_ids["S02"], combo_ids[generator.SLOTS[3]]): 1,
-    }
-
-
 def test_build_current_assignment_sa_produces_dense_sector_to_combo_dict(sectors):
     sector_ids, combo_slots = build_id_maps(sectors)
     combo_ids = {slot: combo_id for combo_id, slot in combo_slots.items()}
@@ -176,3 +165,32 @@ def test_build_current_assignment_sa_produces_dense_sector_to_combo_dict(sectors
         sector_ids["S01"]: combo_ids[generator.SLOTS[0]],
         sector_ids["S02"]: combo_ids[generator.SLOTS[3]],
     }
+
+
+def test_balance_days_skip_only_the_horizon_ramps() -> None:
+    days = list(range(1, 3 * 21 + 15))  # 3 overlapping cycles, 21 days apart
+    groups = balance_days_by_cycle(days, 21)
+    kept = list(chain.from_iterable(groups.values()))
+    assert min(kept) == 15
+    assert max(kept) == max(days) - 14
+    assert groups[1] == list(range(22, 43))  # a middle cycle keeps all its days
+
+
+def test_balance_days_reject_a_horizon_shorter_than_the_ramps() -> None:
+    with pytest.raises(ValueError, match="no balance days"):
+        balance_days_by_cycle(list(range(1, 25)), 21)
+
+
+def test_overlapping_cycles_sum_their_demand_on_shared_days() -> None:
+    forecast = pd.DataFrame(
+        {
+            "sector": ["S01", "S01"],
+            "cycle_id": [0, 1],
+            "offset": [5, 0],
+            "forecast_items": [4.0, 6.0],
+        }
+    )
+    ids, slots = build_id_maps(["S01"])
+    demand = build_projected_demand(forecast, ids, slots, 5, 0)
+    # slot 1: cycle 0 offset 5 -> day 6; cycle 1 offset 0 -> 5 + 1 = day 6
+    assert demand[(1, 6, 1)] == 10.0

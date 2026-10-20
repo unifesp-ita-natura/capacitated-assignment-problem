@@ -1,0 +1,18 @@
+# Preencha future_windows.csv com as janelas efetivamente planejadas.
+mode: forecast
+as_of: "2026-10-16T00:00:00"
+history_cycles: 20
+
+level:
+  model: naive
+  strategy: mean
+
+shape:
+  name: sector_10_bins
+  model: sector
+  n_bins: 10
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  windows_csv: configs/experiments/forecast_combined/future_windows.csv
+  run_dir: experiments/forecast_combined/outputs/future_v01
