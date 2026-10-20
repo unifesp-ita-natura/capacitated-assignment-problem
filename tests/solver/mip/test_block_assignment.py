@@ -8,13 +8,18 @@ machine can't produce for real: Gurobi being unavailable.
 
 from __future__ import annotations
 
+import logging
+
+import pyomo.environ as pyo
 import pytest
 
 from src.solver.inputs import ProblemInstance
 from src.solver.mip.block_assignment import (
+    apply_warm_start,
     build_block_assignment_model,
     run_block_assignment_mip,
     solve_block_assignment,
+    solve_with_assignment,
 )
 
 
@@ -214,3 +219,39 @@ def test_run_block_assignment_mip_falls_back_to_highs_when_gurobi_unavailable(
 
     assert result.solver == "appsi_highs"
     assert result.termination_condition == "optimal"
+
+
+def test_apply_warm_start_sets_x_and_cycle_bounds(toy_instance):
+    model = build_block_assignment_model(toy_instance)
+
+    apply_warm_start(model, toy_instance, {1: 1, 2: 2})
+
+    assert [model.x[1, d].value for d in (1, 2)] == [1, 0]
+    assert [model.x[2, d].value for d in (1, 2)] == [0, 1]
+    assert model.z_max[0].value == 10.0
+    assert model.z_min[0].value == 10.0
+
+
+def test_solve_with_assignment_accepts_warm_start_on_highs(toy_instance):
+    result, assignment = solve_with_assignment(
+        toy_instance, solver="appsi_highs", warm_start={1: 1, 2: 2}
+    )
+
+    assert result.objective == pytest.approx(0.0)
+    assert assignment is not None
+
+
+def _gurobi_is_licensed() -> bool:
+    return pyo.SolverFactory("gurobi").available(exception_flag=False)
+
+
+@pytest.mark.skipif(not _gurobi_is_licensed(), reason="requires a working Gurobi license")
+def test_run_block_assignment_mip_solves_with_gurobi_without_memory_guard_warning(
+    toy_instance, caplog
+):
+    with caplog.at_level(logging.WARNING, logger="src.solver.mip.block_assignment"):
+        result = run_block_assignment_mip(toy_instance, solver="gurobi")
+
+    assert result.solver == "gurobi"
+    assert result.termination_condition == "optimal"
+    assert "Could not set RLIMIT_AS" not in caplog.text
