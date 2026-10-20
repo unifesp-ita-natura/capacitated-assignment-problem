@@ -99,7 +99,10 @@ def _new_persistent_solver(solver_name: str):
     return solver
 
 
-GAP_OPTION = {"appsi_highs": "mip_rel_gap", "appsi_gurobi": "MIPGap"}
+GAP_OPTION = {
+    "appsi_highs": "mip_rel_gap",
+    "appsi_gurobi": "MIPGap",
+}
 
 
 def mip_gap_option(solver_name: str) -> str:

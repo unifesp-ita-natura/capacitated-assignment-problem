@@ -25,8 +25,10 @@ uv run pytest tests/solver/mip/test_example.py
 uv run ruff format src tests experiments
 uv run ruff check src tests experiments
 
-# Demo solve (default config)
-uv run python -m src.cli.main
+
+
+# End-to-end: raw CSV -> forecast -> mip|matheuristic|sa -> explained metric
+uv run --extra forecast python -m src.main --solver sa
 ```
 
 ## Architecture
