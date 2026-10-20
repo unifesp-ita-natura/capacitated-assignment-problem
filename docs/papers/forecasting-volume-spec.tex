@@ -1,0 +1,527 @@
+% =====================================================================
+% ADICOES AO desafio_natura.tex (Luiz Salles-Neto, set/2026)
+%
+% Cada bloco abaixo indica ONDE entra no documento principal.
+% Este arquivo compila sozinho (preambulo proprio) para conferencia
+% visual, mas o objetivo e' copiar bloco a bloco para o Overleaf.
+%
+% Notacao: usa k para ciclo e sigma para shape porque s (setor),
+% d (slot), a (dia) e c (CD) ja estao ocupados no documento principal.
+% =====================================================================
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{hyperref}
+\geometry{margin=1in}
+
+\title{Adições ao \texttt{desafio\_natura.tex}\\[4pt]
+\large Previsão da demanda: definição de $L_{s,k}$, candidatos de modelo
+e critério de comparação}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\noindent Este documento reúne o que precisa ser acrescentado ao paper
+principal para que o parâmetro $q_{s,a,d}$ da Seção~3.2 deixe de ser um
+dado sem origem e passe a ser a saída de um módulo de previsão
+especificado. Os blocos estão na ordem em que aparecem no documento
+principal.
+
+% =====================================================================
+% BLOCO A  -->  SECAO 3.1 (Conjuntos): acrescentar duas linhas na tabela
+%               e emendar a descricao de A.
+% =====================================================================
+\section*{Bloco A — §3.1 Conjuntos}
+
+Acrescentar duas linhas à tabela de conjuntos:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Símbolo & Descrição & Domínio \\
+\midrule
+$K$ & conjunto de ciclos (campanhas) do horizonte & $k \in \{1,\dots,|K|\}$ \\
+$t$ & índice de dia dentro da janela de vendas & $t \in \{0,\dots,W_k-1\}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent E emendar a descrição de $A$, hoje ``conjunto de dias do
+horizonte de simulação (dias-calendário)'', para explicitar \emph{quais
+ciclos} esse horizonte cobre:
+
+\begin{quote}
+$A$ — conjunto de dias-calendário do horizonte de simulação,
+correspondente aos ciclos $k \in K$.
+\end{quote}
+
+\noindent Essa emenda não é cosmética: a Seção~4.1.5 estima $|A| \approx
+30$ dias, o que corresponde a aproximadamente uma campanha. Se $|K| = 1$,
+o horizonte de previsão é de um ciclo à frente, e isso precisa estar
+escrito antes da Seção de validação (Bloco~C.6).
+
+% =====================================================================
+% BLOCO B  -->  SECAO 3.2 (Parametros): corrigir q, acrescentar 5 linhas,
+%               acrescentar a equacao de decomposicao e duas ressalvas.
+% =====================================================================
+\section*{Bloco B — §3.2 Parâmetros}
+
+\subsection*{B.1 Correção da unidade de $q_{s,a,d}$}
+
+A descrição atual diz ``quantidade de \textbf{pedidos} prevista pelo setor
+$s$ no dia $a$''. A base de demanda disponível não tem coluna de pedidos:
+a única coluna de quantidade é \texttt{total\_volumes\_mascarado}.
+Substituir por:
+
+\begin{quote}
+$q_{s,a,d}$ — \textbf{volume} previsto do setor $s$ no dia $a$, dado que
+seu ciclo iniciou em $d$.
+\end{quote}
+
+\noindent E acrescentar, logo abaixo da tabela de parâmetros:
+
+\begin{quote}
+$q_{s,a,d}$ e $\mathrm{Cap}_{c,a}$ são expressos na mesma unidade
+(volumes) e na mesma escala da base mascarada. Os valores de volume da
+base são mascarados; a restrição (3.5.4) só é válida se a capacidade
+estiver na mesma escala.
+\end{quote}
+
+\subsection*{B.2 Linhas novas na tabela de parâmetros}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Símbolo & Descrição & Domínio \\
+\midrule
+$L_{s,k}$ & volume total previsto do setor $s$ no ciclo $k$ & $\ge 0$ \\
+$\sigma_{s,t}$ & fração do volume do setor $s$ no dia $t$ da janela &
+  $\ge 0$, $\sum_t \sigma_{s,t} = 1$ \\
+$W_k$ & duração, em dias, da janela de vendas do ciclo $k$ & $\ge 1$ \\
+$a^{\mathrm{ini}}_k$ & dia-calendário de início do ciclo $k$ & $\in A$ \\
+$\delta_d$ & deslocamento, em dias, da abertura da janela do slot $d$ & $\ge 0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection*{B.3 Equação de decomposição}
+
+Acrescentar como equação numerada (3.2.1), logo após a tabela de
+parâmetros:
+
+\begin{equation}
+q_{s,a,d} =
+\begin{cases}
+L_{s,k}\,\sigma_{s,t}, & t = a - a^{\mathrm{ini}}_k - \delta_d,
+  \quad 0 \le t < W_k, \\[4pt]
+0, & \text{caso contrário.}
+\end{cases}
+\end{equation}
+
+\noindent Ou seja: o parâmetro $q_{s,a,d}$ é o produto de um \emph{escalar
+de volume} por ciclo, $L_{s,k}$, por uma \emph{curva de distribuição
+intra-ciclo}, $\sigma_{s,t}$, deslocada no calendário conforme o slot
+$d$ atribuído ao setor. As duas frentes de previsão são separadas
+exatamente por essa equação: $L_{s,k}$ é o objeto da Seção~4 deste
+documento, $\sigma_{s,t}$ é objeto de trabalho paralelo.
+
+\subsection*{B.4 Duas ressalvas a declarar}
+
+Acrescentar, logo após a equação:
+
+\begin{quote}
+\textbf{Hipótese (invariância do volume à atribuição).} $L_{s,k}$ não
+depende de $d$: a combinação Bloco/Subloco desloca a demanda do setor no
+calendário, mas não altera seu volume total no ciclo. Essa hipótese já
+está implícita na forma como $q_{s,a,d}$ foi parametrizado, e é o que
+permite prever $L_{s,k}$ sem conhecer a atribuição. Ela precisa ser
+verificada empiricamente (Seção~4.7): se a janela de um slot for truncada
+por fins de semana ou feriados conforme o dia de abertura, o volume total
+pode depender de $d$, e nesse caso $\sigma$ passa a ser indexado também
+por $d$.
+
+\textbf{Previsão pontual.} $q_{s,a,d}$ é uma previsão pontual, sem
+intervalo de incerteza associado. As restrições (3.5.2)--(3.5.4) tratam
+$q$ como determinístico.
+\end{quote}
+
+% =====================================================================
+% BLOCO C  -->  SECAO NOVA 4 "Previsao da demanda".
+%               O Simulated Annealing passa a ser a Secao 5.
+% =====================================================================
+\section*{Bloco C — Nova §4 ``Previsão da demanda''}
+
+O conteúdo abaixo entra como uma seção nova, posicionada \emph{antes} da
+Estrutura do Simulated Annealing (que passa a ser a Seção~5), já que o SA
+consome $q_{s,a,d}$ como entrada. As referências cruzadas a equações por
+número (3.5.2, 3.5.4 etc.) continuam válidas após a renumeração.
+
+\subsection*{4.1 Base de dados}
+
+A base histórica de demanda tem uma linha por setor e período, com as
+colunas:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Coluna & Conteúdo \\
+\midrule
+\texttt{cd\_setor} & identificador do setor ($s$) \\
+\texttt{aa\_ciclo} & ano do ciclo \\
+\texttt{nm\_ciclo} & número do ciclo dentro do ano \\
+\texttt{mes\_pedido} & mês em que o pedido foi registrado \\
+\texttt{semana\_pedido} & semana em que o pedido foi registrado \\
+\texttt{total\_volumes\_mascarado} & volume, em escala mascarada \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent O par $(\texttt{aa\_ciclo}, \texttt{nm\_ciclo})$ identifica o
+ciclo $k$; o período sazonal a ser usado pelos modelos sazonais da
+Seção~4.4 é $\max(\texttt{nm\_ciclo})$, o número de ciclos por ano.
+
+\paragraph{Extração de $L_{s,k}$.} O alvo de previsão é obtido por
+agregação direta:
+\[
+L_{s,k} \;=\; \sum_{\text{linhas do setor } s \text{ no ciclo } k}
+\texttt{total\_volumes\_mascarado}.
+\]
+
+\paragraph{O que a base não contém.} Nenhuma das informações a seguir
+está nessa base, e todas são necessárias para fechar a formulação:
+a partição $S_c$ (qual CD atende cada setor); a atribuição As-Is
+$x^{\mathrm{AsIs}}_{s,d}$ (em qual Bloco/Subloco cada setor esteve em cada
+ciclo); as datas de início de ciclo $a^{\mathrm{ini}}_k$; e as capacidades
+$\mathrm{Cap}_{c,a}$. A ausência de $x^{\mathrm{AsIs}}_{s,d}$ histórico é a
+mais restritiva: sem ela não é possível estimar $\sigma_{s,t}$, que é
+definida em relação ao dia de abertura da janela, nem testar a hipótese de
+invariância do Bloco~B.4.
+
+\subsection*{4.2 Definição e nível de agregação}
+
+$L_{s,k}$ é um \textbf{escalar por par (setor, ciclo)} --- um valor por
+setor por campanha, não uma série diária. A distribuição do volume ao
+longo dos dias do ciclo é inteiramente responsabilidade de
+$\sigma_{s,t}$. Formalmente, $L_{s,k}$ é o total efetivamente observado
+do setor durante a janela de vendas do ciclo, o que corresponde à
+agregação da Seção~4.1 e é consistente com a equação~(3.2.1):
+\[
+L_{s,k} \;=\; \sum_{t=0}^{W_k-1} q_{s,\,a^{\mathrm{ini}}_k + \delta_d + t,\;d}.
+\]
+
+\subsection*{4.3 Decomposição volume $\times$ shape e limite de granularidade}
+
+A separação entre $L_{s,k}$ e $\sigma_{s,t}$ é deliberada: prever o total
+de um ciclo é um problema substancialmente mais estável do que prever a
+distribuição intra-ciclo, e a equação~(3.2.1) permite que as duas frentes
+avancem em paralelo sem sobreposição.
+
+\paragraph{Limitação a declarar.} A base descrita na Seção~4.1 tem
+resolução temporal de ciclo (ou, no máximo, de semana, via
+\texttt{semana\_pedido}). Ela não tem resolução diária. Como
+$\mathrm{Cap}_{c,a}$ é uma capacidade \emph{diária} e $z_{max}$, $z_{min}$
+são o pico e o vale \emph{diários} (equações (3.5.2)--(3.5.4)), a
+reconstrução de $q_{s,a,d}$ no nível de dia exige uma de três coisas, e o
+paper precisa dizer qual foi adotada: (i) uma base diária de outra fonte;
+(ii) reformular o modelo em granularidade semanal, com $a$ passando a
+indexar semanas e $\mathrm{Cap}$ passando a ser semanal; ou (iii) assumir
+um perfil intra-semana por regra de negócio, caso em que $\sigma_{s,t}$ é
+em parte premissa, não estimativa.
+
+\subsection*{4.4 Candidatos de modelo}
+
+Todos os candidatos preveem a mesma quantidade, $L_{s,k}$, para os ciclos
+do horizonte $K$. A seleção de hiperparâmetros é automática em todos os
+casos: com $|S| \approx 800$ séries, ajuste manual por série não é
+praticável nem reprodutível.
+
+\begin{center}
+\begin{tabular}{@{}p{3.4cm}p{10.2cm}@{}}
+\toprule
+Candidato & Especificação \\
+\midrule
+Naive / naive sazonal &
+  Baseline obrigatório. Estratégias: último valor; mesmo ciclo do ano
+  anterior; média histórica. Serve de referência e de denominador da
+  métrica de erro da Seção~4.6. \\
+ETS &
+  Suavização exponencial em espaço de estados. Seleção automática por AIC
+  sobre combinações de erro/tendência/sazonalidade
+  $\{A,M\} \times \{N,A,A_d\} \times \{N,A,M\}$, com período sazonal
+  $m = \max(\texttt{nm\_ciclo})$. \\
+ARIMA / SARIMA &
+  Seleção automática de ordem (busca stepwise por AICc) sobre
+  $p,q \in \{0,\dots,3\}$, $d \in \{0,1\}$, e ordem sazonal
+  $P,D,Q \in \{0,1\}$ com período $m$. \\
+SARIMAX &
+  Mesma busca, com regressores exógenos derivados da própria base:
+  indicadores de mês (\texttt{mes\_pedido}, que captura Dia das Mães,
+  Natal e afins) e posição do ciclo no ano (\texttt{nm\_ciclo}). Não exige
+  tabela externa de feriados. \\
+Prophet &
+  \texttt{growth} $\in$ \{linear, logistic\}; \texttt{seasonality\_mode}
+  $\in$ \{additive, multiplicative\}; grade em
+  \texttt{changepoint\_prior\_scale} $\in \{0{,}01;\,0{,}05;\,0{,}1;\,0{,}5\}$. \\
+Gradient boosting &
+  LightGBM sobre features de defasagem ($1,2,3,4$ ciclos e ciclo homólogo
+  do ano anterior), médias móveis de 3 e 6 ciclos, e os mesmos regressores
+  de calendário do SARIMAX. Grade:
+  \texttt{n\_estimators} $\in \{100,300,500\}$,
+  \texttt{learning\_rate} $\in \{0{,}01;\,0{,}05;\,0{,}1\}$,
+  \texttt{num\_leaves} $\in \{15,31,63\}$, com parada antecipada na dobra
+  de validação. XGBoost pertence à mesma família e é usado apenas como
+  verificação pontual de sensibilidade à biblioteca, não como candidato
+  mantido em paralelo. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent \textbf{Métodos para demanda intermitente} (Croston, SBA) foram
+considerados e descartados: eles se justificam quando a série alvo tem
+alta incidência de zeros, o que é típico de contagem de pedidos, não de
+volume agregado por ciclo inteiro. Caso a fração de ciclos com
+$L_{s,k}=0$ se mostre relevante na base real, o candidato deve ser
+reincorporado.
+
+\subsection*{4.5 Nível de ajuste}
+
+A saída exigida pela formulação é por setor individual --- $q_{s,a,d}$ é
+indexado por $s$ ---, de modo que não é possível prever apenas em nível
+agregado sem desagregar depois.
+
+\paragraph{Agrupamento permitido e proibido.} A combinação Bloco/Subloco
+$d$ \textbf{não} pode ser usada como variável de agrupamento ou como
+preditor de $L_{s,k}$: $d$ é a variável de decisão do problema
+(equação (3.5.1)), e usá-la para explicar o volume introduziria na
+previsão justamente aquilo que a otimização pretende alterar, além de
+impedir previsões contrafactuais para slots que o setor nunca ocupou. Já
+a partição $S_c$ da Seção~3.1 é uma chave de agrupamento legítima, por
+ser estável em relação à atribuição.
+
+\paragraph{Estratégia.} Com $|C| = 10$ CDs e $|S| \approx 800$ setores,
+$S_c$ oferece grupos de aproximadamente 80 séries cada --- um tamanho
+adequado para agrupamento. Adota-se uma estratégia híbrida, comparada
+empiricamente pelo critério da Seção~4.6:
+\begin{itemize}
+  \item modelos estatísticos (ETS, ARIMA/SARIMA, SARIMAX, Prophet)
+    ajustados por setor, mas com a busca de hiperparâmetros conduzida por
+    grupo $S_c$, de modo que cada setor herde (ou inicialize a busca a
+    partir de) a especificação escolhida para seu CD;
+  \item gradient boosting ajustado como \textbf{um único modelo global}
+    sobre todos os setores simultaneamente, com \texttt{cd\_setor} e o CD
+    como variáveis categóricas.
+\end{itemize}
+
+\noindent A segunda estratégia segue o resultado da competição M5, em que
+modelos treinados conjuntamente sobre muitas séries (\emph{cross-learning})
+superaram sistematicamente o ajuste local série a série
+\cite{makridakis2022m5}; a literatura de previsão hierárquica registra que
+o nível mais desagregado tende a ser o mais ruidoso, o que reforça o
+agrupamento \cite{fpp3hierarchical}.
+
+\subsection*{4.6 Protocolo de validação e critério de seleção}
+
+\paragraph{Métrica.} Erro absoluto médio (MAE) e erro absoluto médio
+escalonado (MASE) como métricas primárias; RMSE como métrica secundária.
+O MASE escalona o erro pelo erro de um benchmark ingênuo, o que o torna
+comparável entre setores de portes muito diferentes e o mantém definido
+quando $L_{s,k}$ é nulo ou próximo de zero \cite{hyndmanforesight}. O MAPE
+é explicitamente rejeitado como critério: com setores de volume baixo, ele
+se torna instável ou indefinido. O RMSE é mantido em segundo plano porque
+penaliza erros grandes de forma mais acentuada, o que é pertinente dado
+que a função objetivo (3.4.1) depende de extremos diários e não de médias.
+
+\paragraph{Validação.} Avaliação por origem deslizante
+(\emph{rolling-origin}), nunca por partição aleatória, que violaria a
+ordem temporal \cite{fpp3cv}. Para cada origem $k_0$, o modelo é treinado
+apenas com ciclos até $k_0$ e avaliado nos $h$ ciclos seguintes, com a
+origem deslizando ao longo do histórico e os erros reportados como média
+\emph{e} pior dobra. O horizonte $h$ deve ser igual ao número de ciclos
+cobertos por $A$ (Bloco~A). A escolha entre janela de treino expansiva e
+janela fixa depende do número de anos distintos em \texttt{aa\_ciclo}:
+com histórico curto, a janela expansiva é preferível.
+
+\paragraph{Regra de decisão.} Em três níveis:
+\begin{enumerate}
+  \item menor MASE médio, com peso igual por setor --- e não ponderado por
+    volume ---, coerente com o objetivo de nivelamento do problema, que
+    trata todos os setores simetricamente;
+  \item entre candidatos próximos no critério anterior, menor erro no
+    percentil 90 entre setores e dobras: um modelo bom na média mas
+    ruim em poucos setores é particularmente nocivo aqui, porque um único
+    setor mal previsto pode violar (3.5.4) no CD a que pertence;
+  \item persistindo o empate dentro de uma margem pequena, prefere-se o
+    modelo mais simples e interpretável.
+\end{enumerate}
+
+\subsection*{4.7 Hipóteses e itens em aberto}
+
+\begin{itemize}
+  \item \textbf{Invariância de $L_{s,k}$ à atribuição} (Bloco~B.4):
+    verificar comparando o volume total de setores comparáveis alocados a
+    slots distintos. Se a janela for truncada de forma dependente do dia
+    de abertura, a hipótese falha.
+  \item \textbf{Esquema de mascaramento} de
+    \texttt{total\_volumes\_mascarado}: um fator multiplicativo constante
+    é inócuo para a previsão e para o MASE, mas um fator por setor
+    distorce tanto o modelo global quanto a agregação por CD da
+    restrição (3.5.4).
+  \item \textbf{Granularidade efetiva da base}: verificar se
+    $(\texttt{cd\_setor}, \texttt{aa\_ciclo}, \texttt{nm\_ciclo})$ é chave
+    única. Em caso afirmativo, não há informação intra-ciclo alguma e
+    $\sigma_{s,t}$ depende inteiramente de outra fonte; caso contrário, há
+    resolução semanal. Verificar também se \texttt{semana\_pedido} é
+    semana do mês ou do ano.
+  \item \textbf{Dados ausentes} para fechar a formulação: $S_c$,
+    $x^{\mathrm{AsIs}}_{s,d}$, $a^{\mathrm{ini}}_k$ e $\mathrm{Cap}_{c,a}$
+    (Seção~4.1).
+  \item \textbf{Comprimento do histórico}: o número de anos distintos em
+    \texttt{aa\_ciclo} determina quantas repetições sazonais existem. Com
+    período sazonal da ordem de $\max(\texttt{nm\_ciclo})$, poucos anos de
+    histórico tornam a componente sazonal dos modelos SARIMA/ETS pouco
+    identificável, o que favorece os modelos globais da Seção~4.5.
+\end{itemize}
+
+% =====================================================================
+% BLOCO D  -->  SECAO 2 (Related Works): subdividir em 2.1 e 2.2.
+% =====================================================================
+\section*{Bloco D — §2 Related Works}
+
+A Seção~2 está vazia e hoje cobriria apenas um dos dois problemas do
+trabalho. Subdividir em \textbf{2.1 Otimização} (GAP, Simulated Annealing
+--- Osman, Metropolis, Kirkpatrick, van Laarhoven e Aarts, já citados na
+Seção~4 do paper) e \textbf{2.2 Previsão de demanda}, com o conteúdo
+abaixo como ponto de partida:
+
+\begin{quote}
+A previsão de demanda em varejo com grande número de séries tem como
+referência recente a competição M5, em que os métodos de melhor
+desempenho foram, pela primeira vez, integralmente baseados em
+aprendizado de máquina --- majoritariamente \emph{gradient boosting} ---,
+superando os \emph{benchmarks} estatísticos clássicos e suas combinações;
+um dos fatores determinantes foi o \emph{cross-learning}, isto é, o treino
+de um único modelo compartilhado entre muitas séries em lugar de um modelo
+local por série \cite{makridakis2022m5}. Em estruturas hierárquicas, o
+nível mais desagregado é tipicamente o mais ruidoso, o que motiva
+estratégias de agregação e reconciliação \cite{fpp3hierarchical}. Quanto à
+avaliação, métricas percentuais como o MAPE são inadequadas a séries com
+valores nulos ou de baixa magnitude, situação em que se recomendam
+métricas escalonadas como o MASE \cite{hyndmanforesight}; e a validação de
+modelos de série temporal requer esquemas que preservem a ordem temporal,
+como a avaliação por origem deslizante \cite{fpp3cv}.
+\end{quote}
+
+\paragraph{Atenção à bibliografia.} No PDF atual, todas as citações
+renderizam como \texttt{[?]}: o arquivo \texttt{.bib} não está vinculado
+ou está vazio. Isso precisa ser corrigido antes de acrescentar as
+referências abaixo, caso contrário apenas se aumenta o número de
+\texttt{[?]}. As entradas clássicas já citadas na Seção~4 (Osman;
+Metropolis \emph{et al.}; Kirkpatrick \emph{et al.}; Aarts e van
+Laarhoven) precisam ser adicionadas com metadados completos --- o Zotero
+do projeto resolve isso sem digitação manual.
+
+% =====================================================================
+% BLOCO E  -->  SECAO 4.1.5 (que passa a ser 5.1.5): duas frases.
+% =====================================================================
+\section*{Bloco E — §4.1.5 (que passa a ser §5.1.5)}
+
+Duas inserções curtas na descrição da interface com o simulador:
+
+\begin{enumerate}
+  \item No passo 2 (``Agregação da Demanda Diária''), esclarecer a origem
+    e o momento do cálculo de $q$:
+    \begin{quote}
+    Os parâmetros $q_{s,a,d}$ são produzidos pelo módulo de previsão da
+    Seção~4, conforme a equação~(3.2.1), e calculados uma única vez antes
+    do laço de busca: permanecem fixos ao longo de todas as iterações do
+    Simulated Annealing.
+    \end{quote}
+  \item No parágrafo ``Custo Computacional e Estratégia de
+    Implementação'', acrescentar a consequência de estrutura de dados:
+    \begin{quote}
+    Como $L_{s,k}$ não depende de $d$ (Seção~3.2), a tabela $q_{s,a,d}$
+    não precisa ser materializada com $|S| \times |A| \times |D|$
+    entradas: basta armazenar $L_{s,k}$ e $\sigma_{s,t}$, com
+    $|S| \times \max_k W_k$ entradas, aplicando o deslocamento $\delta_d$
+    no momento da consulta. Essa representação é compatível com a
+    atualização incremental da carga mencionada acima, já que a
+    realocação de um setor corresponde a um deslocamento da sua curva.
+    \end{quote}
+\end{enumerate}
+
+% =====================================================================
+% BLOCO F  -->  arquivo .bib: entradas das referencias novas.
+% =====================================================================
+\section*{Bloco F — entradas para o \texttt{.bib}}
+
+\begin{verbatim}
+@article{makridakis2022m5,
+  author  = {Makridakis, Spyros and Spiliotis, Evangelos
+             and Assimakopoulos, Vassilios},
+  title   = {M5 accuracy competition: Results, findings, and conclusions},
+  journal = {International Journal of Forecasting},
+  url     = {https://www.sciencedirect.com/science/article/pii/
+             S0169207021001874}
+  % conferir volume, numero, paginas e ano na fonte antes de submeter
+}
+
+@book{fpp3hierarchical,
+  author    = {Hyndman, Rob J. and Athanasopoulos, George},
+  title     = {Forecasting: Principles and Practice},
+  edition   = {3},
+  publisher = {OTexts},
+  note      = {Cap. 11, Forecasting hierarchical and grouped time series},
+  url       = {https://otexts.com/fpp3/hierarchical.html}
+}
+
+@book{fpp3cv,
+  author    = {Hyndman, Rob J. and Athanasopoulos, George},
+  title     = {Forecasting: Principles and Practice},
+  edition   = {3},
+  publisher = {OTexts},
+  note      = {Secao 5.10, Time series cross-validation},
+  url       = {https://otexts.com/fpp3/tscv.html}
+}
+
+@article{hyndmanforesight,
+  author  = {Hyndman, Rob J.},
+  title   = {Another look at forecast-accuracy metrics
+             for intermittent demand},
+  journal = {Foresight: The International Journal of Applied Forecasting},
+  url     = {https://robjhyndman.com/papers/foresight.pdf}
+  % conferir numero da edicao e ano na fonte antes de submeter
+}
+\end{verbatim}
+
+\begin{thebibliography}{9}
+\bibitem{makridakis2022m5}
+Makridakis, S.; Spiliotis, E.; Assimakopoulos, V.
+\emph{M5 accuracy competition: Results, findings, and conclusions}.
+International Journal of Forecasting.
+\url{https://www.sciencedirect.com/science/article/pii/S0169207021001874}
+
+\bibitem{fpp3hierarchical}
+Hyndman, R.~J.; Athanasopoulos, G.
+\emph{Forecasting: Principles and Practice}, 3.~ed., Cap.~11.
+\url{https://otexts.com/fpp3/hierarchical.html}
+
+\bibitem{fpp3cv}
+Hyndman, R.~J.; Athanasopoulos, G.
+\emph{Forecasting: Principles and Practice}, 3.~ed., Seção~5.10.
+\url{https://otexts.com/fpp3/tscv.html}
+
+\bibitem{hyndmanforesight}
+Hyndman, R.~J.
+\emph{Another look at forecast-accuracy metrics for intermittent demand}.
+Foresight: The International Journal of Applied Forecasting.
+\url{https://robjhyndman.com/papers/foresight.pdf}
+\end{thebibliography}
+
+\end{document}

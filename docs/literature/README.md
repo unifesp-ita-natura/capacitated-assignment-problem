@@ -144,4 +144,6 @@ Why this matters for our project specifically — not a general summary.
 Add a one-line entry per file here as you go, so the list stays skimmable
 without opening every note:
 
-- _(add entries here)_
+- [hyndman-foresight-forecast-accuracy-metrics.md](hyndman-foresight-forecast-accuracy-metrics.md) — why MASE beats MAPE on low-volume/intermittent series (`method:MASE`)
+- [hyndman-athanasopoulos-fpp3.md](hyndman-athanasopoulos-fpp3.md) — hierarchical forecasting + time series cross-validation chapters (`method:hierarchical-forecasting`, `method:rolling-origin-cv`)
+- [makridakis-m5-accuracy-competition.md](makridakis-m5-accuracy-competition.md) — M5 competition: cross-learning/gradient boosting beat local ARIMA/ETS (`method:LightGBM`, `method:cross-learning`)

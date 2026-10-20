@@ -12,6 +12,7 @@ from src.solver.heuristics.simulated_annealing import (
     run_simulated_annealing,
     solve,
 )
+from src.solver.inputs import ProblemInstance
 
 # Instância base: 2 setores, 2 combinações, 2 dias, 1 CD.
 # Combinação 1 -> toda a demanda cai no dia 1; combinação 2 -> tudo no dia 2.
@@ -29,7 +30,7 @@ _DEMAND = {
 }
 
 
-def _instance(**overrides) -> dict:
+def _instance(**overrides) -> ProblemInstance:
     base = dict(
         sectors=[1, 2],
         combinations=[1, 2],
@@ -42,18 +43,18 @@ def _instance(**overrides) -> dict:
         days_by_cycle={0: [1, 2]},
     )
     base.update(overrides)
-    return base
+    return ProblemInstance(**base)
 
 
 def test_levels_demand_to_zero_amplitude():
-    result = solve(**_instance(), rng=random.Random(1), params=AnnealingParams(max_iterations=500))
+    result = solve(_instance(), rng=random.Random(1), params=AnnealingParams(max_iterations=500))
 
     assert result.objective == 0.0
     assert set(result.assignment.values()) == {1, 2}
 
 
 def test_never_returns_worse_than_as_is():
-    result = solve(**_instance(), rng=random.Random(1))
+    result = solve(_instance(), rng=random.Random(1))
 
     # As-Is tem energia 20 (amplitude 20, sem penalidades); o SA nunca piora isso.
     assert result.energy <= 20.0
@@ -61,7 +62,7 @@ def test_never_returns_worse_than_as_is():
 
 def test_respects_zero_churn_budget():
     result = solve(
-        **_instance(max_churn=0), rng=random.Random(1), params=AnnealingParams(max_iterations=500)
+        _instance(max_churn=0), rng=random.Random(1), params=AnnealingParams(max_iterations=500)
     )
 
     assert result.assignment == {1: 1, 2: 1}
@@ -72,21 +73,21 @@ def test_respects_zero_churn_budget():
 def test_fixes_capacity_violation():
     tight = _instance(daily_capacity={(1, 1): 10.0, (1, 2): 100.0})
 
-    result = solve(**tight, rng=random.Random(1), params=AnnealingParams(max_iterations=500))
+    result = solve(tight, rng=random.Random(1), params=AnnealingParams(max_iterations=500))
 
     assert result.capacity_penalty == 0.0
 
 
 def test_is_deterministic_for_a_fixed_seed():
-    first = solve(**_instance(), rng=random.Random(42))
-    second = solve(**_instance(), rng=random.Random(42))
+    first = solve(_instance(), rng=random.Random(42))
+    second = solve(_instance(), rng=random.Random(42))
 
     assert first.assignment == second.assignment
     assert first.energy == second.energy
 
 
 def test_stop_reason_is_one_of_the_known_values():
-    result = solve(**_instance(), rng=random.Random(1))
+    result = solve(_instance(), rng=random.Random(1))
 
     assert result.stop_reason in {"min_temperature", "stagnation", "max_iterations"}
 
@@ -94,7 +95,8 @@ def test_stop_reason_is_one_of_the_known_values():
 def test_valid_combinations_restricts_the_domain():
     # O CD 1 só pode usar a combinação 1 -> nenhum setor consegue sair dela.
     result = solve(
-        **_instance(valid_combinations={1: [1]}),
+        _instance(),
+        valid_combinations={1: [1]},
         rng=random.Random(1),
         params=AnnealingParams(max_iterations=500),
     )
@@ -104,9 +106,7 @@ def test_valid_combinations_restricts_the_domain():
 
 @pytest.mark.parametrize("seed", [0, 1, 2, 3, 4])
 def test_finds_the_optimum_across_seeds(seed):
-    result = solve(
-        **_instance(), rng=random.Random(seed), params=AnnealingParams(max_iterations=500)
-    )
+    result = solve(_instance(), rng=random.Random(seed), params=AnnealingParams(max_iterations=500))
 
     assert result.objective == 0.0
 
@@ -134,7 +134,7 @@ def test_objective_averages_the_range_per_cycle_instead_of_globally():
         days_by_cycle={0: [1, 2], 1: [11, 12]},
     )
 
-    result = solve(**instance, rng=random.Random(1), params=AnnealingParams(max_iterations=10))
+    result = solve(instance, rng=random.Random(1), params=AnnealingParams(max_iterations=10))
 
     assert result.assignment == {1: 1, 2: 1}  # zero churn budget keeps the As-Is
     assert result.objective == pytest.approx(110.0)
@@ -143,9 +143,9 @@ def test_objective_averages_the_range_per_cycle_instead_of_globally():
 def test_run_simulated_annealing_returns_a_solve_result():
     seed = 42
 
-    result = run_simulated_annealing(**_instance(), seed=seed)
+    result = run_simulated_annealing(_instance(), seed=seed)
 
-    expected = solve(**_instance(), rng=random.Random(seed))
+    expected = solve(_instance(), rng=random.Random(seed))
     assert isinstance(result, SolveResult)
     assert (
         result.model_name,

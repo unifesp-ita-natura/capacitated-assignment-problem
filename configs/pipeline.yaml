@@ -1,0 +1,23 @@
+project_name: capacitated-assignment-problem
+modeling: pyomo
+solver: gurobi   # MIP backend; falls back to HiGHS without a license
+paths:
+  instances: data/instances
+  processed: data/processed
+  results: results
+forecast:
+  params:
+    model: naive
+    strategy: mean
+pipeline:
+  base_csv: data/base_tratada_v2.csv
+  history_cycles: 20
+  horizon_cycles: 6
+  solver_family: sa        # mip | matheuristic | sa
+  shape_model: sector
+  shape_bins: 10
+  max_churn: 0.2           # fraction of sectors allowed to change slot
+  capacity_multiplier: 1.0
+  seed: 42
+  max_sectors: null        # set e.g. 60 for a quick run
+  report_accuracy: true

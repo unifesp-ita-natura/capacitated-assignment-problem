@@ -1,0 +1,17 @@
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+
+  - model: ets
+    alpha: pooled
+    cycle_days_exponent: pooled
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  output_csv: experiments/compare_forecasters/outputs/level_v2_comparison.csv
+  errors_csv: experiments/compare_forecasters/outputs/level_v2_errors.csv

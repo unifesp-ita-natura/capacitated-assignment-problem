@@ -1,0 +1,41 @@
+experiment_name: v2_baseline
+description:
+  goal: On base_tratada_v2 (two years, with a daily base), where do naive:mean, the
+    pooled ETS and the two-year LightGBM land, per cycle and per CD-day?
+  hypothesis: '(1) Per cycle, the ranking of the two-year panel holds: LightGBM first,
+    then the pooled ETS, then naive:mean, with LightGBM ahead of the pooled ETS by
+    3-8%. (2) Per CD-day, LightGBM''s lead over the pooled ETS is smaller than per
+    cycle, because its bias (-660 on the two-year panel) is larger in size than the
+    ETS''s (+291), and CD-day error rewards low bias.'
+  design_note: 'Reference scores for the scenario harness: every candidate here ignores
+    the window, so f(sector, opening day, length) is constant across scenarios. The
+    candidates are those of ets_level/shared_alpha_two_year, without the fixed alphas
+    and the per-sector ETS (slower and worse). base_tratada_v2 is a different extract
+    from demand_two_years.csv (620 sectors, 31 complete cycles, 1,190 fanned-out rows
+    dropped by the loader), so its numbers are not comparable one to one with that
+    panel''s. 11 folds, one cycle ahead.'
+  status: confirmed
+split:
+  horizon: 1
+  min_train_cycles: 20
+  window: expanding
+daily:
+  curve: sector
+candidates:
+- model: naive
+  strategy: mean
+- model: ets
+  alpha: pooled
+- model: lightgbm
+  num_leaves: 7
+  n_estimators: 100
+  learning_rate: 0.05
+  companion_lags: [1, 2, 3, 4]
+  rolling_windows: [2, 3, 19]
+  lags: [1, 2, 3, 4, 19]
+  target: ratio
+  label: razao + lag 19 + media anual
+paths:
+  base_csv: data/base_tratada_v2.csv
+  output_csv: experiments/v2_baseline/outputs/comparison.csv
+  errors_csv: experiments/v2_baseline/outputs/errors.csv

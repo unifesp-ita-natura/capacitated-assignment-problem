@@ -1,0 +1,55 @@
+experiment_name: relative_target
+description:
+  goal: >
+    Does training the pooled LightGBM on items divided by the sector's own
+    running mean — instead of on the item count itself — beat training on
+    the level, and does it finally beat naive:mean?
+  hypothesis: >
+    It wins, and it is the most structural change in the roadmap. On the
+    level target the model has to learn 633 sector sizes through a
+    633-value categorical using 7 leaves, which is 6 splits in total and
+    cannot separate them. Dividing by the running mean removes that job
+    entirely: the model predicts a correction on top of the naive:mean
+    forecast, so a model that learns nothing reproduces the benchmark
+    rather than falling short of it.
+  design_note: >
+    One variable changes: LightGBMParams.target, "level" -> "ratio". The
+    denominator is the sector's expanding mean over its earlier cycles,
+    which is precisely what naive:mean predicts for that row — chosen over
+    the roadmap's rolling_mean_k because it makes the comparison
+    interpretable, since a fitted ratio of 1.0 everywhere reproduces the
+    benchmark exactly. Everything stages 1 and 2 approved is held fixed
+    (companion_lags [1,2,3,4], rolling_windows [2,3]), as are the split and
+    every hyperparameter. Both rows score the same points, so coverage
+    cannot confound the comparison. Known limitation: same folds earlier
+    stages selected on.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    label: "nivel (etapa 2)"
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    label: "razao (etapa 3)"
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/relative_target/outputs/comparison.csv
+  errors_csv: experiments/relative_target/outputs/errors_by_candidate.csv

@@ -1,0 +1,16 @@
+# Execute a partir da raiz do repositório. Use uma pasta nova a cada teste.
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - name: uniform
+    model: uniform
+  - name: sector_10_bins
+    model: sector
+    n_bins: 10
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_shapes/outputs/shape_v01

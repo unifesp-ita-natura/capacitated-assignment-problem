@@ -1,0 +1,58 @@
+experiment_name: ets_level_one_year
+description:
+  goal: >
+    Add exponential smoothing (ETS) as a per-sector level candidate and rank
+    it against the naive benchmarks and the stage-3 LightGBM on the one-year
+    panel, scored per CD-day as in daily_output.
+  hypothesis: >
+    (1) ETS(A,N,N) lands within 1% of naive:mean. Simple smoothing is a
+    weighted mean between last_value (alpha = 1) and mean (alpha -> 0), and
+    with 6-11 points per sector the estimated alpha is mostly noise around a
+    stable level. (2) The trend variants are worse than ETS(A,N,N): with
+    under a year of cycles, an additive trend extrapolates noise, and the
+    damped trend lands between the two. (3) ETS(M,N,N) behaves like
+    ETS(A,N,N), because the error form changes the intervals, not the point
+    forecast, and skips only the sectors with zero cycles.
+  design_note: >
+    Same panel, split, daily curve and benchmarks as daily_output/sector.yaml.
+    ETS components are fixed per entry and shared by every sector, not
+    selected per sector by AIC (see build_ets). A trend needs 6 cycles and a
+    damped trend 8, so those variants skip the early folds and the common
+    subset shrinks to the folds they cover. Seasonal ETS is absent: it needs
+    two full seasons (38 cycles), which neither panel has.
+  status: confirmed
+
+split:
+  horizon: 1
+  min_train_cycles: 6
+  window: expanding
+
+daily:
+  curve: sector
+
+candidates:
+  - model: naive
+    strategy: last_value
+  - model: naive
+    strategy: mean
+  - model: ets
+  - model: ets
+    error: mul
+  - model: ets
+    trend: add
+  - model: ets
+    trend: add
+    damped_trend: true
+  - model: lightgbm
+    num_leaves: 7
+    n_estimators: 100
+    learning_rate: 0.05
+    companion_lags: [1, 2, 3, 4]
+    rolling_windows: [2, 3]
+    target: ratio
+    label: "razao (etapa 3)"
+
+paths:
+  base_csv: data/base_tratada.csv
+  output_csv: experiments/ets_level/outputs/comparison_one_year.csv
+  errors_csv: experiments/ets_level/outputs/errors_one_year.csv
