@@ -1,0 +1,50 @@
+experiment_name: sa_scale800
+description:
+  goal: >
+    Medir o SA calibrado (fitness peak_std_breach) numa instância de 800 setores
+    gerada pela pipeline: tempo, viabilidade e gap contra o Gurobi (incumbente e
+    limite inferior). 400 setores entram como ponto intermediário da curva de escala.
+  hypothesis: >
+    Com a avaliação incremental o SA roda 200k iterações em poucos minutos e fica
+    viável; o Gurobi não fecha em 1 h, então o gap é medido contra o melhor LB.
+  design_note: >
+    Mesmo orçamento da calibração (200k, α derivado, sem estagnação), config
+    tpe_b0_04, seeds 101–108. Gurobi com limites de memória para caber em 7 GB:
+    Threads 2, nós em disco a partir de 0,5 GB, SoftMemLimit 4 GB, 1 h por instância.
+  status: exploratory
+
+output_dir: experiments/sa_calibration/outputs/scale800
+n_workers: 8
+
+level_strategy: naive_last
+shape_strategy: plain_average
+
+budget:
+  max_iterations: 200000
+  trace_every: 1000
+  energy_mode: peak_std_breach
+
+instances:
+  s800: {n_sectors: 800, n_cycles_horizon: 3, seed: 800, mip_time_limit: 3600}
+  s400: {n_sectors: 400, n_cycles_horizon: 3, seed: 800, mip_time_limit: 3600}
+
+mip_solvers: [appsi_gurobi]
+mip_rel_gaps: [0.0001]
+mip_extra_options:
+  appsi_gurobi:
+    Threads: 2
+    NodefileStart: 0.5
+    NodefileDir: experiments/sa_calibration/outputs/scale800/gurobi/nodes_{instance}
+    SoftMemLimit: 4.0
+    SolFiles: experiments/sa_calibration/outputs/scale800/gurobi/{instance}_sol
+    LogFile: experiments/sa_calibration/outputs/scale800/gurobi/{instance}.log
+
+sa_configs:
+  # tpe_b0_04, recomendada pelo fine-tuning peak_std (α derivado do orçamento).
+  tuned_peak_std:
+    {initial_temperature: 20273.98334487975, min_temperature: 6.182498621764997, sector_bias: 0.2625420089142143, destination_bias: 0.7836051510233553, penalty_coefficient: 310.8830628790512, w_std: 1.9976341220491365, w_range: 0.3242119688600368}
+  # lhs_32, a calibração anterior (fitness de amplitude), como comparação.
+  lhs_32_range:
+    {initial_temperature: 257.24750757958907, min_temperature: 0.011046064901330649, sector_bias: 0.7693508846294949, destination_bias: 0.24677194539982686, penalty_coefficient: 146.35163758759955, energy_mode: range}
+
+sa_seeds: [101, 102, 103, 104, 105, 106, 107, 108]

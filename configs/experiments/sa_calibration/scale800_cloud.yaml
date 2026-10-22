@@ -1,0 +1,43 @@
+experiment_name: sa_scale800_cloud
+description:
+  goal: >
+    Contingência: o mesmo MIP de scale800.yaml (800 e 400 setores, Gurobi 1e-4) para
+    rodar no notebook WLS (Kaggle/Colab) caso a máquina local não dê conta.
+  hypothesis: >
+    Com ~30 GB de RAM o Gurobi roda a hora inteira sem estourar memória.
+  design_note: >
+    Só a fase mip é usada (o notebook chama `compare_solvers mip`). Mesmas instâncias
+    e opções de scale800.yaml, com 4 threads e SoftMemLimit de 24 GB (Kaggle CPU).
+    Não precisou ser usada nesta rodada: o Gurobi local fechou as duas instâncias em
+    segundos (scale800/mip).
+  status: exploratory
+
+output_dir: experiments/sa_calibration/outputs/scale800_cloud
+n_workers: 1
+
+level_strategy: naive_last
+shape_strategy: plain_average
+
+budget:
+  max_iterations: 200000
+  trace_every: 1000
+  energy_mode: peak_std_breach
+
+instances:
+  s800: {n_sectors: 800, n_cycles_horizon: 3, seed: 800, mip_time_limit: 3600}
+  s400: {n_sectors: 400, n_cycles_horizon: 3, seed: 800, mip_time_limit: 3600}
+
+mip_solvers: [appsi_gurobi]
+mip_rel_gaps: [0.0001]
+mip_extra_options:
+  appsi_gurobi:
+    Threads: 4
+    NodefileStart: 0.5
+    NodefileDir: experiments/sa_calibration/outputs/scale800_cloud/gurobi/nodes_{instance}
+    SoftMemLimit: 24.0
+    SolFiles: experiments/sa_calibration/outputs/scale800_cloud/gurobi/{instance}_sol
+    LogFile: experiments/sa_calibration/outputs/scale800_cloud/gurobi/{instance}.log
+
+sa_configs: {}
+
+sa_seeds: []

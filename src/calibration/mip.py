@@ -1,10 +1,11 @@
-"""Resolve o MIP de referência com HiGHS (wrapper do MIP intocado) e extrai limites e solução."""
+"""Resolve o MIP de referência (HiGHS ou Gurobi, MIP intocado) e extrai limites e solução."""
 
 from __future__ import annotations
 
 import math
 import time
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, field
 
 import pyomo.environ as pyo
 
@@ -29,15 +30,17 @@ class MipOutcome:
     time: float
     time_limit: float
     x: dict[int, int]  # setor -> combinação da melhor solução do MIP
+    mip_rel_gap: float | None = None  # tolerância pedida ao solver
+    options: dict = field(default_factory=dict)  # opções efetivamente repassadas ao solver
 
     @property
     def closed(self) -> bool:
-        """Se o HiGHS provou otimalidade (dentro de `mip_rel_gap`)."""
+        """Se o solver provou otimalidade (dentro de `mip_rel_gap`)."""
         return self.termination == OPTIMAL
 
     @property
     def has_incumbent(self) -> bool:
-        """Se o HiGHS encontrou ao menos uma solução viável."""
+        """Se o solver encontrou ao menos uma solução viável."""
         return self.upper_bound is not None
 
     def to_dict(self) -> dict:
@@ -66,19 +69,36 @@ def assignment_from_model(model: pyo.ConcreteModel) -> dict[int, int]:
     return {s: d for (s, d), var in model.x.items() if (var.value or 0.0) > 0.5}
 
 
+def is_gurobi(solver: str) -> bool:
+    """Se o nome do Pyomo se refere ao Gurobi (`gurobi`, `appsi_gurobi`, `gurobi_direct`...)."""
+    return "gurobi" in solver
+
+
+def solve_kwargs(
+    solver: str, mip_rel_gap: float, time_limit: float, extra: Mapping | None = None
+) -> dict:
+    """Argumentos de `solve` com tolerância e tempo nos nomes nativos de cada solver.
+
+    O Gurobi só entende `MIPGap`/`TimeLimit`: um `mip_rel_gap` repassado a ele
+    não tem efeito e o solve roda com o default dele (1e-4), parando por um
+    critério diferente do HiGHS. O HiGHS recebe `mip_rel_gap` e o `timelimit`
+    genérico do Pyomo.
+    """
+    if is_gurobi(solver):
+        options = {"MIPGap": mip_rel_gap, "TimeLimit": time_limit, **(extra or {})}
+        return {"options": options}
+    return {"timelimit": time_limit, "options": {"mip_rel_gap": mip_rel_gap, **(extra or {})}}
+
+
 def solve_mip(
     instance: CalibrationInstance, settings: MipSettings, time_limit: float
 ) -> MipOutcome:
     """Monta o modelo de `block_assignment` e o resolve com o solver e as opções dados."""
     model = build_block_assignment_model(instance.to_instance())
     solver = pyo.SolverFactory(settings.solver)
+    kwargs = solve_kwargs(settings.solver, settings.mip_rel_gap, time_limit, settings.extra_options)
     start = time.perf_counter()
-    results = solver.solve(
-        model,
-        timelimit=time_limit,
-        options={"mip_rel_gap": settings.mip_rel_gap},
-        load_solutions=False,
-    )
+    results = solver.solve(model, load_solutions=False, **kwargs)
     elapsed = time.perf_counter() - start
     lower = finite_or_none(results.problem.lower_bound)
     upper = finite_or_none(results.problem.upper_bound)
@@ -94,6 +114,8 @@ def solve_mip(
         time=elapsed,
         time_limit=time_limit,
         x=x,
+        mip_rel_gap=settings.mip_rel_gap,
+        options=kwargs["options"],
     )
 
 
