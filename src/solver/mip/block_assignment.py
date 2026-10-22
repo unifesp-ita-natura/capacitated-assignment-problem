@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import logging
 import time
 from collections.abc import Generator, Iterable, Mapping
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def _memory_limit(limit_gb: float) -> Generator[None]:
+def _memory_limit(limit_gb: float, resolved_solver: str) -> Generator[None]:
     """Best-effort `RLIMIT_AS` cap on the whole process while a solve runs.
 
     This is the only lever available for `appsi_highs`, which has no native
@@ -35,8 +36,9 @@ def _memory_limit(limit_gb: float) -> Generator[None]:
     Linux does) — a blunt last resort, not a clean per-solve abort like
     Gurobi's own `MemLimit` (set separately in `_solve_options`). If it does
     trigger, the whole process can die rather than just failing one solve.
+    Skipped for Gurobi, which enforces its own `MemLimit`.
     """
-    if resource is None:
+    if resource is None or resolved_solver == "gurobi":
         yield
         return
     soft, hard = resource.getrlimit(resource.RLIMIT_AS)
@@ -129,7 +131,7 @@ def solve_block_assignment(
     melhor-esforço de `_memory_limit`.
     """
     solver_interface, resolved_solver = _resolve_solver(solver)
-    with _memory_limit(memory_limit_gb):
+    with _memory_limit(memory_limit_gb, resolved_solver):
         return solver_interface.solve(
             model,
             timelimit=time_limit_seconds,
@@ -144,15 +146,84 @@ def run_block_assignment_mip(
     memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
 ) -> SolveResult:
     """Build and solve the block-assignment MIP, returning a timed `SolveResult`."""
+    return solve_with_assignment(instance, solver, time_limit_seconds, memory_limit_gb)[0]
+
+
+def extract_assignment(model: pyo.ConcreteModel) -> dict[int, int]:
+    """The sector -> combination map encoded by the model's binary `x` (after a solve)."""
+    return {s: d for s in model.S for d in model.D if pyo.value(model.x[s, d]) > 0.5}
+
+
+def apply_warm_start(
+    model: pyo.ConcreteModel,
+    instance: ProblemInstance,
+    assignment: Mapping[int, int],
+) -> None:
+    """Carrega `assignment` (setor -> combinação) como ponto inicial de x, z_max e z_min.
+
+    z_max[h]/z_min[h] recebem o máximo/mínimo diário real do ciclo h sob essa
+    atribuição, pra o ponto inicial ser completo (e não só parcial em x).
+    """
+    _warm_start_assignment(model, assignment)
+    _warm_start_cycle_bounds(model, instance, assignment)
+
+
+def _warm_start_assignment(model: pyo.ConcreteModel, assignment: Mapping[int, int]) -> None:
+    """Fixa o valor inicial de x[s,d] em 1 pra combinação escolhida de cada setor, 0 nas demais."""
+    for s, d in itertools.product(model.S, model.D):
+        model.x[s, d].set_value(1 if assignment[s] == d else 0)
+
+
+def _warm_start_cycle_bounds(
+    model: pyo.ConcreteModel, instance: ProblemInstance, assignment: Mapping[int, int]
+) -> None:
+    """Fixa z_max[h]/z_min[h] no máximo/mínimo diário real do ciclo h sob `assignment`."""
+    for h, days in instance.days_by_cycle.items():
+        totals = [_daily_total(instance.projected_demand, assignment, a) for a in days]
+        model.z_max[h].set_value(max(totals))
+        model.z_min[h].set_value(min(totals))
+
+
+def _daily_total(
+    projected_demand: ProjectedDemand, assignment: Mapping[int, int], day: int
+) -> float:
+    """Demanda total do dia `day` sob `assignment`."""
+    return sum(projected_demand.get((s, day, d), 0.0) for s, d in assignment.items())
+
+
+def _warmstart_kwargs(resolved_solver: str, warm_start: bool) -> dict[str, object]:
+    """`warmstart=True` só onde o plugin do Pyomo o honra (shell do Gurobi)."""
+    if not warm_start:
+        return {}
+    if resolved_solver == "gurobi":
+        return {"warmstart": True}
+    logger.warning("%s does not take a warm start through Pyomo; solving cold.", resolved_solver)
+    return {}
+
+
+def solve_with_assignment(
+    instance: ProblemInstance,
+    solver: str = "gurobi",
+    time_limit_seconds: float = DEFAULT_TIME_LIMIT_SECONDS,
+    memory_limit_gb: float = DEFAULT_MEMORY_LIMIT_GB,
+    warm_start: Mapping[int, int] | None = None,
+) -> tuple[SolveResult, dict[int, int] | None]:
+    """Like `run_block_assignment_mip`, but also returns the assignment (None if no solution).
+
+    `warm_start` (setor -> combinação), se dado, vira o ponto inicial do MIP.
+    """
     model = build_block_assignment_model(instance)
     solver_interface, resolved_solver = _resolve_solver(solver)
+    if warm_start is not None:
+        apply_warm_start(model, instance, warm_start)
     start = time.perf_counter()
     try:
-        with _memory_limit(memory_limit_gb):
+        with _memory_limit(memory_limit_gb, resolved_solver):
             pyomo_results = solver_interface.solve(
                 model,
                 timelimit=time_limit_seconds,
                 options=_solve_options(resolved_solver, memory_limit_gb, time_limit_seconds),
+                **_warmstart_kwargs(resolved_solver, warm_start is not None),
             )
     except RuntimeError as exc:
         # Both the legacy (`environ.SolverFactory`) and `appsi_highs`
@@ -175,9 +246,9 @@ def run_block_assignment_mip(
             termination_condition=str(pyo.TerminationCondition.noSolution),
             objective=None,
             wall_time_seconds=wall_time_seconds,
-        )
+        ), None
     wall_time_seconds = time.perf_counter() - start
-    return SolveResult(
+    result = SolveResult(
         model_name="mip_block_assignment",
         solver=resolved_solver,
         status=str(pyomo_results.solver.status),
@@ -185,6 +256,7 @@ def run_block_assignment_mip(
         objective=pyo.value(model.objective, exception=False),
         wall_time_seconds=wall_time_seconds,
     )
+    return result, (extract_assignment(model) if result.objective is not None else None)
 
 
 def _add_sets(
