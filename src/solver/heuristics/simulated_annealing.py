@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from src.persistence import SolveResult
-from src.solver.inputs import ProblemInstance, ProjectedDemand
+from src.solver.inputs import ProblemInstance, ProjectedDemand, effective_cd_sector_shares
 
 # chamado a cada iteração com iteration=, energy=, temperature=, assignment=
 IterationCallback = Callable[..., None]
@@ -80,7 +80,7 @@ def solve(
         instance.sectors,
         instance.combinations,
         instance.days,
-        instance.cd_sectors,
+        effective_cd_sector_shares(instance),
         instance.daily_capacity,
         instance.projected_demand,
         instance.current_assignment,
@@ -135,7 +135,10 @@ def run_simulated_annealing(instance: ProblemInstance, seed: int) -> SolveResult
 class _Problem:
     demand: np.ndarray  # (n_setores, n_dias, n_combinações)  q[s,a,d]
     capacity: np.ndarray  # (n_cds, n_dias)                     Cap[c,a]
-    sector_cd: np.ndarray  # (n_setores,)                        índice do CD de cada setor
+    cd_share: (
+        np.ndarray
+    )  # (n_setores, n_cds)                  fração da demanda do setor em cada CD
+    sector_cd: np.ndarray  # (n_setores,)                        CD principal (maior share) do setor
     valid_combos: list[np.ndarray]  # por CD: índices de combinações válidas (D_c)
     as_is: np.ndarray  # (n_setores,)                        combinação atual de cada setor
     max_churn: float
@@ -173,9 +176,7 @@ def _daily_load_by_sector(problem: _Problem, assignment: np.ndarray) -> np.ndarr
 
 def _load_by_cd(problem: _Problem, load_by_sector: np.ndarray) -> np.ndarray:
     """Agrega a demanda por CD por dia (Carga_{c,a}). (n_cds, n_dias)."""
-    totals = np.zeros_like(problem.capacity)
-    np.add.at(totals, problem.sector_cd, load_by_sector)
-    return totals
+    return problem.cd_share.T @ load_by_sector
 
 
 def _capacity_penalty(problem: _Problem, load_by_cd: np.ndarray) -> float:
@@ -229,7 +230,7 @@ def _pick_sector(
     problem: _Problem, violated_cds: np.ndarray, params: AnnealingParams, rng: random.Random
 ) -> int:
     """Escolhe o setor a realocar: com prob. beta prioriza setores de CDs em violação (O(X))."""
-    overloaded = np.where(np.isin(problem.sector_cd, violated_cds))[0]
+    overloaded = np.where((problem.cd_share[:, violated_cds] > 0).any(axis=1))[0]
     if overloaded.size and rng.random() < params.sector_bias:
         return int(rng.choice(overloaded))
     return rng.randrange(problem.as_is.shape[0])
@@ -238,12 +239,14 @@ def _pick_sector(
 def _slack_destinations(
     problem: _Problem, sector: int, assignment: np.ndarray, load_by_cd: np.ndarray
 ) -> np.ndarray:
-    """F(X): combinações de D_c que mantêm o CD do setor sem violação em nenhum dia."""
-    cd = int(problem.sector_cd[sector])
-    candidates = problem.valid_combos[cd]
-    without_sector = load_by_cd[cd] - problem.demand[sector, :, assignment[sector]]
-    projected = without_sector[None, :] + problem.demand[sector][:, candidates].T
-    feasible = (projected <= problem.capacity[cd]).all(axis=1)
+    """F(X): combinações de D_c que mantêm todo CD que atende o setor sem violação em nenhum dia."""
+    candidates = problem.valid_combos[int(problem.sector_cd[sector])]
+    cds = np.flatnonzero(problem.cd_share[sector] > 0)
+    share = problem.cd_share[sector, cds][:, None]
+    without_sector = load_by_cd[cds] - share * problem.demand[sector, :, assignment[sector]]
+    new_load = share * problem.demand[sector][:, candidates].T[:, None, :]
+    projected = without_sector[None] + new_load
+    feasible = (projected <= problem.capacity[cds][None]).all(axis=(1, 2))
     return candidates[feasible]
 
 
@@ -410,7 +413,7 @@ def _build_problem(
     sectors: Iterable[int],
     combinations: Iterable[int],
     days: Iterable[int],
-    cd_sectors: Mapping[int, Iterable[int]],
+    cd_sector_shares: Mapping[int, Mapping[int, float]],
     daily_capacity: Mapping[tuple[int, int], float],
     projected_demand: ProjectedDemand,
     current_assignment: Mapping[int, int],
@@ -421,16 +424,18 @@ def _build_problem(
     sector_labels = list(sectors)
     combo_labels = list(combinations)
     day_labels = list(days)
-    cd_labels = list(cd_sectors)
+    cd_labels = list(cd_sector_shares)
     sector_ix = {s: i for i, s in enumerate(sector_labels)}
     combo_ix = {d: i for i, d in enumerate(combo_labels)}
     day_ix = {a: i for i, a in enumerate(day_labels)}
     cd_ix = {c: i for i, c in enumerate(cd_labels)}
 
+    cd_share = _cd_share_array(cd_sector_shares, sector_ix, cd_ix)
     return _Problem(
         demand=_demand_array(projected_demand, sector_ix, day_ix, combo_ix),
         capacity=_capacity_array(daily_capacity, cd_ix, day_ix),
-        sector_cd=_sector_cd_array(cd_sectors, sector_ix, cd_ix),
+        cd_share=cd_share,
+        sector_cd=cd_share.argmax(axis=1),
         valid_combos=_valid_combos_by_cd(
             valid_combinations, cd_labels, len(combo_labels), cd_ix, combo_ix
         ),
@@ -465,16 +470,16 @@ def _capacity_array(
     return capacity
 
 
-def _sector_cd_array(
-    cd_sectors: Mapping[int, Iterable[int]],
+def _cd_share_array(
+    cd_sector_shares: Mapping[int, Mapping[int, float]],
     sector_ix: Mapping[int, int],
     cd_ix: Mapping[int, int],
 ) -> np.ndarray:
-    sector_cd = np.zeros(len(sector_ix), dtype=int)
-    for c, members in cd_sectors.items():
-        for s in members:
-            sector_cd[sector_ix[s]] = cd_ix[c]
-    return sector_cd
+    cd_share = np.zeros((len(sector_ix), len(cd_ix)))
+    for c, shares in cd_sector_shares.items():
+        for s, share in shares.items():
+            cd_share[sector_ix[s], cd_ix[c]] = share
+    return cd_share
 
 
 def _as_is_array(

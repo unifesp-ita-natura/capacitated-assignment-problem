@@ -59,10 +59,11 @@ def _loads(
     daily_total: dict[int, float] = defaultdict(float)
     cd_load: dict[tuple[int, int], float] = defaultdict(float)
     for sector, combination in assignment.items():
-        cd = problem.sector_cd[sector]
+        shares = problem.sector_shares.get(sector, {})
         for day, qty in problem.demand_by_pair.get((sector, combination), ()):
             daily_total[day] += qty
-            cd_load[(cd, day)] += qty
+            for cd, share in shares.items():
+                cd_load[(cd, day)] += share * qty
     return daily_total, cd_load
 
 
