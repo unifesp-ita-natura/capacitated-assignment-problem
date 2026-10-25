@@ -69,10 +69,15 @@ def build_real_instance(
     max_churn: float,
     capacity_multiplier: float = 1.0,
     max_sectors: int | None = None,
+    fixed_sectors: dict[str, int] | None = None,
 ) -> RealInstance:
-    """Assemble the solver instance for the forecast `cycles` (in order) of the real data."""
+    """Assemble the solver instance for the forecast `cycles` (in order) of the real data.
+
+    `fixed_sectors` pins sector labels to combination ids the solvers must keep.
+    """
     curves = _largest_sectors(sector_curves(daily, cycles), max_sectors)
     labels = sorted(curves["sector"].unique())
+    validate_fixed_sectors(fixed_sectors or {}, labels)
     sector_ids, combo_slots = solver_inputs.build_id_maps(labels)
     spacing = cycle_spacing(raw, cycles)
     demand = solver_inputs.build_projected_demand(curves, sector_ids, combo_slots, spacing, 0)
@@ -80,6 +85,8 @@ def build_real_instance(
     sector_to_cd = dominant_cd(raw, labels)
     cd_sectors = solver_inputs.build_cd_sectors(sector_to_cd, sector_ids)
     as_is = infer_as_is(raw, as_is_cycle, labels)
+    max_moves = max_churn * len(labels)
+    fixed = _pinned_ids(fixed_sectors or {}, sector_ids, as_is, max_moves)
     instance = ProblemInstance(
         sectors=list(sector_ids.values()),
         combinations=list(combo_slots),
@@ -90,10 +97,40 @@ def build_real_instance(
         ),
         projected_demand=demand,
         current_assignment={sector_ids[s]: slot for s, slot in as_is.items()},
-        max_churn=max_churn * len(labels),
+        max_churn=max_moves,
         days_by_cycle=solver_inputs.balance_days_by_cycle(days, spacing),
+        fixed_assignment=fixed,
     )
     return RealInstance(instance, sector_ids, sector_to_cd)
+
+
+def _pinned_ids(
+    fixed_sectors: dict[str, int],
+    sector_ids: dict[str, int],
+    as_is: dict[str, int],
+    max_moves: float,
+) -> dict[int, int]:
+    """The pins keyed by sector id, checked against the churn budget."""
+    fixed = {sector_ids[s]: combo for s, combo in fixed_sectors.items()}
+    validate_fixed_churn(fixed, {sector_ids[s]: c for s, c in as_is.items()}, max_moves)
+    return fixed
+
+
+def validate_fixed_sectors(fixed_sectors: dict[str, int], labels: list[str]) -> None:
+    """Raise if a pinned sector is unknown or pinned to a combination that does not exist."""
+    unknown = sorted(set(fixed_sectors) - set(labels))
+    if unknown:
+        raise ValueError(f"fixed_sectors names unknown sectors: {unknown}")
+    bad = {s: c for s, c in fixed_sectors.items() if not 1 <= c <= len(generator.SLOTS)}
+    if bad:
+        raise ValueError(f"fixed_sectors combination outside 1..{len(generator.SLOTS)}: {bad}")
+
+
+def validate_fixed_churn(fixed: dict[int, int], as_is: dict[int, int], max_churn: float) -> None:
+    """Raise if the pins alone already move more sectors than the churn budget allows."""
+    moved = sum(1 for sector, combo in fixed.items() if as_is[sector] != combo)
+    if moved > max_churn:
+        raise ValueError(f"fixed_sectors move {moved} sectors, above the churn budget {max_churn}")
 
 
 def _largest_sectors(curves: pd.DataFrame, max_sectors: int | None) -> pd.DataFrame:

@@ -181,6 +181,9 @@ class PipelineConfig(BaseModel):
     seed: int = 42
     max_sectors: int | None = Field(default=None, ge=1)  # keep the largest N sectors (quick runs)
     report_accuracy: bool = True  # also replay the horizon to report forecast WMAPE
+    # Sector label -> combination id (1..15, the slot day) the solvers must keep.
+    # The upper bound is checked against the real slots in `build_real_instance`.
+    fixed_sectors: dict[str, Annotated[int, Field(ge=1)]] = {}
 
 
 class RunConfig(BaseModel):

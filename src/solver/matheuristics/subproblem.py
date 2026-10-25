@@ -16,15 +16,20 @@ SubproblemSolver = Callable[[pyo.ConcreteModel, float | None], bool]
 
 
 def apply_variable_modes(
-    model: pyo.ConcreteModel, fixed: Mapping[int, int], binary: Collection[int]
+    model: pyo.ConcreteModel,
+    fixed: Mapping[int, int],
+    binary: Collection[int],
+    pinned: Mapping[int, int] | None = None,
 ) -> None:
     """Define como cada `x[s, d]` entra no próximo subproblema.
 
     Setores em `fixed` (setor -> combinação) têm `x` congelado em 0/1; os de
     `binary` ficam livres e binários; todos os outros ficam relaxados em [0, 1].
+    Setores em `pinned` (fixados pelo usuário) ficam congelados em qualquer modo.
     """
+    frozen = {**fixed, **(pinned or {})}
     for (sector, combination), var in model.x.items():
-        _set_mode(var, sector, combination, fixed, binary)
+        _set_mode(var, sector, combination, frozen, binary)
 
 
 def _set_mode(

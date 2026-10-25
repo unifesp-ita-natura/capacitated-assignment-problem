@@ -13,7 +13,7 @@ pipeline:
   base_csv: data/base_tratada_v2.csv
   history_cycles: 20
   horizon_cycles: 6
-  solver_family: sa        # mip | matheuristic | sa
+  solver_family: sa        # mip | matheuristic | sa | sa_mip
   shape_model: sector
   shape_bins: 10
   max_churn: 0.2           # fraction of sectors allowed to change slot
@@ -21,3 +21,6 @@ pipeline:
   seed: 42
   max_sectors: null        # set e.g. 60 for a quick run
   report_accuracy: true
+  # Sectors pinned to a combination id (1..15, the slot day); solvers never move them.
+  # fixed_sectors:
+  #   "SETOR_A": 3

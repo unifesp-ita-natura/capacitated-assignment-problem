@@ -47,6 +47,7 @@ def _build_instance(raw: pd.DataFrame, plan: HorizonPlan, config: RunConfig, dai
         max_churn=pipeline.max_churn,
         capacity_multiplier=pipeline.capacity_multiplier,
         max_sectors=pipeline.max_sectors,
+        fixed_sectors=pipeline.fixed_sectors,
     )
 
 

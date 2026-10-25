@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -22,6 +22,10 @@ class ProblemInstance:
     MIP's sparse `{(sector, combination): 1}` churn-constraint form is derived
     internally from it where needed, instead of being carried as a second
     representation here.
+
+    `fixed_assignment` pins sectors to combinations (sector -> combination): the
+    solvers never move them, and their demand still counts toward each CD's
+    daily load, so it shrinks the capacity left for the free sectors.
     """
 
     sectors: list[int]
@@ -33,6 +37,7 @@ class ProblemInstance:
     current_assignment: dict[int, int]
     max_churn: float
     days_by_cycle: dict[int, list[int]]
+    fixed_assignment: dict[int, int] = field(default_factory=dict)
 
 
 def build_id_maps(sectors: list[str]) -> tuple[dict[str, int], dict[int, tuple[int, int]]]:

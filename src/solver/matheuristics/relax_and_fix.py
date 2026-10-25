@@ -227,7 +227,9 @@ def _restrict(
 def _solve_window(ctx: _Context, window: RelaxAndFixWindow, frozen: Mapping[int, int]) -> bool:
     """Congela C_fix, deixa C_int binário e relaxa C_relax; resolve o subproblema."""
     interior = _sectors_of(ctx.groups, window.interior)
-    apply_variable_modes(ctx.model, fixed=frozen, binary=interior)
+    apply_variable_modes(
+        ctx.model, fixed=frozen, binary=interior, pinned=ctx.problem.fixed_assignment
+    )
     return ctx.runner(ctx.model)
 
 
@@ -259,7 +261,7 @@ def _reoptimize(ctx: _Context, incumbent: _Incumbent, cds: Sequence[int]) -> _In
     """Libera os setores de `cds`, mantém os demais fixos na incumbente e resolve."""
     free = _sectors_of(ctx.groups, cds)
     fixed = {s: d for s, d in incumbent.assignment.items() if s not in free}
-    apply_variable_modes(ctx.model, fixed=fixed, binary=free)
+    apply_variable_modes(ctx.model, fixed=fixed, binary=free, pinned=ctx.problem.fixed_assignment)
     if not ctx.runner(ctx.model):
         return None
     candidate = {**incumbent.assignment, **read_assignment(ctx.model, free)}
@@ -298,11 +300,13 @@ def _finish(ctx: _Context, constructed: Mapping[int, int], start: float) -> Rela
 def _no_solution_window(ctx: _Context, start: float) -> RelaxAndFixResult:
     """Um subproblema do Relax-and-Fix ficou sem solução (inviável ou sem achar uma no tempo).
 
-    Devolve o As-Is. A causa exata (inviabilidade ou limite de tempo) fica no log do solver.
+    Devolve o As-Is (com os setores fixados aplicados por cima). A causa exata
+    (inviabilidade ou limite de tempo) fica no log do solver.
     """
+    fallback = {**ctx.problem.as_is, **ctx.problem.fixed_assignment}
     return RelaxAndFixResult(
-        assignment=dict(ctx.problem.as_is),
-        evaluation=evaluate_assignment(ctx.problem, ctx.problem.as_is),
+        assignment=fallback,
+        evaluation=evaluate_assignment(ctx.problem, fallback),
         construction=None,
         subproblems=ctx.runner.calls,
         stop_reason=NO_SOLUTION_WINDOW,

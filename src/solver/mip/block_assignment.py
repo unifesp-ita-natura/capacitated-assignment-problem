@@ -92,6 +92,7 @@ def build_block_assignment_model(instance: ProblemInstance) -> pyo.ConcreteModel
     _add_demand_range_constraints(model, instance.projected_demand, days_by_cycle)
     _add_capacity_constraints(model, cd_sectors, instance.daily_capacity, instance.projected_demand)
     _add_churn_constraint(model, instance.current_assignment, instance.max_churn)
+    _fix_pinned_sectors(model, instance.fixed_assignment)
     return model
 
 
@@ -348,6 +349,13 @@ def _add_capacity_constraints(
         return cd_demand <= daily_capacity.get((c, a), 0.0)
 
     model.cd_capacity = pyo.Constraint(model.C, model.A, rule=rule)
+
+
+def _fix_pinned_sectors(model: pyo.ConcreteModel, fixed_assignment: Mapping[int, int]) -> None:
+    """Congela x dos setores fixados pelo usuário (setor -> combinação)."""
+    for sector, combination in fixed_assignment.items():
+        for d in model.D:
+            model.x[sector, d].fix(1 if d == combination else 0)
 
 
 def _add_churn_constraint(

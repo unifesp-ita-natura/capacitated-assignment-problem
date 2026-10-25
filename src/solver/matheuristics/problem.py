@@ -23,6 +23,7 @@ class AssignmentProblem:
     demand_by_pair: dict[
         tuple[int, int], tuple[tuple[int, float], ...]
     ]  # (s, d) -> ((dia, qtd), ...)
+    fixed_assignment: dict[int, int]  # setor -> combinação fixada pelo usuário
 
 
 def build_problem(instance: ProblemInstance) -> AssignmentProblem:
@@ -44,6 +45,7 @@ def build_problem(instance: ProblemInstance) -> AssignmentProblem:
         max_churn=float(instance.max_churn),
         days_by_cycle={h: tuple(days) for h, days in instance.days_by_cycle.items()},
         demand_by_pair=_index_demand(instance.projected_demand),
+        fixed_assignment=dict(instance.fixed_assignment),
     )
 
 

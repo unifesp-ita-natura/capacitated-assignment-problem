@@ -54,3 +54,14 @@ no license" (a small stub whose `.available()` returns `False`), leaving
 every other solver name, especially the HiGHS fallback, going through the
 real `pyo.SolverFactory`. See `tests/solver/mip/test_block_assignment.py`
 and `docs/conventions/testing.md`.
+
+## Fixed (pinned) assignments
+
+`ProblemInstance.fixed_assignment` (sector -> combination) pins sectors that
+no solver may move. Pinned demand still counts toward each CD's daily load,
+so it shrinks the capacity left for the free sectors. The MIP fixes the
+pinned `x[s, d]` variables, the matheuristic keeps them frozen in every
+window (`apply_variable_modes(..., pinned=...)`), and SA starts from the pins
+and only picks `movable` sectors. Pins are set in the config under
+`pipeline.fixed_sectors` and validated in `real_inputs.py`; pinned sectors that
+differ from the As-Is count toward the churn budget.

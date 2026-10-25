@@ -87,6 +87,7 @@ def solve(
         instance.max_churn,
         instance.days_by_cycle,
         valid_combinations,
+        instance.fixed_assignment,
     )
     start = time.perf_counter()
     result = _anneal(problem, params, rng, callback)
@@ -142,6 +143,8 @@ class _Problem:
     sector_labels: list[int]
     combo_labels: list[int]
     cycle_of_day: np.ndarray  # (n_dias,) índice do ciclo do horizonte (0-indexado) de cada dia
+    start: np.ndarray  # (n_setores,) ponto de partida: As-Is com os setores fixados por cima
+    movable: np.ndarray  # (n_setores,) False pros setores fixados pelo usuário
 
 
 @dataclass(frozen=True)
@@ -229,10 +232,10 @@ def _pick_sector(
     problem: _Problem, violated_cds: np.ndarray, params: AnnealingParams, rng: random.Random
 ) -> int:
     """Escolhe o setor a realocar: com prob. beta prioriza setores de CDs em violação (O(X))."""
-    overloaded = np.where(np.isin(problem.sector_cd, violated_cds))[0]
+    overloaded = np.where(np.isin(problem.sector_cd, violated_cds) & problem.movable)[0]
     if overloaded.size and rng.random() < params.sector_bias:
         return int(rng.choice(overloaded))
-    return rng.randrange(problem.as_is.shape[0])
+    return int(rng.choice(np.flatnonzero(problem.movable)))
 
 
 def _slack_destinations(
@@ -270,7 +273,9 @@ def _neighbor(
     params: AnnealingParams,
     rng: random.Random,
 ) -> np.ndarray:
-    """Gera um vizinho realocando um único setor (mantém os |S| - 1 restantes)."""
+    """Gera um vizinho realocando um único setor livre (mantém os |S| - 1 restantes)."""
+    if not problem.movable.any():
+        return assignment.copy()
     violated = _violated_cds(problem, evaluation.load_by_cd)
     sector = _pick_sector(problem, violated, params, rng)
     destination = _pick_destination(problem, sector, assignment, evaluation.load_by_cd, params, rng)
@@ -340,11 +345,11 @@ def _anneal(
     rng: random.Random,
     callback: IterationCallback | None = None,
 ) -> AnnealingResult:
-    initial = _evaluate(problem, problem.as_is, params.penalty_coefficient)
+    initial = _evaluate(problem, problem.start, params.penalty_coefficient)
     state = _SearchState(
-        current=problem.as_is.copy(),
+        current=problem.start.copy(),
         current_eval=initial,
-        best=problem.as_is.copy(),
+        best=problem.start.copy(),
         best_eval=initial,
         energy_window=deque(maxlen=params.stagnation_window),
     )
@@ -417,6 +422,7 @@ def _build_problem(
     max_churn: float,
     days_by_cycle: Mapping[int, Iterable[int]],
     valid_combinations: Mapping[int, Iterable[int]] | None,
+    fixed_assignment: Mapping[int, int] | None = None,
 ) -> _Problem:
     sector_labels = list(sectors)
     combo_labels = list(combinations)
@@ -426,6 +432,8 @@ def _build_problem(
     combo_ix = {d: i for i, d in enumerate(combo_labels)}
     day_ix = {a: i for i, a in enumerate(day_labels)}
     cd_ix = {c: i for i, c in enumerate(cd_labels)}
+    as_is = _as_is_array(current_assignment, sector_ix, combo_ix)
+    start, movable = _apply_pins(as_is, fixed_assignment, sector_ix, combo_ix)
 
     return _Problem(
         demand=_demand_array(projected_demand, sector_ix, day_ix, combo_ix),
@@ -434,12 +442,29 @@ def _build_problem(
         valid_combos=_valid_combos_by_cd(
             valid_combinations, cd_labels, len(combo_labels), cd_ix, combo_ix
         ),
-        as_is=_as_is_array(current_assignment, sector_ix, combo_ix),
+        as_is=as_is,
         max_churn=float(max_churn),
         sector_labels=sector_labels,
         combo_labels=combo_labels,
         cycle_of_day=_cycle_of_day_array(days_by_cycle, day_ix),
+        start=start,
+        movable=movable,
     )
+
+
+def _apply_pins(
+    as_is: np.ndarray,
+    fixed_assignment: Mapping[int, int] | None,
+    sector_ix: Mapping[int, int],
+    combo_ix: Mapping[int, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Ponto de partida (As-Is com os fixados por cima) e a máscara de setores livres."""
+    start = as_is.copy()
+    movable = np.ones(as_is.shape[0], dtype=bool)
+    for sector, combination in (fixed_assignment or {}).items():
+        start[sector_ix[sector]] = combo_ix[combination]
+        movable[sector_ix[sector]] = False
+    return start, movable
 
 
 def _demand_array(
