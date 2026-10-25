@@ -161,3 +161,30 @@ def test_run_simulated_annealing_returns_a_solve_result():
         expected.objective,
     )
     assert result.wall_time_seconds >= 0
+
+
+def test_splits_sector_load_across_cds_by_share():
+    # Setor 1 manda 70% ao CD 1 e 30% ao CD 2; setor 2 fica 100% no CD 1.
+    # Cada combinação concentra a demanda num dia só, então o CD 2 recebe 0.3 * 10 = 3 nesse dia
+    # e o CD 1 recebe 0.7 * 10 + 10 = 17 se os dois setores caem no mesmo dia, ou 10 se não.
+    tight = _instance(
+        cd_sectors={1: [1, 2], 2: [1]},
+        cd_sector_shares={1: {1: 0.7, 2: 1.0}, 2: {1: 0.3}},
+        daily_capacity={(1, 1): 17.0, (1, 2): 17.0, (2, 1): 2.0, (2, 2): 2.0},
+    )
+
+    result = solve(tight, rng=random.Random(1), params=AnnealingParams(max_iterations=500))
+
+    # O setor 1 sempre põe 3 no CD 2 em algum dia (capacidade 2): excesso mínimo de 1.
+    assert result.capacity_penalty == pytest.approx(1.0)
+
+
+def test_unit_shares_match_the_hard_partition():
+    params = AnnealingParams(max_iterations=200)
+    hard = solve(_instance(), rng=random.Random(1), params=params)
+    unit = solve(
+        _instance(cd_sector_shares={1: {1: 1.0, 2: 1.0}}), rng=random.Random(1), params=params
+    )
+
+    assert hard.assignment == unit.assignment
+    assert hard.energy == unit.energy

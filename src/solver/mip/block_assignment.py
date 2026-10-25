@@ -10,7 +10,7 @@ from contextlib import contextmanager
 import pyomo.environ as pyo
 
 from src.persistence import SolveResult
-from src.solver.inputs import ProblemInstance, ProjectedDemand
+from src.solver.inputs import ProblemInstance, ProjectedDemand, effective_cd_sector_shares
 
 try:
     import resource  # POSIX-only; see `_memory_limit`
@@ -68,13 +68,6 @@ def _solve_options(
     return {}
 
 
-def _cd_sector_shares(instance: ProblemInstance) -> dict[int, dict[int, float]]:
-    """The instance's historical shares, or a hard 100% split from `cd_sectors` when absent."""
-    if instance.cd_sector_shares is not None:
-        return {cd: dict(shares) for cd, shares in instance.cd_sector_shares.items()}
-    return {cd: dict.fromkeys(members, 1.0) for cd, members in instance.cd_sectors.items()}
-
-
 def build_block_assignment_model(instance: ProblemInstance) -> pyo.ConcreteModel:
     """Atribui cada setor a um Bloco/Subloco pra nivelar a demanda diária no horizonte.
 
@@ -84,7 +77,7 @@ def build_block_assignment_model(instance: ProblemInstance) -> pyo.ConcreteModel
     tirada a média, pra não confundir tendência entre ciclos com
     desbalanceamento dentro de um ciclo.
     """
-    cd_sector_shares = _cd_sector_shares(instance)
+    cd_sector_shares = effective_cd_sector_shares(instance)
     days_by_cycle = {h: list(members) for h, members in instance.days_by_cycle.items()}
 
     model = pyo.ConcreteModel()

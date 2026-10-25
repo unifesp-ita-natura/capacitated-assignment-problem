@@ -143,6 +143,13 @@ def build_cd_sectors(
     return cd_sectors
 
 
+def effective_cd_sector_shares(instance: ProblemInstance) -> dict[int, dict[int, float]]:
+    """The instance's historical shares, or a hard 100% split from `cd_sectors` when absent."""
+    if instance.cd_sector_shares is not None:
+        return {cd: dict(shares) for cd, shares in instance.cd_sector_shares.items()}
+    return {cd: dict.fromkeys(members, 1.0) for cd, members in instance.cd_sectors.items()}
+
+
 def build_cd_sector_shares(
     shares: dict[str, dict[int, float]], sector_ids: dict[str, int]
 ) -> dict[int, dict[int, float]]:
