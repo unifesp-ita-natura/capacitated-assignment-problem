@@ -28,6 +28,14 @@ functions, converting its native result into a `SolveResult` at the edge
 what makes the comparison runner in `experiments/compare_modeling/` able to
 treat every family the same).
 
+## CD shares
+
+A sector can ship from more than one CD. `ProblemInstance.cd_sector_shares`
+(`{cd: {sector: share}}`) splits a sector's load across CDs in the MIP, SA and the
+matheuristic evaluator; without it, `cd_sectors` is a hard 100% partition. The real
+pipeline builds the shares in `real_inputs.historical_cd_shares` (item shares over the
+last `SHARE_WINDOW_CYCLES` cycles). `cd_sectors` still groups the relax-and-fix windows.
+
 ## Gurobi license
 
 `mip/` defaults to `solver="gurobi"`. Point to your license with a `.env`
