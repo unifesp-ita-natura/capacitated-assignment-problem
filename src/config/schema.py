@@ -173,7 +173,7 @@ class PipelineConfig(BaseModel):
     base_csv: str = "data/base_tratada_v2.csv"
     history_cycles: int = Field(default=20, ge=1)
     horizon_cycles: int = Field(default=1, ge=1)
-    solver_family: Literal["mip", "matheuristic", "sa"] = "sa"
+    solver_family: Literal["mip", "matheuristic", "sa", "sa_mip"] = "sa"
     shape_model: Literal["uniform", "sector"] = "sector"
     shape_bins: int = Field(default=10, ge=1)
     max_churn: float = Field(default=0.2, ge=0, le=1)  # fraction of sectors allowed to move

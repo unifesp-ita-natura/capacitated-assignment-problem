@@ -8,6 +8,33 @@ into `src/`. Keep experiment-specific glue here; keep reusable logic in
 Run artifacts belong under `<experiment>/outputs/` or `<experiment>/results/`
 — both are gitignored — not committed alongside the driver script.
 
+## Never import from another experiment
+
+An experiment must not import from another experiment's directory, even when
+it needs the same helper. Anything shared between experiments belongs in
+`src/`: move it there (with tests) and have every experiment import it from
+there. This keeps each experiment self-contained, so deleting or changing one
+cannot break another.
+
+## Make experiments resumable and incremental
+
+Long runs get interrupted (timeouts, crashes, a closed laptop). Where it
+applies, write the driver so a rerun picks up where it stopped instead of
+redoing finished work:
+
+- **Append, don't rewrite.** When results go to a CSV (or JSONL), append one
+  row per finished unit of work (instance, seed, cycle, solver...) as soon as
+  it completes, rather than writing the whole file at the end.
+- **Check where it stopped.** On start, read the existing output, work out
+  which units are already done (by their key columns) and skip them.
+- **Offer an overwrite.** Provide a flag (e.g. `--overwrite`) that discards
+  the existing outputs and starts from scratch. Without it, resume. Use it
+  after changing the config, code or data, since old rows would otherwise be
+  mixed with results from a different setup.
+
+Skip this only when it does not fit, for example a single short run whose
+output is one atomic file.
+
 ## Every experiment gets a README with a goal, hypothesis, and design note
 
 Before writing the driver script, write `<experiment>/README.md`. This is
