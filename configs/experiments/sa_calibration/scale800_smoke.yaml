@@ -1,0 +1,44 @@
+experiment_name: sa_scale800_smoke
+description:
+  goal: >
+    Fumaça da rodada de 800 setores: a mesma pipeline (gerador, SA incremental,
+    Gurobi com parâmetros de memória, relatório) numa instância de 20 setores.
+  hypothesis: >
+    Tudo roda em segundos, o SA fica viável e o Gurobi grava log, SolFiles e
+    nós em disco sem erro de parâmetro.
+  design_note: >
+    20 setores, 3 ciclos de horizonte, seed 800 (a mesma da instância de 800),
+    1.000 iterações, 2 seeds. Não é resultado: só valida a execução.
+  status: exploratory
+
+output_dir: experiments/sa_calibration/outputs/scale800_smoke
+n_workers: 2
+
+level_strategy: naive_last
+shape_strategy: plain_average
+
+budget:
+  max_iterations: 1000
+  trace_every: 100
+  energy_mode: peak_std_breach
+
+instances:
+  s20: {n_sectors: 20, n_cycles_horizon: 3, seed: 800, mip_time_limit: 120}
+
+mip_solvers: [appsi_gurobi, appsi_highs]
+mip_rel_gaps: [0.0001]
+mip_extra_options:
+  appsi_gurobi:
+    Threads: 2
+    NodefileStart: 0.5
+    NodefileDir: experiments/sa_calibration/outputs/scale800_smoke/gurobi/nodes_{instance}
+    SoftMemLimit: 2.0
+    SolFiles: experiments/sa_calibration/outputs/scale800_smoke/gurobi/{instance}_sol
+    LogFile: experiments/sa_calibration/outputs/scale800_smoke/gurobi/{instance}.log
+
+sa_configs:
+  # tpe_b0_04, recomendada pelo fine-tuning peak_std (α derivado do orçamento).
+  tuned_peak_std:
+    {initial_temperature: 20273.98334487975, min_temperature: 6.182498621764997, sector_bias: 0.2625420089142143, destination_bias: 0.7836051510233553, penalty_coefficient: 310.8830628790512, w_std: 1.9976341220491365, w_range: 0.3242119688600368}
+
+sa_seeds: [101, 102]

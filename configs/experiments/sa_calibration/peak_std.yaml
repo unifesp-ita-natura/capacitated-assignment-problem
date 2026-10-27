@@ -1,0 +1,103 @@
+experiment_name: sa_calibration_peak_std
+description:
+  goal: >
+    Quais T0, T_min, beta, gama, rho, w_std e w_range (com w_peak = 1) minimizam o
+    gap da amplitude do SA com a fitness peak_std_breach contra o ótimo provado
+    do MIP (1e-4), com orçamento fixo de 200 mil iterações?
+  hypothesis: >
+    Como o gap é medido na amplitude, a busca empurra w_range para o teto (1) e o
+    resultado se aproxima da calibração range (lhs_32, 1,96%); pico e desvio-padrão
+    da carga ficam iguais ou menores que os da range, com amplitude no máximo
+    ~1 p.p. pior. rho continua precisando ficar baixo (ordem de grandeza de |ΔE|).
+  design_note: >
+    Mesmo protocolo de full.yaml: fase 1 LHS (60 configs x 5 seeds x
+    base40/tight40/base80), fase 2 TPE (3 lotes x 12 x 5 seeds x base40/tight40),
+    fase 3 revalidação dos finalistas + referências com seeds 101-108 em
+    base40/tight40/tight80. energy_mode = peak_std_breach fixo. Estagnação
+    desligada, alfa derivado de (T0, T_min). w_range limitado a [0, 1] (decisão
+    de 2026-10-18) para a fitness não degenerar na amplitude pura.
+  status: in-progress
+
+output_dir: experiments/sa_calibration/outputs/peak_std
+n_workers: 6  # máquina de 7 GB com navegador aberto: metade dos núcleos
+
+# Fixados (null = seleção automática, que muda com o statsmodels instalado).
+level_strategy: naive_last
+shape_strategy: plain_average
+
+budget:
+  max_iterations: 200000
+  trace_every: 1000
+  energy_mode: peak_std_breach
+
+# z_ref = ótimo provado (decisão de 2026-10-18).
+mip:
+  solver: appsi_highs
+  mip_rel_gap: 0.0001
+
+instances:
+  base40: {n_sectors: 40, n_cycles_horizon: 2, seed: 42, mip_time_limit: 600}
+  base80: {n_sectors: 80, n_cycles_horizon: 3, seed: 7, mip_time_limit: 1800}
+  tight40: {n_sectors: 40, n_cycles_horizon: 2, seed: 42, capacity_multiplier: 0.0027, tight: true, mip_time_limit: 600}
+  tight80: {n_sectors: 80, n_cycles_horizon: 3, seed: 7, capacity_multiplier: 0.0072, tight: true, mip_time_limit: 1800}
+
+# |ΔE| por movimento (passeio aleatório, 5 mil movimentos, sem penalidades), medido em
+# 2026-10-18: amplitude 67-77 (mediana; 74 no relatório anterior); pico+desvio
+# (w_std=1, w_range=0) 80-95; pico+3·desvio+amplitude 179-214. T0 cobre de ~0,1x a
+# ~600x dessa escala; o teto subiu de 20.000 para 50.000 por causa dos pesos maiores.
+search_space:
+  initial_temperature: {low: 20.0, high: 50000.0, log: true}
+  min_temperature: {low: 0.001, high: 10.0, log: true}
+  sector_bias: {low: 0.0, high: 1.0}
+  destination_bias: {low: 0.0, high: 1.0}
+  penalty_coefficient: {low: 1.0, high: 10000000.0, log: true}
+  w_std: {low: 0.0, high: 4.0}
+  w_range: {low: 0.0, high: 1.0}
+
+tie_tolerance: 0.5  # pontos percentuais de gap
+
+named_configs:
+  default_repo:      # AnnealingParams() do repositório na fitness nova (w_std=1, w_range=0)
+    {initial_temperature: 1000.0, cooling_rate: 0.99, min_temperature: 0.01, sector_bias: 0.8, destination_bias: 0.7, penalty_coefficient: 1000000.0}
+  default_budget:    # o mesmo com alfa derivado do orçamento
+    {initial_temperature: 1000.0, min_temperature: 0.01, sector_bias: 0.8, destination_bias: 0.7, penalty_coefficient: 1000000.0}
+  lhs_32_new:        # recomendada da calibração range, rodando na fitness nova sem recalibrar
+    {initial_temperature: 257.24750757958907, min_temperature: 0.011046064901330649, sector_bias: 0.7693508846294949, destination_bias: 0.24677194539982686, penalty_coefficient: 146.35163758759955, w_std: 1.0, w_range: 0.0}
+
+screen:
+  n_configs: 60
+  seeds: [1, 2, 3, 4, 5]
+  instances: [base40, tight40, base80]
+  sampler_seed: 2026
+
+tpe:
+  batches: 3
+  batch_size: 12
+  seeds: [1, 2, 3, 4, 5]
+  instances: [base40, tight40]
+  sampler_seed: 2026
+
+validate:
+  n_finalists: 4
+  seeds: [101, 102, 103, 104, 105, 106, 107, 108]
+  instances: [base40, tight40, tight80]
+  reference_configs: [default_repo, default_budget, lhs_32_new]
+
+# Não faz parte do protocolo desta rodada (não é executado); exigido pelo esquema.
+extras:
+  min_temperatures: [0.001, 0.01, 0.1, 1.0]
+  seeds: [101, 102, 103, 104, 105]
+  instances: [base40, tight40]
+  named_configs: [lhs_32_new]
+
+tighten:
+  low: 0.0005
+  high: 0.01
+  steps: 9
+  probe_time_limit: 60
+  headroom: 1.15
+
+report:
+  convergence_instance: tight40
+  convergence_seed: 101
+  convergence_configs: [best, default_budget, lhs_32_new]
