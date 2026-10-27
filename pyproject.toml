@@ -28,6 +28,15 @@ forecast = [
     "pandas>=2.3.0",
     "statsmodels>=0.15.0",
 ]
+# Pretrained and trainable neural forecasters (CPU torch). Heavy: only for
+# the experiments in experiments/neural_models.
+neural = [
+    "torch>=2.6",
+    "chronos-forecasting>=2.0",
+    "timesfm>=2.0",
+    "tabpfn-time-series>=1.0",
+    "neuralforecast>=3.0",
+]
 
 [dependency-groups]
 dev = [
@@ -38,6 +47,14 @@ dev = [
     "radon>=6.0.1",
     "ruff>=0.15.11",
 ]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.pytest.ini_options]
 pythonpath = [
