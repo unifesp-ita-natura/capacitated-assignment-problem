@@ -1,0 +1,55 @@
+# Follow-up to sector.yaml: (a) does a fixed smoothing weight beat the pooled
+# one, as TSB/ADIDA at alpha 0.1 suggested? (b) do ensembles improve when TSB
+# and TimesFM-2.5 replace ETS and Chronos-2?
+# uv run python -m experiments.compare_forecasters.run configs/experiments/new_models/next_steps.yaml
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+panel:
+  by_city: false
+
+candidates:
+  # references from sector.yaml
+  - &ets_pooled {model: ets, alpha: pooled, cycle_days_exponent: pooled}
+  - &tsb {model: intermittent, strategy: tsb, alpha_demand: 0.1, alpha_probability: 0.1}
+  - &lgbm
+    model: lightgbm
+    n_estimators: 300
+    num_leaves: 31
+    lags: [1, 2, 3]
+    rolling_windows: [3]
+    early_stopping_rounds: 30
+    label: lightgbm:l1
+  - &timesfm {model: pretrained, name: timesfm2.5, point: median}
+  - &chronos {model: pretrained, name: chronos2, point: median}
+  - model: ensemble
+    combiner: mean
+    members: [*ets_pooled, *lgbm, *chronos]
+    label: ensemble:mean(ets+lgbm+chronos)
+
+  # (a) fixed smoothing weights
+  - {model: ets, alpha: 0.05}
+  - {model: ets, alpha: 0.1}
+  - {model: ets, alpha: 0.15}
+  - {model: ets, alpha: 0.2}
+  - {model: ets, alpha: 0.3}
+
+  # (b) ensembles built from the strongest single models
+  - &ens_tsb
+    model: ensemble
+    combiner: mean
+    members: [*tsb, *timesfm, *lgbm]
+    label: ensemble:mean(tsb+timesfm+lgbm)
+  - <<: *ens_tsb
+    combiner: nnls
+    label: ensemble:nnls(tsb+timesfm+lgbm)
+  - model: ensemble
+    combiner: mean
+    members: [*tsb, *ets_pooled, *timesfm, *chronos, *lgbm]
+    label: ensemble:mean(all5)
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  output_csv: experiments/new_models/outputs/next_steps_comparison.csv

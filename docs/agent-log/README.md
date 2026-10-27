@@ -5,6 +5,7 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-10-27 new level forecasting models](2026-10-27-new-forecast-models.md) — ensembles beat ETS (mean of five members wins 11/11 origins, −2.5% MAE); no single new model does; summed city forecasts still lose to sector
 - [2026-10-14 level per sector-city series](2026-10-14-level-per-sector-city.md) — Level keyed by (sector, estado, cidade) with zero rows for quiet cycles; summing cities loses to forecasting the sector for every candidate (ETS +1.4%, LightGBM +8.6% MAE)
 - [2026-10-09 shape features](2026-10-09-shape-features.md) — Isolated LightGBM shape with selectable region, sales management, weekday and month; holidays deferred
 - [2026-10-09 standalone shape dashboard](2026-10-09-shape-dashboard.md) — Local shape-only run filters, daily and cumulative comparisons, metrics and downloads; no level integration
