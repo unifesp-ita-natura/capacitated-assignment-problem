@@ -177,6 +177,24 @@ class ProphetParams(BaseModel):
     daily_seasonality: bool = False
 
 
+class CrostonParams(BaseModel):
+    """Intermittent-demand forecast per (sector, city) series: Croston, SBA or TSB."""
+
+    model: Literal["croston"] = "croston"
+    variant: Literal["classic", "sba", "tsb"] = "sba"
+    alpha: float = 0.1
+    beta: float = 0.1
+
+
+class LightGBMObjectiveParams(LightGBMParams):
+    """Pooled LightGBM with a selectable training objective (Tweedie or Quantile)."""
+
+    model: Literal["lightgbm_objective"] = "lightgbm_objective"
+    objective: Literal["tweedie", "quantile"] = "tweedie"
+    tweedie_variance_power: float = 1.3
+    quantile_alpha: float = 0.5
+
+
 class CycleFactorParams(BaseModel):
     model: Literal["cycle_factor"] = "cycle_factor"
     # "last" repeats the most recent observed factor; "mean" averages the
@@ -191,9 +209,11 @@ ForecastParams = Annotated[
     | ArimaParams
     | ETSParams
     | ProphetParams
+    | CrostonParams
     | LightGBMParams
     | LightGBMExternalParams
     | LightGBMDynamicsParams
+    | LightGBMObjectiveParams
     | CycleFactorParams,
     Field(discriminator="model"),
 ]

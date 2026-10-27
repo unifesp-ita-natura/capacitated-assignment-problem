@@ -1,0 +1,77 @@
+experiment_name: teste_quantile_alto
+description:
+  goal: >
+    Testar Quantile com alpha alto (0.7, 0.8, 0.9) como margem de seguranca
+    direta: o forecast alimenta alocacao de capacidade, e subestimar e o risco
+    maior, entao prever um quantil acima da mediana cria folga proposital.
+    Comparar com o Tweedie (que zerou o vies) e o lgbm_ratio (melhor MAE).
+  hypothesis: >
+    Quantis mais altos devem empurrar o vies para positivo (superestimacao)
+    de forma controlada, ao custo de MAE/WMAPE. A escolha final entre Tweedie
+    e Quantile alto depende de vies agregado + erro por faixa de volume, nao
+    do MAE sozinho.
+  design_note: >
+    lightgbm_objective com objective=quantile e quantile_alpha variavel. Mesmo
+    split dos outros testes. A analise por faixa de volume e feita depois, a
+    partir do predictions.csv deste run.
+  status: in_progress
+
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: lightgbm
+    label: lgbm_ratio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    target: ratio
+
+  - model: lightgbm_objective
+    label: lgbm_tweedie_ratio
+    objective: tweedie
+    tweedie_variance_power: 1.3
+    target: ratio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm_objective
+    label: lgbm_quantile_70
+    objective: quantile
+    quantile_alpha: 0.7
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm_objective
+    label: lgbm_quantile_80
+    objective: quantile
+    quantile_alpha: 0.8
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm_objective
+    label: lgbm_quantile_90
+    objective: quantile
+    quantile_alpha: 0.9
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-19_quantile_alto

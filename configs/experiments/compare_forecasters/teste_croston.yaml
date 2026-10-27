@@ -1,0 +1,63 @@
+experiment_name: teste_croston
+description:
+  goal: >
+    Testar modelos de demanda intermitente (Croston, SBA, TSB) no nivel por
+    (setor, cidade, ciclo), contra os melhores candidatos ate agora. A base
+    tem 57,5% de linhas zero (cidades que nao compraram no ciclo), o regime em
+    que esses modelos foram feitos para operar.
+  hypothesis: >
+    TSB tende a ser o melhor dos tres: modela a probabilidade de compra, entao
+    series que pararam de comprar decaem a zero em vez de manter um nivel. A
+    duvida e se algum deles bate o lgbm_ratio e reduz o vies de -26%.
+  design_note: >
+    Croston/SBA/TSB sao per-serie (molde per_sector), formula fechada, sem fit
+    iterativo — rapidos mesmo nas 12k series. Ranking por mae_common. alpha e
+    beta em 0.1 (padrao da literatura para series curtas).
+  status: in_progress
+
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+
+  - model: cycle_factor
+    strategy: mean
+    window: 3
+
+  - model: lightgbm
+    label: lgbm_base
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm
+    label: lgbm_ratio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    target: ratio
+
+  - model: croston
+    variant: classic
+    alpha: 0.1
+
+  - model: croston
+    variant: sba
+    alpha: 0.1
+
+  - model: croston
+    variant: tsb
+    alpha: 0.1
+    beta: 0.1
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-19_croston
