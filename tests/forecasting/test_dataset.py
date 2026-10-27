@@ -120,9 +120,7 @@ def test_organization_can_change_between_cycles():
 
 def test_panel_rejects_conflicting_organization_within_sector_cycle():
     raw = load_demand_base(FIXTURE_PATH).assign(CD_RE="01", CD_GV="007")
-    first = raw.iloc[0].copy()
-    first["CD_RE"] = "02"
-    conflicting = pd.concat([raw, first.to_frame().T], ignore_index=True)
+    conflicting = pd.concat([raw, raw.iloc[[0]].assign(CD_RE="02")], ignore_index=True)
     with pytest.raises(ValueError, match="conflicting"):
         build_item_panel(conflicting)
 

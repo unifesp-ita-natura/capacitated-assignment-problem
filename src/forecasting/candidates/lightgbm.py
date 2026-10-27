@@ -24,6 +24,10 @@ from src.forecasting.model import (
     ForecastCandidate,
 )
 
+# LightGBM's names for the losses `LightGBMParams.objective` offers.
+_OBJECTIVES = {"l1": "regression_l1", "l2": "regression", "tweedie": "tweedie"}
+_OBJECTIVE_SUFFIX = {"l1": "", "l2": ":l2", "tweedie": ":tweedie"}  # l1 keeps old names
+
 # What the recursive forecast has to carry forward cycle by cycle, before
 # any companion series the configuration adds.
 _BASE_PANEL_COLUMNS = (SERIES_KEY, "CICLOS", "items", "opening_date", *SCENARIO_COLUMNS)
@@ -98,10 +102,11 @@ class _PooledLightGBMCandidate:
 
     def _settings(self) -> dict:
         return {
-            # L1 rather than LightGBM's default L2: the harness ranks
-            # candidates by MAE (metrics.PRIMARY_METRIC), so the model is
-            # trained on the same loss it will be judged by.
-            "objective": "regression_l1",
+            # L1 by default: the harness ranks candidates by MAE
+            # (metrics.PRIMARY_METRIC), so the model is trained on the same
+            # loss it will be judged by. See `LightGBMParams.objective`.
+            "objective": _OBJECTIVES[self._params.objective],
+            "tweedie_variance_power": self._params.tweedie_variance_power,
             "learning_rate": self._params.learning_rate,
             "num_leaves": self._params.num_leaves,
             "min_data_in_leaf": self._params.min_child_samples,
@@ -301,6 +306,7 @@ def _candidate_name(params: LightGBMParams) -> str:
         shape += "+orders"
     if params.categorical_features:
         shape += "+" + "+".join(params.categorical_features)
+    shape += _OBJECTIVE_SUFFIX[params.objective]
     return f"{shape}:ratio" if params.target == "ratio" else shape
 
 

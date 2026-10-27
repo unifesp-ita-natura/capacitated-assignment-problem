@@ -1,0 +1,23 @@
+# TabPFN-TS needs its license accepted once: log in at https://ux.priorlabs.ai,
+# accept it on the Licenses tab and `export TABPFN_TOKEN=<api key>`.
+# Check the license terms before proposing it to the client.
+# uv run python -m experiments.compare_forecasters.run configs/experiments/new_models/tabpfn.yaml
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+panel:
+  by_city: false
+
+candidates:
+  - model: ets
+    alpha: pooled
+    cycle_days_exponent: pooled
+  - model: pretrained
+    name: tabpfn_ts
+    point: median
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  output_csv: experiments/new_models/outputs/tabpfn_comparison.csv

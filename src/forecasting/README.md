@@ -70,7 +70,8 @@ One (sector, cycle) can carry several queries, one per scenario.
 - Turning (sector, d, n) into a model's own inputs is the candidate's job,
   inside `fit_predict`. The history rows carry each past cycle's
   `window_start` and `cycle_days` to learn from. How each candidate does it:
-  - **naive, ARIMA, both ETS and cycle_factor**, through two adapters:
+  - **naive, ARIMA, both ETS, cycle_factor, TSB/ADIDA, the pretrained
+    models and the networks**, through two adapters:
     - `model.opening_adjusted` handles the opening day. It applies a
       factor per day `d` after the cycle's opening (`model.opening_factors`).
       That factor is what a sector sold when it opened on day `d`, compared
@@ -138,7 +139,20 @@ If it forecasts per (sector, cycle), wrap it in
     `last_value` and `mean`. See `experiments/ets_level/`.
   - `lightgbm.py` — gradient boosting pooled across every sector at once.
     The one candidate that implements `ForecastCandidate` directly rather
-    than through `per_sector`, because it needs the whole panel.
+    than through `per_sector`, because it needs the whole panel. `objective`
+    picks the loss: `l1` (default), `l2` or `tweedie`.
+  - `intermittent.py` — TSB and ADIDA per series, for series with many zero
+    cycles. Without zeros (a sector series) both reduce to SES.
+  - `pretrained.py` — Chronos-2, TimesFM-2.5 and TabPFN-TS used zero-shot,
+    every series in one call (`model.per_series_batch`). Weights download on
+    first use; TabPFN-TS also needs a `TABPFN_TOKEN`.
+  - `neural.py` — N-HiTS, LSTM or MLP trained on every series at once via
+    neuralforecast, retrained at each origin.
+  - `ensemble.py` — combines member candidates: mean, median, or weights
+    learned on the training window's last cycles (non-negative least
+    squares, or a small MLP that corrects the members' mean).
+
+  The last three need `uv sync --extra neural` (CPU torch).
 - `features.py` — the lag / rolling-mean / calendar feature table the pooled
   candidate trains on. The rolling means are shifted by one cycle so a row
   can never see the value it is being asked to predict. `companion_lags`

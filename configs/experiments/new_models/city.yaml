@@ -1,0 +1,34 @@
+# Do losses and methods made for intermittent demand close the gap between
+# summing sector-city forecasts and forecasting the sector directly?
+# uv run python -m experiments.sector_vs_city.run configs/experiments/new_models/city.yaml
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: ets
+    alpha: pooled
+    cycle_days_exponent: pooled
+  - &lgbm
+    model: lightgbm
+    n_estimators: 300
+    num_leaves: 31
+    lags: [1, 2, 3]
+    rolling_windows: [3]
+    early_stopping_rounds: 30
+    label: lightgbm:l1
+  - <<: *lgbm
+    objective: l2
+    label: lightgbm:l2
+  - <<: *lgbm
+    objective: tweedie
+    label: lightgbm:tweedie
+  - model: intermittent
+    strategy: tsb
+  - model: intermittent
+    strategy: adida
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  output_csv: experiments/new_models/outputs/city_comparison.csv

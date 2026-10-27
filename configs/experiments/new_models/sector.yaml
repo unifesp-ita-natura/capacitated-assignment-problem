@@ -1,0 +1,79 @@
+# New model families against the current best, one series per sector (the
+# level that won experiments/sector_vs_city). Needs `uv sync --extra neural`.
+# uv run python -m experiments.compare_forecasters.run configs/experiments/new_models/sector.yaml
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+panel:
+  by_city: false
+
+candidates:
+  # references
+  - model: naive
+    strategy: mean
+  - model: ets
+    alpha: pooled
+    cycle_days_exponent: pooled
+  - &lgbm
+    model: lightgbm
+    n_estimators: 300
+    num_leaves: 31
+    lags: [1, 2, 3]
+    rolling_windows: [3]
+    early_stopping_rounds: 30
+    label: lightgbm:l1
+
+  # 1. loss of the trees
+  - <<: *lgbm
+    objective: l2
+    label: lightgbm:l2
+  - <<: *lgbm
+    objective: tweedie
+    label: lightgbm:tweedie
+
+  # 2-3. pretrained, zero-shot (TabPFN-TS lives in tabpfn.yaml: needs a token)
+  - model: pretrained
+    name: chronos2
+    point: median
+  - model: pretrained
+    name: chronos2
+    point: mean
+  - model: pretrained
+    name: timesfm2.5
+    point: median
+
+  # 4. combinations of the strongest of each family
+  - &ensemble
+    model: ensemble
+    combiner: mean
+    members:
+      - {model: ets, alpha: pooled}
+      - *lgbm
+      - {model: pretrained, name: chronos2}
+    label: ensemble:mean
+  - <<: *ensemble
+    combiner: nnls
+    label: ensemble:nnls
+  - <<: *ensemble
+    combiner: mlp
+    label: ensemble:mlp
+
+  # 5. intermittent-demand methods
+  - model: intermittent
+    strategy: tsb
+  - model: intermittent
+    strategy: adida
+
+  # 6. networks trained here
+  - model: neural
+    architecture: nhits
+  - model: neural
+    architecture: lstm
+  - model: neural
+    architecture: mlp
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  output_csv: experiments/new_models/outputs/sector_comparison.csv

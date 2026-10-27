@@ -69,7 +69,8 @@ def run(config_path: str | Path = DEFAULT_CONFIG_PATH) -> pd.DataFrame:
 def _execute(config: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     raw = load_demand_base(config["paths"]["base_csv"])
-    panel = build_item_panel(raw)
+    # `panel: {by_city: false}` forecasts one series per sector instead of per sector-city.
+    panel = build_item_panel(raw, by_city=config.get("panel", {}).get("by_city", True))
     print(
         f"[compare_forecasters] panel: {panel['serie'].nunique()} sector-city series "
         f"({panel['cd_setor'].nunique()} sectors) x {panel['CICLOS'].nunique()} cycles"

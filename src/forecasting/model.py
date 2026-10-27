@@ -195,6 +195,46 @@ def per_sector(name: str, fn: Callable[[pd.Series, int], pd.Series]) -> Forecast
     return opening_adjusted(window_scaled(_PerSectorCandidate(name=name, fn=fn)))
 
 
+# Every series' history (indexed by `opening_date`) and the target cycles'
+# opening dates in order -> one row of forecasts per series, one column per date.
+BatchForecaster = Callable[[list[pd.Series], list[pd.Timestamp]], np.ndarray]
+
+
+class _BatchCandidate:
+    """Adapter: hands every series to one call, for models that forecast many series at once."""
+
+    def __init__(self, name: str, fn: BatchForecaster) -> None:
+        self.name = name
+        self._fn = fn
+
+    def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
+        cycles = targets.sort_values("opening_date").drop_duplicates("CICLOS")
+        wanted = set(targets[SERIES_KEY])
+        ordered = history.sort_values("opening_date")
+        series = {
+            key: rows.set_index("opening_date")["items"]
+            for key, rows in ordered.groupby(SERIES_KEY)
+            if key in wanted
+        }
+        if not series:
+            return pd.DataFrame(columns=PREDICTION_COLUMNS)
+        predicted = self._fn(list(series.values()), cycles["opening_date"].tolist())
+        frame = pd.DataFrame(predicted, index=list(series), columns=cycles["CICLOS"].tolist())
+        long = frame.stack().rename("items_pred").rename_axis([SERIES_KEY, "CICLOS"])
+        asked = targets[SERIES_KEYS].drop_duplicates()
+        return asked.merge(long.reset_index(), on=SERIES_KEYS)[PREDICTION_COLUMNS]
+
+
+def per_series_batch(name: str, fn: BatchForecaster) -> ForecastCandidate:
+    """Adapter: like `per_sector`, but every series goes to `fn` in a single call.
+
+    For pretrained and globally trained networks, where one call per series
+    would reload or retrain the model thousands of times. Step k of `fn`'s
+    output is the k-th target cycle in date order.
+    """
+    return opening_adjusted(window_scaled(_BatchCandidate(name=name, fn=fn)))
+
+
 def cycle_days_exponent(history: pd.DataFrame) -> float:
     """How a sector's items scale with its window length: the β in items ~ cycle_days ** β.
 

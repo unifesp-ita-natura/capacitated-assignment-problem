@@ -5,7 +5,11 @@ from __future__ import annotations
 from src.forecasting.candidates import (  # noqa: F401
     arima,
     cycle_factor,
+    ensemble,
     ets,
+    intermittent,
     lightgbm,
     naive,
+    neural,
+    pretrained,
 )

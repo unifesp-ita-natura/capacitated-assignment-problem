@@ -272,3 +272,16 @@ def test_organization_candidate_predicts_multiple_steps_without_target_metadata(
 def test_organization_candidate_name_distinguishes_feature_selection():
     params = PARAMS.model_copy(update={"categorical_features": ["CD_RE", "CD_GV"]})
     assert REGISTRY.build(params).name == "lightgbm:20x3+CD_RE+CD_GV"
+
+
+@pytest.mark.parametrize("objective", ["l2", "tweedie"])
+def test_other_objectives_predict_items_and_name_themselves(objective):
+    history = _history({"A": [100, 0, 110, 0, 125], "B": [10, 12, 0, 13, 12]})
+    targets = _targets(["A", "B"], ["202606"], ["2026-06-01"])
+    params = PARAMS.model_copy(update={"objective": objective})
+
+    candidate = REGISTRY.build(params)
+    predictions = candidate.fit_predict(history, targets)
+
+    assert candidate.name.endswith(f":{objective}")
+    assert (predictions["items_pred"] >= 0).all()

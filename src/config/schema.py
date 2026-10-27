@@ -145,6 +145,12 @@ class LightGBMParams(BaseModel):
     # of rounds is chosen without ever touching the cycle being forecast.
     early_stopping_rounds: int | None = None
     validation_cycles: int = 1
+    # Loss the trees are fit on. "l1" (the default) targets the median, which
+    # on an intermittent sector-city series sits near zero and under-forecasts
+    # the summed sector; "l2" targets the mean; "tweedie" models a count with
+    # a point mass at zero (`tweedie_variance_power` in (1, 2)).
+    objective: Literal["l1", "l2", "tweedie"] = "l1"
+    tweedie_variance_power: float = Field(1.5, gt=1.0, lt=2.0)
 
 
 class CycleFactorParams(BaseModel):
@@ -156,10 +162,62 @@ class CycleFactorParams(BaseModel):
     window: int = 1
 
 
+class IntermittentParams(BaseModel):
+    model: Literal["intermittent"] = "intermittent"
+    # TSB smooths demand size and demand probability separately and forecasts
+    # their product; ADIDA sums the series into buckets as long as its mean
+    # gap between purchases, smooths those and spreads them back evenly.
+    strategy: Literal["tsb", "adida"] = "tsb"
+    alpha_demand: float = Field(0.1, gt=0.0, le=1.0)
+    alpha_probability: float = Field(0.1, gt=0.0, le=1.0)
+
+
+class PretrainedParams(BaseModel):
+    model: Literal["pretrained"] = "pretrained"
+    # Time-series foundation models used zero-shot: nothing is fit here.
+    # tabpfn_ts needs a TABPFN_TOKEN (license accepted at ux.priorlabs.ai).
+    name: Literal["chronos2", "timesfm2.5", "tabpfn_ts"] = "chronos2"
+    # "median" is what MAE rewards; "mean" adds up when series are summed.
+    point: Literal["median", "mean"] = "median"
+    # Only the most recent cycles are given to the model as context.
+    max_context: int = 64
+
+
+class NeuralParams(BaseModel):
+    model: Literal["neural"] = "neural"
+    # One network trained on every series at once (neuralforecast), on each
+    # series' own cycle index, so a gap between cycles is not a zero.
+    architecture: Literal["nhits", "lstm", "mlp"] = "nhits"
+    input_size: int = 6
+    max_steps: int = 300
+    learning_rate: float = 1e-3
+    random_state: int = 0
+
+
+class EnsembleParams(BaseModel):
+    model: Literal["ensemble"] = "ensemble"
+    members: list[ForecastParams] = Field(min_length=2)
+    # "mean"/"median" average the members. "nnls" and "mlp" learn how to
+    # combine them on the last `validation_cycles` cycles of the training
+    # window, each predicted one step ahead from the cycles before it.
+    combiner: Literal["mean", "median", "nnls", "mlp"] = "mean"
+    validation_cycles: int = Field(3, ge=1)
+    label: str | None = None
+
+
 ForecastParams = Annotated[
-    NaiveParams | ArimaParams | ETSParams | LightGBMParams | CycleFactorParams,
+    NaiveParams
+    | ArimaParams
+    | ETSParams
+    | LightGBMParams
+    | CycleFactorParams
+    | IntermittentParams
+    | PretrainedParams
+    | NeuralParams
+    | EnsembleParams,
     Field(discriminator="model"),
 ]
+EnsembleParams.model_rebuild()
 
 
 class ForecastConfig(BaseModel):
