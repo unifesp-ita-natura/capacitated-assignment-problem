@@ -5,6 +5,7 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-10-30 hierarchy forecast presets](2026-10-30-hierarchy-forecast-presets.md) — Default sector-city ETS/LightGBM distribution and selectable management-city preset connected to daily shapes
 - [2026-10-30 remove legacy hierarchy comparisons](2026-10-30-remove-legacy-hierarchy-comparisons.md) — Checkpoint the current implementation, then remove historical candidate execution and dedicated YAMLs while preserving retained forecasts
 - [2026-10-30 standard hierarchy comparison](2026-10-30-standard-hierarchy-comparison.md) — Three default candidates with a pure five-cycle moving average and explicit historical reproduction mode
 - [2026-10-30 remote main update](2026-10-30-remote-main-update.md) — Fast-forward to remote main, preserve combined forecasting and hierarchy work, and follow relocated backtest provenance helpers

@@ -1,4 +1,4 @@
-"""Compare configurable level hierarchies without changing existing level or shape pipelines."""
+"""Forecast hierarchical levels and compare distribution, reconciliation and baseline models."""
 
 from dataclasses import dataclass, field
 
@@ -30,6 +30,31 @@ def _baselines(train: pd.DataFrame, target: pd.DataFrame, result: HierarchyResul
     )
 
 
+def _learned_shares(train: pd.DataFrame, target: pd.DataFrame, config: HierarchySettings):
+    historical = historical_shares(
+        train, target, config.share_window, config.learning.city_prior_cycles
+    )
+    scores, fitted = learned_values(train, target, config.learning, "share", historical)
+    return normalize_scores(target, scores), fitted
+
+
+def forecast_distribution(history, query, config: HierarchySettings) -> pd.Series:
+    """Run only ETS and learned shares, using the same distribution as the backtest."""
+    _validate_query(query, config.levels)
+    _validate_history(history, query["opening_date"].min())
+    train, target = training_and_query(history, query)
+    root = config.levels[0]
+    values, _ = ets_total(train[train.level.eq(root)], target[target.level.eq(root)], config)
+    shares = {}
+    for level in config.levels[1:]:
+        shares[level], _ = _learned_shares(
+            train[train.level.eq(level)], target[target.level.eq(level)], config
+        )
+    predicted = distribute(target, values, shares, config.levels)
+    assert_coherent(target, predicted, config.levels[-1])
+    return predicted
+
+
 def _learned_predictions(
     train: pd.DataFrame, target: pd.DataFrame, config: HierarchySettings, result: HierarchyResult
 ) -> None:
@@ -42,9 +67,7 @@ def _learned_predictions(
     shares = {}
     for level in config.levels[1:]:
         t, q = train[train.level.eq(level)], target[target.level.eq(level)]
-        historical = historical_shares(t, q, config.share_window, config.learning.city_prior_cycles)
-        scores, share_fit = learned_values(t, q, config.learning, "share", historical)
-        shares[level] = normalize_scores(q, scores)
+        shares[level], share_fit = _learned_shares(t, q, config)
         volumes, volume_fit = learned_values(
             t, q, config.learning, "volume", moving_average(t, q, config.share_window)
         )

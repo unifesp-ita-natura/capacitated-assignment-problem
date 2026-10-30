@@ -7,8 +7,8 @@ paths:
   results: results
 forecast:
   params:
-    model: naive
-    strategy: mean
+    model: hierarchical
+    city_grouping: sector  # management selects the management-city preset
 pipeline:
   base_csv: data/base_tratada_v2.csv
   history_cycles: 20

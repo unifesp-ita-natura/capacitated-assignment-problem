@@ -44,6 +44,25 @@ class LearningSettings(BaseModel):
     random_state: int = 42
 
 
+class HierarchyForecastParams(BaseModel):
+    """Use the lowest-MAE shared-distribution preset for the chosen city grouping."""
+
+    model_config = ConfigDict(extra="forbid")
+    model: Literal["hierarchical"] = "hierarchical"
+    city_grouping: Literal["sector", "management"] = "sector"
+    share_window: int = Field(default=5, ge=1)
+    learning: LearningSettings = Field(default_factory=LearningSettings)
+
+    @model_validator(mode="after")
+    def preset_features(self):
+        if "features" not in self.learning.model_fields_set:
+            blocks = ["calendar", "structure", "hierarchy", "intermittency", "city_recent_shares"]
+            if self.city_grouping == "sector":
+                blocks = ["history", *blocks]
+            self.learning = self.learning.model_copy(update={"features": blocks})
+        return self
+
+
 class HierarchySettings(BaseModel):
     """Choose the hierarchy and rolling-origin scope with a fixed five-cycle baseline."""
 

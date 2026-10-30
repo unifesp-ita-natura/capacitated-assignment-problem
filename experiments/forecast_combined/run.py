@@ -12,11 +12,14 @@ import pandas as pd
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from src.config.schema import ForecastParams, LightGBMParams, NaiveParams
+from src.config.schema import CombinedLevelParams, LightGBMParams
 from src.forecasting.combined import forecast_combined
 from src.forecasting.combined_validation import summarize_cities, validate_combined
 from src.forecasting.dataset import load_demand_base
 from src.forecasting.features import feature_columns
+from src.forecasting.hierarchy_config import HierarchyForecastParams
+from src.forecasting.hierarchy_features import feature_columns as hierarchy_feature_columns
+from src.forecasting.hierarchy_future import profile_settings
 from src.forecasting.shape_evaluation import ShapeCandidate
 from src.forecasting.shape_learning import BASE_FEATURES
 from src.persistence.provenance import code_provenance, package_version, save_manifest, sha256_file
@@ -38,7 +41,7 @@ class CombinedConfig(BaseModel):
     mode: Literal["forecast", "validate"] = "forecast"
     as_of: datetime | None = None
     history_cycles: int = Field(default=20, ge=1)
-    level: ForecastParams = Field(default_factory=lambda: NaiveParams(strategy="mean"))
+    level: CombinedLevelParams = Field(default_factory=HierarchyForecastParams)
     shape: ShapeCandidate = Field(
         default_factory=lambda: ShapeCandidate(name="sector", model="sector")
     )
@@ -79,6 +82,7 @@ def _manifest(config: CombinedConfig) -> dict:
         },
         "shape_features": _shape_features(config.shape),
         "level_features": _level_features(config.level),
+        "hierarchy_settings": _hierarchy_settings(config),
         "scenario_inputs": ["opening_date", "window_start", "cycle_days"],
         "formula": "items_pred = level_pred * share_pred",
         "target_keys": [
@@ -93,6 +97,13 @@ def _manifest(config: CombinedConfig) -> dict:
     }
 
 
+def _hierarchy_settings(config: CombinedConfig) -> dict | None:
+    """Save the effective hierarchy preset alongside the original configuration."""
+    if isinstance(config.level, HierarchyForecastParams):
+        return profile_settings(config.level, config.history_cycles).model_dump(mode="json")
+    return None
+
+
 def _shape_features(params: ShapeCandidate) -> list[str]:
     """Describe only predictors used by the selected shape family."""
     features = {
@@ -103,8 +114,10 @@ def _shape_features(params: ShapeCandidate) -> list[str]:
     return features[params.model]
 
 
-def _level_features(params: ForecastParams) -> list[str]:
+def _level_features(params: CombinedLevelParams) -> list[str]:
     """Record the effective feature list of a learned level candidate."""
+    if isinstance(params, HierarchyForecastParams):
+        return hierarchy_feature_columns(params.learning.features)
     if isinstance(params, LightGBMParams):
         return feature_columns(
             params.lags, params.rolling_windows, params.companion_lags, params.categorical_features
