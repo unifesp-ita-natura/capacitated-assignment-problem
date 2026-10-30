@@ -4,7 +4,6 @@ settings:
   history_cycles: 20
   first_target_cycle: "202604"
   last_target_cycle: "202612"
-  baseline_windows: [5]
   share_window: 5
   learning:
     features: [history, calendar, structure, hierarchy, intermittency, city_recent_shares]

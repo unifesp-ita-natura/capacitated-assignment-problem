@@ -10,6 +10,7 @@ LEVEL_KEYS = {
     "sector": ["cd_setor"],
     "city": ["cd_setor", "estado", "cidade"],
 }
+BASELINE_WINDOW = 5
 Level = Literal["region", "management", "sector", "city"]
 FeatureBlock = Literal[
     "history", "calendar", "structure", "hierarchy", "intermittency", "city_recent_shares"
@@ -25,10 +26,6 @@ def level_keys(level: str, city_grouping: str = "sector") -> list[str]:
 
 def _ordered_levels(levels: list[str]) -> list[str]:
     return [level for level in LEVEL_KEYS if level in levels]
-
-
-def _positive_windows(windows: list[int]) -> bool:
-    return bool(windows) and min(windows) > 0
 
 
 class LearningSettings(BaseModel):
@@ -48,14 +45,12 @@ class LearningSettings(BaseModel):
 
 
 class HierarchySettings(BaseModel):
-    """Choose the trained hierarchy, baselines and rolling-origin scope in one YAML."""
+    """Choose the hierarchy and rolling-origin scope with a fixed five-cycle baseline."""
 
     model_config = ConfigDict(extra="forbid")
     levels: list[Level] = Field(default_factory=lambda: list(LEVEL_KEYS))
     city_grouping: Literal["sector", "management"] = "sector"
-    history_cycles: int = Field(default=20, ge=3)
-    comparison: Literal["standard", "historical"] = "standard"
-    baseline_windows: list[int] = Field(default_factory=lambda: [5])
+    history_cycles: int = Field(default=20, ge=BASELINE_WINDOW)
     share_window: int = Field(default=5, ge=1)
     ets_alphas: list[float] = Field(default_factory=lambda: [0.05, 0.1, 0.2, 0.4, 0.8])
     learning: LearningSettings = Field(default_factory=LearningSettings)
@@ -70,22 +65,6 @@ class HierarchySettings(BaseModel):
         expected = _ordered_levels(self.levels)
         if self.levels != expected or len(self.levels) < 2 or self.levels[-1] != "city":
             raise ValueError("levels must be ordered, unique, end in city and include a parent")
-        return self
-
-    @model_validator(mode="after")
-    def valid_windows(self):
-        if not _positive_windows(self.baseline_windows):
-            raise ValueError("provide positive baseline_windows")
-        if max(self.baseline_windows) > self.history_cycles:
-            raise ValueError("baseline windows cannot exceed history_cycles")
-        if len(set(self.baseline_windows)) != len(self.baseline_windows):
-            raise ValueError("baseline windows must be unique")
-        return self
-
-    @model_validator(mode="after")
-    def valid_comparison(self):
-        if self.comparison == "standard" and self.baseline_windows != [5]:
-            raise ValueError("standard comparison requires baseline_windows: [5]")
         return self
 
     @model_validator(mode="after")

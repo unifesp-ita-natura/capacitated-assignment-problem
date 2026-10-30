@@ -1,7 +1,6 @@
 settings:
   levels: [region, management, sector, city]
   history_cycles: 20
-  baseline_windows: [5]
   share_window: 5
   max_origins: 2
   learning:

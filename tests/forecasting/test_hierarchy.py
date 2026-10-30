@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from experiments.hierarchical_level.run import load_scenarios, run
 from src.forecasting.dataset import build_item_panel, cycle_calendar
 from src.forecasting.hierarchy import forecast_hierarchy
-from src.forecasting.hierarchy_config import HierarchySettings
+from src.forecasting.hierarchy_config import BASELINE_WINDOW, HierarchySettings
 from src.forecasting.hierarchy_data import aggregate_nodes
 from src.forecasting.hierarchy_evaluation import evaluate_hierarchy, origin_plan, summarize
 from src.forecasting.hierarchy_features import BLOCKS, build_features, feature_columns
@@ -66,9 +66,7 @@ def _rows(cycle, opening, sector, region, management, state, multiplier):
 @pytest.fixture
 def settings():
     return HierarchySettings(
-        comparison="historical",
-        history_cycles=3,
-        baseline_windows=[2],
+        history_cycles=5,
         max_origins=1,
         learning={"n_estimators": 5, "min_child_samples": 1, "num_leaves": 3},
     )
@@ -151,7 +149,7 @@ def test_origin_policy_uses_closed_cycles(raw, settings):
     for origin in origin_plan(calendar, settings):
         closes = calendar.set_index("CICLOS").loc[origin["training_cycles"], "closing_date"]
         assert closes.lt(origin["as_of"]).all()
-        assert len(closes) == 3
+        assert len(closes) == settings.history_cycles
 
 
 def test_distribution_and_reconciliation_are_distinct_and_coherent():
@@ -180,10 +178,7 @@ def test_real_hybrid_models_and_unknown_city_coverage(raw, settings):
     result = evaluate_hierarchy(raw, settings)
     names = set(result.comparison.candidate)
     assert names == {
-        "direct_ma_2",
-        "distribution_ma_2",
-        "reconciliation_ma_2",
-        "direct_ets_lgbm",
+        "direct_ma_5",
         "distribution_ets_lgbm",
         "reconciliation_ets_lgbm",
     }
@@ -234,28 +229,10 @@ def test_configuration_validation():
         HierarchySettings(baseline_windows=[5, 5])
     with pytest.raises(ValidationError):
         HierarchySettings(ets_alphas=[0])
-    with pytest.raises(ValidationError, match="standard comparison"):
-        HierarchySettings(baseline_windows=[3, 5])
-
-
-@pytest.mark.parametrize("city_grouping", ["sector", "management"])
-def test_standard_candidates_preserve_historical_predictions(raw, settings, city_grouping):
-    config = settings.model_copy(
-        update={"comparison": "standard", "history_cycles": 5, "baseline_windows": [5]}
-    )
-    if city_grouping == "management":
-        config = config.model_copy(
-            update={"levels": ["region", "management", "city"], "city_grouping": city_grouping}
-        )
-    standard = evaluate_hierarchy(raw, config)
-    historical = evaluate_hierarchy(raw, config.model_copy(update={"comparison": "historical"}))
-    candidates = {"direct_ma_5", "distribution_ets_lgbm", "reconciliation_ets_lgbm"}
-    assert set(standard.comparison.candidate) == candidates
-    expected = historical.predictions[historical.predictions.candidate.isin(candidates)]
-    pd.testing.assert_frame_equal(standard.predictions, expected.reset_index(drop=True))
-    metrics = historical.comparison[historical.comparison.candidate.isin(candidates)]
-    pd.testing.assert_frame_equal(standard.comparison, metrics.reset_index(drop=True))
-    assert "reconciliation_ma_5" not in {fit.get("candidate") for fit in standard.fitted}
+    with pytest.raises(ValidationError):
+        HierarchySettings(comparison="historical")
+    with pytest.raises(ValidationError):
+        HierarchySettings(history_cycles=4)
 
 
 def test_standard_moving_average_does_not_distribute_or_reconcile(raw, monkeypatch):
@@ -270,7 +247,7 @@ def test_standard_moving_average_does_not_distribute_or_reconcile(raw, monkeypat
     history = nodes[nodes.CICLOS.lt("202609")]
     target = nodes[nodes.CICLOS.eq("202609")]
     result = HierarchyResult()
-    _baselines(history, target, HierarchySettings(), result)
+    _baselines(history, target, result)
     expected = history.sort_values("opening_date").groupby("node").tail(5)
     means = expected.groupby("node")["items"].mean()
     np.testing.assert_allclose(result.predictions["direct_ma_5"], target.node.map(means).fillna(0))
@@ -283,33 +260,30 @@ def test_standard_yaml_settings(filename):
     root = Path(__file__).resolve().parents[2]
     path = root / "configs" / "experiments" / "hierarchical_level" / filename
     config = HierarchySettings.model_validate(yaml.safe_load(path.read_text())["settings"])
-    assert config.comparison == "standard"
     assert config.history_cycles == 20
-    assert config.baseline_windows == [5]
+    assert BASELINE_WINDOW == 5
 
 
-def test_ablation_accepts_old_historical_settings_and_rejects_standard_reference(settings):
+def test_ablation_reference_ignores_retired_baselines_but_checks_training(settings):
     from experiments.hierarchical_level.ablation import _check_reference_settings
 
     original = {
         "data": {"sha256": "same"},
         "status": "complete",
-        "effective_settings": settings.model_dump(exclude={"comparison"}),
+        "effective_settings": {
+            **settings.model_dump(),
+            "comparison": "historical",
+            "baseline_windows": [3, 5],
+        },
     }
     current = {**original, "effective_settings": settings.model_dump()}
     _check_reference_settings(original, current)
-    current["effective_settings"] = {**settings.model_dump(), "comparison": "standard"}
+    current["effective_settings"] = {**settings.model_dump(), "history_cycles": 6}
     with pytest.raises(ValueError, match="settings differ"):
         _check_reference_settings(original, current)
 
 
-@pytest.mark.parametrize("comparison", ["standard", "historical"])
-def test_archives_complete_inputs_and_refuses_overwrite(tmp_path, raw, settings, comparison):
-    updates = {
-        "standard": {"comparison": "standard", "history_cycles": 5, "baseline_windows": [5]},
-        "historical": {},
-    }
-    settings = settings.model_copy(update=updates[comparison])
+def test_archives_complete_inputs_and_refuses_overwrite(tmp_path, raw, settings):
     source = tmp_path / "demand.csv"
     raw.to_csv(source, index=False)
     folder = tmp_path / "result"
@@ -338,7 +312,6 @@ def test_archives_complete_inputs_and_refuses_overwrite(tmp_path, raw, settings,
     } <= {p.name for p in folder.iterdir()}
     manifest = json.loads((folder / "manifest.json").read_text())
     assert manifest["status"] == "complete"
-    assert manifest["effective_settings"]["comparison"] == comparison
     assert "actual > 0" in manifest["scoring"]
     with pytest.raises(FileExistsError):
         run(config)

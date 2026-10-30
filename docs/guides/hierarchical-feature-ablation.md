@@ -19,13 +19,12 @@ treino e os mesmos nove alvos 202604 a 202612. `paths.reference_run` aponta
 para uma execução completa com a mesma base e configuração. `paths.run_dir`
 precisa ser uma pasta nova.
 
-Os YAMLs de ablação existentes usam `comparison: historical` para conferir
-as três saídas aprendidas contra os arquivos de referência antigos.
-Manifestos anteriores ao campo `comparison` são interpretados como históricos
-somente nessa verificação. Uma referência histórica não é aceita como se
-fosse uma execução padrão. O backtest usual agora compara apenas média móvel
-pura de cinco ciclos, compartilhamento e reconciliação; essa mudança não
-altera os números dos arquivos de referência.
+O executor compara apenas as duas saídas aprendidas: compartilhamento e
+reconciliação. Pode consultar uma referência antiga, ignorando somente os
+campos aposentados `comparison` e `baseline_windows`, que não entram no
+treino desses modelos. Base, histórico, features, hiperparâmetros e demais
+configurações continuam sendo conferidos estritamente. Não se executam
+baselines antigos, nem se alteram os arquivos da referência.
 
 O executor reproduz o modelo completo e verifica MAE, WMAPE, Bias, pontos,
 falta de cobertura e folds contra a referência. Compartilha as tabelas de
@@ -86,3 +85,5 @@ variável nem demonstra que todas as suas combinações terão o mesmo resultado
 Os resultados da primeira execução estão no
 [relatório de análise dos blocos](../reports/management-city-feature-ablation.md).
 A rodada concluída usa 20 ciclos; a execução adicional com 10 não foi autorizada.
+Seu YAML antigo está preservado no commit `69b9ece`, junto do modo histórico
+que existia à época dos estudos.

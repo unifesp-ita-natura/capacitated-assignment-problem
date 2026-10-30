@@ -23,10 +23,9 @@ continua sendo de 20 ciclos fechados. Para avaliar todas as origens:
 .\.venv\Scripts\python.exe -m experiments.hierarchical_level.run configs/experiments/hierarchical_level/full.yaml
 ```
 
-Para reproduzir o conjunto antigo de candidatos e janelas 3, 5, 10 e 20,
-use `configs/experiments/hierarchical_level/historical/full.yaml`.
-Os YAMLs em `historical/` declaram `comparison: historical`; o padrão é
-`comparison: standard`. Nenhum resultado já arquivado foi alterado.
+A média móvel é fixa em cinco registros: não há seleção de janela nem
+modo histórico no código atual. Resultados e parâmetros antigos continuam
+arquivados; o código anterior à limpeza está no commit `69b9ece`.
 Escolha uma pasta de saída nova em qualquer repetição.
 
 Em um ambiente novo, instale Python 3.13 e as dependências do projeto, por
@@ -47,9 +46,7 @@ estado e cidade.
 |---|---|
 | `levels` | Níveis em ordem, terminando em `city`; é possível começar em `management` ou `sector`, ou pular um nível intermediário |
 | `city_grouping` | `sector` por padrão; `management` agrega a cidade na gerência e exige gerência imediatamente antes da cidade |
-| `history_cycles` | Quantidade de ciclos globais completos e fechados usados no treino |
-| `comparison` | `standard` por padrão; `historical` permite reproduzir os candidatos antigos |
-| `baseline_windows` | `[5]` obrigatório no padrão; no modo histórico aceita outras janelas positivas que não excedam o treino |
+| `history_cycles` | Quantidade de ciclos globais completos e fechados usados no treino; mínimo de cinco, padrão de 20 |
 | `share_window` | Janela recente das participações históricas usadas como referência dos modelos |
 | `ets_alphas` | Pesos de suavização candidatos; seleção apenas no treino |
 | `learning.features` | Blocos de features habilitados no LightGBM |
@@ -67,27 +64,22 @@ Escreva os limites de ciclo entre aspas no YAML, por exemplo
 
 ## Candidatos e baselines
 
-No padrão, somente `direct_ma_5`, `distribution_ets_lgbm` e
-`reconciliation_ets_lgbm` entram nas previsões e métricas. A média móvel
-é calculada diretamente em cada nó, sem distribuição nem reconciliação.
-Não se ajustam modelos nem se executa WLS para baselines descartados.
+Somente os três candidatos abaixo entram nas previsões e métricas:
 
-O catálogo abaixo descreve o modo histórico. Para cada janela K:
-
-- `direct_ma_K`: média dos últimos K registros disponíveis em cada nó;
-  pode ser incoerente entre níveis quando o cadastro/histórico é desigual.
-- `distribution_ma_K`: média móvel no nível inicial, distribuída por razões
-  de somas históricas entre filhos e pais, suavizadas e normalizadas.
-- `reconciliation_ma_K`: médias móveis de todos os níveis ajustadas em conjunto.
-
-Modelos híbridos:
-
-- `direct_ets_lgbm`: ETS no nível inicial e LightGBM de volume nos internos,
-  antes de impor coerência. Serve como diagnóstico somente no modo histórico.
+- `direct_ma_5`: média dos últimos cinco registros disponíveis de cada nó,
+  incluindo zeros. Sem distribuição ou reconciliação; pode não somar entre
+  níveis quando o cadastro/histórico é desigual. Séries curtas usam os
+  registros disponíveis, sem inventar observações.
 - `distribution_ets_lgbm`: ETS no nível inicial; LightGBM estima participações
   nos internos. Cada grupo de irmãos soma 100%, preservando o total superior.
 - `reconciliation_ets_lgbm`: ETS no nível inicial e LightGBM de volume nos
   internos; todos os níveis são ajustados conjuntamente.
+
+Os campos antigos `comparison` e `baseline_windows` não são mais aceitos
+nos YAMLs de execução. A janela fixa aparece como `baseline_window: 5` em
+`features.json`. Médias móveis usadas como features ou como regularização
+dos modelos continuam presentes; são entradas diferentes do candidato
+de referência.
 
 O ETS é simples, sem componente sazonal anual. Seu alpha e o expoente de
 duração (0, 0,5 ou 1) são escolhidos pelos erros de suavização do histórico.
@@ -267,14 +259,16 @@ Nas novas execuções, `predictions.csv` mantém todos os pontos e acrescenta
 `included_in_primary_metrics`, indicando a inclusão na análise principal.
 O manifesto registra a definição de atividade e os dois escopos de avaliação.
 
-Os testes com todas as janelas são exploratórios. Não há seleção automática
+Os resultados históricos com várias janelas são exploratórios. Não há seleção automática
 de vencedor nem ajuste de hiperparâmetros no teste. Para uma avaliação final,
 congele parâmetros após o desenvolvimento e reserve origens posteriores em
 outra execução com limites de ciclo explícitos.
 
 ## Execução de referência de 24/10/2026
 
-Foi executado `full.yaml`, com os 20 ciclos fechados anteriores disponíveis,
+Esta seção descreve a versão anterior à limpeza, preservada no commit
+`69b9ece`; não é o conjunto de candidatos executado atualmente.
+Foi executado o `full.yaml` daquela versão, com os 20 ciclos fechados anteriores disponíveis,
 quatro janelas de média móvel e os cinco blocos originais de features
 (`history`, `calendar`, `structure`, `hierarchy`, `intermittency`).
 Foram nove origens, de 202604 a 202612, com 15 candidatos e 1.592.745 linhas de

@@ -7,9 +7,10 @@ This runner does not change the existing level or shape executors.
 The standard comparison emits exactly `direct_ma_5`,
 `distribution_ets_lgbm` and `reconciliation_ets_lgbm`, with 20 closed training
 cycles in the supplied standard configurations. The moving average is never
-distributed or reconciled. Archived configurations under
-`configs/experiments/hierarchical_level/historical/` explicitly opt into
-`comparison: historical` to reproduce the previous full candidate set.
+distributed or reconciled. Legacy baseline execution and its dedicated
+configurations were removed after checkpoint commit `69b9ece`. Previous
+results/configuration snapshots remain archived; the old code is in Git.
+`comparison` and `baseline_windows` are no longer execution settings.
 
 See [the Portuguese guide](../../docs/guides/hierarchical-level.md) for setup,
 YAML settings, feature definitions, time cutoffs, scenario inputs and results.

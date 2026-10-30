@@ -15,7 +15,6 @@ settings:
   levels: [region, management, city]
   city_grouping: management
   history_cycles: 20
-  baseline_windows: [5]
 ```
 
 `city_grouping: sector` continua sendo o padrão das configurações anteriores.
@@ -49,10 +48,10 @@ diretamente na gerência; essa é outra configuração, não o teste descrito aq
 - Referência padrão: média móvel pura de cinco observações em cada nó,
   sem distribuição por participações e sem reconciliação.
 
-O padrão gera somente esses três candidatos. Para reproduzir a comparação
-antiga, use `historical/management_city.yaml`, que declara
-`comparison: historical` e mantém as janelas 3, 5, 10 e 20 e os diagnósticos.
-As regras de treino, features e avaliação permanecem iguais.
+O fluxo gera somente esses três candidatos. As regras de treino, features
+e avaliação permanecem iguais. Não há modo histórico nem parâmetro para
+alterar a janela da média móvel. Resultados antigos permanecem arquivados,
+e sua implementação pode ser consultada no commit `69b9ece`.
 
 A regularização de cidades com poucas compras continua presente. `share_1`,
 `share_2`, `share_3`, `share_5` e `share_10` agora medem participação da cidade
@@ -97,38 +96,19 @@ Veja também [o guia da hierarquia](hierarchical-level.md).
 Para testar se algum bloco de features prejudica os modelos, veja o
 [guia de remoção controlada de features](hierarchical-feature-ablation.md).
 
-## Comparar treinamento com 10 e 20 ciclos
+## Resultados históricos
 
-O teste histórico de 20 ciclos é definido por `historical/management_city.yaml`.
-Para manter os
-mesmos nove alvos e usar somente os dez últimos ciclos fechados em cada treino:
-
-```powershell
-.\.venv\Scripts\python.exe -m experiments.hierarchical_level.run configs/experiments/hierarchical_level/management_city_history10.yaml
-```
-
-Os dois YAMLs históricos mantêm os modelos, features e demais parâmetros. Baselines
-nessa execução têm janelas 3, 5 e 10; a média de 20 vem da execução com
-histórico de 20. Não se altera o histórico do modelo de dez para acomodar
-a média de vinte. Em uma repetição, use uma pasta de saída nova.
-
-Para estudar apenas o tamanho do treino, compare as mesmas identidades com
-demanda positiva e conte a falta de previsão como erro em ambas as execuções.
-`direct_ma_K` usa a média das últimas K observações disponíveis de cada nó.
-`distribution_ma_K` usa a média de K no nível inicial e distribui por razões
-históricas suavizadas; o componente de longo prazo dessas participações usa
-todo o histórico disponível. Assim, MA10 distribuída com treino de 20 não
-é necessariamente igual à MA10 distribuída com treino de 10. A tabela de
-comparação deve identificar tanto o histórico disponível quanto a janela.
-
-O teste foi concluído em 27/10/2026: dez ciclos pioraram o MAE de
-gerência-cidade nas duas abordagens. Veja o
+A comparação antiga entre dez e vinte ciclos de treino foi concluída em
+27/10/2026. Os YAMLs exclusivos desse estudo foram retirados do fluxo atual;
+os parâmetros salvos com as execuções e o código do commit `69b9ece`
+continuam preservados. Dez ciclos pioraram o MAE nas duas abordagens. Veja o
 [relatório de comparação dos históricos](../reports/management-city-history-length.md)
 para métricas, baselines e conferência da população avaliada.
 
-## Resultados da primeira execução
+### Primeira execução
 
-Os nove ciclos foram executados em 27/10/2026. Na cidade ativa, compartilhamento
+Os nove ciclos foram executados com o catálogo antigo em 27/10/2026.
+Na cidade ativa, compartilhamento
 teve MAE 230,74, WMAPE 49,79% e Bias −17,89%; reconciliação teve MAE 235,01,
 WMAPE 50,35% e Bias −16,36%. A melhor média móvel por WMAPE foi MA10 com
 distribuição histórica: MAE 233,22 e WMAPE 49,97%.

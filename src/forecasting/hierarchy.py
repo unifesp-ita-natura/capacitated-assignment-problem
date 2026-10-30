@@ -2,10 +2,9 @@
 
 from dataclasses import dataclass, field
 
-import numpy as np
 import pandas as pd
 
-from src.forecasting.hierarchy_config import HierarchySettings
+from src.forecasting.hierarchy_config import BASELINE_WINDOW, HierarchySettings
 from src.forecasting.hierarchy_features import training_and_query
 from src.forecasting.hierarchy_models import (
     ets_total,
@@ -25,48 +24,10 @@ class HierarchyResult:
     fitted: list[dict] = field(default_factory=list)
 
 
-def _historical_weights(
-    train: pd.DataFrame, target: pd.DataFrame, config: HierarchySettings, window: int
-) -> dict[str, np.ndarray]:
-    return {
-        level: historical_shares(
-            train[train["level"].eq(level)],
-            target[target["level"].eq(level)],
-            window,
-            config.learning.city_prior_cycles,
-        )
-        for level in config.levels[1:]
-    }
-
-
-def _baselines(
-    train: pd.DataFrame, target: pd.DataFrame, config: HierarchySettings, result: HierarchyResult
-) -> None:
-    if config.comparison == "historical":
-        _historical_baselines(train, target, config, result)
-        return
-    result.predictions["direct_ma_5"] = pd.Series(
-        moving_average(train, target, 5), index=target["node"]
+def _baselines(train: pd.DataFrame, target: pd.DataFrame, result: HierarchyResult) -> None:
+    result.predictions[f"direct_ma_{BASELINE_WINDOW}"] = pd.Series(
+        moving_average(train, target, BASELINE_WINDOW), index=target["node"]
     )
-
-
-def _historical_baselines(
-    train: pd.DataFrame, target: pd.DataFrame, config: HierarchySettings, result: HierarchyResult
-) -> None:
-    root = target["level"].eq(config.levels[0])
-    for window in config.baseline_windows:
-        base = pd.Series(moving_average(train, target, window), index=target["node"])
-        result.predictions[f"direct_ma_{window}"] = base
-        shares = _historical_weights(train, target, config, window)
-        distributed = distribute(
-            target, base.reindex(target.loc[root, "node"]).to_numpy(), shares, config.levels
-        )
-        result.predictions[f"distribution_ma_{window}"] = distributed
-        reconciled, fitted = reconcile(
-            train, target, base, config.levels[-1], config.reconciliation_max_iter
-        )
-        result.predictions[f"reconciliation_ma_{window}"] = reconciled
-        result.fitted.append({"candidate": f"reconciliation_ma_{window}", **fitted})
 
 
 def _learned_predictions(
@@ -89,8 +50,6 @@ def _learned_predictions(
         )
         base = pd.concat([base, pd.Series(volumes, index=q["node"])])
         result.fitted.extend([{**fit, "level": level} for fit in [share_fit, volume_fit]])
-    if config.comparison == "historical":
-        result.predictions["direct_ets_lgbm"] = base
     result.predictions["distribution_ets_lgbm"] = distribute(
         target, root_values, shares, config.levels
     )
@@ -109,7 +68,7 @@ def forecast_hierarchy(
     _validate_history(history, query["opening_date"].min())
     train, target = training_and_query(history, query)
     result = HierarchyResult()
-    _baselines(train, target, config, result)
+    _baselines(train, target, result)
     _learned_predictions(train, target, config, result)
     for name, predictions in result.predictions.items():
         if not name.startswith("direct_"):

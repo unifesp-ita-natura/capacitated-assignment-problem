@@ -209,11 +209,19 @@ def _check_reference(
 def _check_reference_settings(original: dict, current: dict) -> None:
     if original["data"]["sha256"] != current["data"]["sha256"]:
         raise ValueError("reference data hash differs")
-    original_settings = {"comparison": "historical", **original["effective_settings"]}
-    if original_settings != current["effective_settings"]:
+    if _model_settings(original) != _model_settings(current):
         raise ValueError("full-model settings differ from the archived reference")
     if original["status"] != "complete":
         raise ValueError("reference run is incomplete")
+
+
+def _model_settings(record: dict) -> dict:
+    """Ignore retired baseline-only options when checking learned-model references."""
+    return {
+        key: value
+        for key, value in record["effective_settings"].items()
+        if key not in {"comparison", "baseline_windows"}
+    }
 
 
 def _save_analysis(directory: Path, comparison: pd.DataFrame, cycles: pd.DataFrame) -> None:

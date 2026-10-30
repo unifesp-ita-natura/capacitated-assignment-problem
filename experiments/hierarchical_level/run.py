@@ -11,7 +11,7 @@ import yaml
 
 from src.forecasting.dataset import cycle_calendar, load_demand_base
 from src.forecasting.harness import _now, update_record
-from src.forecasting.hierarchy_config import HierarchySettings, level_keys
+from src.forecasting.hierarchy_config import BASELINE_WINDOW, HierarchySettings, level_keys
 from src.forecasting.hierarchy_evaluation import evaluate_hierarchy
 from src.forecasting.hierarchy_features import BLOCKS, feature_columns
 from src.persistence.provenance import git_output as _git_output
@@ -86,7 +86,8 @@ def _write_features(directory: Path, settings: HierarchySettings) -> None:
         "available_blocks": BLOCKS,
         "selected_features": feature_columns(settings.learning.features),
         "ets_inputs": ["items", "cycle_days"],
-        "baseline_inputs": ["items", "parent_actual (historical only)"],
+        "baseline_inputs": ["items"],
+        "baseline_window": BASELINE_WINDOW,
         "model_layout": {
             "root": "ETS with shared alpha and duration exponent",
             "distribution_internal": "one pooled LightGBM regression on shares per level",
