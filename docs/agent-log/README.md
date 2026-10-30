@@ -5,6 +5,14 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-10-30 standard hierarchy comparison](2026-10-30-standard-hierarchy-comparison.md) — Three default candidates with a pure five-cycle moving average and explicit historical reproduction mode
+- [2026-10-30 remote main update](2026-10-30-remote-main-update.md) — Fast-forward to remote main, preserve combined forecasting and hierarchy work, and follow relocated backtest provenance helpers
+- [2026-10-27 hierarchy feature ablation](2026-10-27-hierarchy-feature-ablation.md) — Controlled feature-block removal for shared distribution and reconciliation with reproduced reference forecasts
+- [2026-10-27 management city history length](2026-10-27-management-city-history-length.md) — Controlled 10-versus-20 closed-cycle training comparison with explicit moving-average windows
+- [2026-10-27 management city hierarchy](2026-10-27-management-city-hierarchy.md) — Configurable management-city aggregation with shared distribution, reconciliation and moving-average controls
+- [2026-10-24 active city evaluation](2026-10-24-active-city-evaluation.md) — Primary city metrics conditional on positive demand, preserved full-point diagnostics and unchanged forecasts
+- [2026-10-24 recent city shares](2026-10-24-city-recent-shares.md) — Optional city share features over 1, 2 and 3 closed records with a controlled hierarchy backtest comparison
+- [2026-10-24 hierarchical level](2026-10-24-hierarchical-level.md) — Isolated ETS/LightGBM distribution and nonnegative WLS, moving-average baselines and strictly closed-cycle evaluation
 - [2026-10-18 end-to-end pipeline](2026-10-18-end-to-end-pipeline.md) — `src.main` runs raw CSV -> combined forecast -> mip/matheuristic/sa -> As-Is vs To-Be report; As-Is slots inferred from opening dates (approximation)
 - [2026-10-17 Relax-and-Fix + Fix-and-Optimize matheuristic](2026-10-17-relax-and-fix-matheuristic.md) — Windows of sector groups over the MIP, HiGHS and Gurobi; always feasible and within 0.08% of the optimum, slower than the MIP when it closes, but returns a feasible solution when the HiGHS MIP finds none (capacity-binding instances); persistent solver (3x), sector-slice windows and backtracking came from the failures
 - [2026-10-16 combined daily forecast](2026-10-16-combined-daily-forecast.md) — Predicted city-cycle level × sector daily shape, isolated opening scenarios and fixed-model daily replay
