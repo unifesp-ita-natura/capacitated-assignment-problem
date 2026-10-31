@@ -7,7 +7,7 @@ from typing import NamedTuple
 import numpy as np
 import pandas as pd
 
-from src.config.schema import ForecastParams
+from src.config.schema import CombinedLevelParams
 from src.forecasting.combined import forecast_combined
 from src.forecasting.combined_inputs import prepare_histories
 from src.forecasting.dataset import cycle_calendar
@@ -139,7 +139,7 @@ def validate_combined(
     raw: pd.DataFrame,
     cycles: list[str],
     history_cycles: int,
-    level_params: ForecastParams,
+    level_params: CombinedLevelParams,
     shape_params: ShapeCandidate,
 ) -> ValidationResult:
     """Evaluate explicit held-out cycles with one fixed pair of model configurations."""

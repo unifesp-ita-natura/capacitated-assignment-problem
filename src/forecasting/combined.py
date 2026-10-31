@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 import src.forecasting.candidates  # noqa: F401
-from src.config.schema import ForecastParams
+from src.config.schema import CombinedLevelParams
 from src.forecasting.combined_inputs import (
     WINDOW_KEYS,
     Histories,
@@ -17,6 +17,8 @@ from src.forecasting.combined_inputs import (
     validate_known_gaps,
     validate_path,
 )
+from src.forecasting.hierarchy_config import HierarchyForecastParams
+from src.forecasting.hierarchy_future import forecast_hierarchical_path
 from src.forecasting.model import REGISTRY, forecast
 from src.forecasting.shape_daily import predict_shape
 from src.forecasting.shape_evaluation import ShapeCandidate
@@ -114,16 +116,22 @@ def _validate_conservation(level: pd.DataFrame, daily: pd.DataFrame) -> None:
 def _forecast_path(
     history: Histories,
     windows: pd.DataFrame,
-    level_params: ForecastParams,
+    level_params: CombinedLevelParams,
     shape_params: ShapeCandidate,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Keep recursive level forecasts and daily curve normalization within one scenario path."""
     queries = _level_queries(history, windows)
-    level = forecast(REGISTRY.build(level_params), history.level, queries).rename(
-        columns={"items_pred": "level_pred"}
-    )
+    level = _forecast_level(history, queries, level_params)
     level["level_status"] = np.where(level["level_pred"].isna(), "missing", "ok")
     return level, _shape_forecast(history, windows, shape_params)
+
+
+def _forecast_level(history, queries, params):
+    if isinstance(params, HierarchyForecastParams):
+        return forecast_hierarchical_path(history.hierarchy, queries, params, len(history.cycles))
+    return forecast(REGISTRY.build(params), history.level, queries).rename(
+        columns={"items_pred": "level_pred"}
+    )
 
 
 def forecast_combined(
@@ -131,7 +139,7 @@ def forecast_combined(
     windows: pd.DataFrame,
     as_of,
     history_cycles: int,
-    level_params: ForecastParams,
+    level_params: CombinedLevelParams,
     shape_params: ShapeCandidate,
 ) -> CombinedResult:
     """Run point-in-time city-level and sector-shape models and return emitted daily forecasts."""

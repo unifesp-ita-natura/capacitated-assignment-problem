@@ -24,6 +24,7 @@ docs/paper/*.blg
 # result files
 results/
 figures/
+/outputs/
 
 # data files — ignore contents, keep the directory skeleton (.gitkeep, README)
 data/generated/*

@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 import pandas as pd
 
-from src.config.schema import ForecastParams, PipelineConfig
+from src.config.schema import CombinedLevelParams, PipelineConfig
 from src.forecasting.combined import CombinedResult, forecast_combined
 from src.forecasting.combined_inputs import prepare_histories
 from src.forecasting.combined_validation import recorded_windows, validate_combined
@@ -63,7 +63,7 @@ def plan_horizon(raw: pd.DataFrame, horizon_cycles: int, history_cycles: int) ->
 
 
 def forecast_horizon(
-    raw: pd.DataFrame, plan: HorizonPlan, config: PipelineConfig, level: ForecastParams
+    raw: pd.DataFrame, plan: HorizonPlan, config: PipelineConfig, level: CombinedLevelParams
 ) -> CombinedResult:
     """Daily item forecasts for the plan's target cycles, using only data before `as_of`."""
     return forecast_combined(
@@ -72,7 +72,7 @@ def forecast_horizon(
 
 
 def forecast_accuracy(
-    raw: pd.DataFrame, plan: HorizonPlan, config: PipelineConfig, level: ForecastParams
+    raw: pd.DataFrame, plan: HorizonPlan, config: PipelineConfig, level: CombinedLevelParams
 ) -> dict[str, float]:
     """Overall WMAPE, bias and volume coverage of the same models replayed on the target cycles."""
     result = validate_combined(
