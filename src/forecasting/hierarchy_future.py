@@ -90,6 +90,9 @@ def _predict_cycle(history, query, config):
 def forecast_hierarchical_path(history, queries, params, history_cycles):
     """Advance scenarios with predicted volumes only; never append actual future demand."""
     config = profile_settings(params, history_cycles)
+    missing = sorted(set(PANEL_COLUMNS) - set(history.columns))
+    if missing:
+        raise ValueError(f"missing columns in history: {missing}")
     panel = history[PANEL_COLUMNS].copy()
     queries = _organization(panel, queries)
     results = []

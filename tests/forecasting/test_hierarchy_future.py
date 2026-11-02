@@ -19,7 +19,11 @@ from src.forecasting.combined_inputs import prepare_histories, prepare_windows
 from src.forecasting.hierarchy import forecast_distribution, forecast_hierarchy
 from src.forecasting.hierarchy_config import HierarchyForecastParams
 from src.forecasting.hierarchy_data import aggregate_nodes
-from src.forecasting.hierarchy_future import _sector_shares, profile_settings
+from src.forecasting.hierarchy_future import (
+    _sector_shares,
+    forecast_hierarchical_path,
+    profile_settings,
+)
 from src.forecasting.shape_evaluation import ShapeCandidate
 
 
@@ -262,3 +266,9 @@ def test_subset_roster_does_not_inherit_other_sector_volume(raw, windows):
     pd.testing.assert_frame_equal(
         result.daily, predict(scaled, windows[windows.cd_setor.eq("01")]).daily
     )
+
+
+def test_forecast_hierarchical_path_names_missing_columns():
+    history = pd.DataFrame({"cd_setor": ["01"], "CICLOS": [1]})
+    with pytest.raises(ValueError, match=r"missing columns in history.*CD_GV.*CD_RE"):
+        forecast_hierarchical_path(history, history, HierarchyForecastParams(), 5)
