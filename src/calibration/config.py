@@ -8,6 +8,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from src.solver.heuristics.simulated_annealing import EnergyMode
+
 Status = Literal["exploratory", "in-progress", "confirmed", "superseded", "reference"]
 
 
@@ -53,13 +55,15 @@ class MipSettings(BaseModel):
 
     solver: str = "appsi_highs"
     mip_rel_gap: float = Field(default=0.01, ge=0)
+    extra_options: dict[str, float | int | str] = {}  # opções nativas extras (ex.: Threads)
 
 
 class BudgetSettings(BaseModel):
-    """Orçamento fixo de toda execução do SA e resolução do traço gravado."""
+    """Orçamento e fitness fixos de toda execução do SA, e resolução do traço gravado."""
 
     max_iterations: int = Field(default=200_000, gt=0)
     trace_every: int = Field(default=1_000, gt=0)
+    energy_mode: EnergyMode = "range"  # vale para toda execução, salvo se a config trouxer outro
 
 
 class ScreenPhase(BaseModel):

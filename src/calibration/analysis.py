@@ -18,6 +18,8 @@ SEARCH_PARAMS = (
     "sector_bias",
     "destination_bias",
     "penalty_coefficient",
+    "w_std",  # só nas execuções com energy_mode = peak_std_breach
+    "w_range",
 )
 MIP_COLUMNS = ("instance", "termination", "objective", "lower_bound", "upper_bound", "gap", "time")
 CALIBRATED_PARAMS = (
@@ -27,6 +29,8 @@ CALIBRATED_PARAMS = (
     "sector_bias",
     "destination_bias",
     "penalty_coefficient",
+    "w_std",
+    "w_range",
 )
 
 
@@ -75,7 +79,7 @@ def config_scores(runs: pd.DataFrame) -> pd.Series:
 
 def main_effects(runs: pd.DataFrame, params: Sequence[str], n_bins: int = 4) -> pd.DataFrame:
     """Gap médio por faixa (quantis) de cada parâmetro — o efeito principal de cada um."""
-    frames = [_effect_of(runs, param, n_bins) for param in params]
+    frames = [_effect_of(runs, param, n_bins) for param in _present(runs, params)]
     return pd.concat(frames, ignore_index=True)
 
 
@@ -137,8 +141,13 @@ def prepare_runs(
 
 def configs_from_runs(runs: pd.DataFrame, params: Sequence[str]) -> dict[str, dict[str, float]]:
     """Os valores de `params` de cada configuração, lidos da primeira execução dela."""
-    first = runs.drop_duplicates("config_id").set_index("config_id")[list(params)]
+    first = runs.drop_duplicates("config_id").set_index("config_id")[_present(runs, params)]
     return {config_id: dict(row) for config_id, row in first.iterrows()}
+
+
+def _present(runs: pd.DataFrame, params: Sequence[str]) -> list[str]:
+    """Os `params` que existem como coluna (CSVs anteriores aos pesos da fitness não têm `w_*`)."""
+    return [param for param in params if param in runs.columns]
 
 
 def history_from_runs(

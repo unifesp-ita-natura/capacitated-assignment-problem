@@ -73,6 +73,11 @@ locais no começo e convergir no fim.
 
 ## Parte 2 — O código, linha por linha
 
+> **Nota de versão (2026-10-19).** Os números de linha desta parte são os da versão
+> original do arquivo e não foram atualizados. Os trechos de código das seções 2.3, 2.7,
+> 2.9, 2.10 e 2.11 foram atualizados para o código atual; as mudanças (energia de pico e
+> desvio, avaliação incremental, ressincronização) estão explicadas na seção 2.13.
+
 ### 2.1 Arquitetura do arquivo
 
 O arquivo tem três camadas:
@@ -138,6 +143,10 @@ class AnnealingParams:
     sector_bias: float = 0.8  # beta
     destination_bias: float = 0.7  # gama
     penalty_coefficient: float = 1e6  # rho
+    energy_mode: EnergyMode = "range"  # termo de balanço da energia
+    w_peak: float = 1.0  # peso do pico z_max (só em "peak_std_breach")
+    w_std: float = 1.0  # peso do desvio-padrão (só em "peak_std_breach")
+    w_range: float = 0.0  # peso da amplitude (só em "peak_std_breach")
 ```
 
 **O que é `@dataclass`:** um *decorador* que gera automaticamente o construtor
@@ -158,6 +167,10 @@ Cada campo é um parâmetro da Seção 4.1 do PDF, com valor padrão:
 | `sector_bias = 0.8` | beta | prob. de mexer num setor de CD problemático |
 | `destination_bias = 0.7` | gama | prob. de mandar o setor pra combinação com folga |
 | `penalty_coefficient = 1e6` | rho | multiplicador das penalidades de inviabilidade |
+| `energy_mode = "range"` | — | `"range"`: energia = amplitude z_max − z_min (o objetivo do MIP). `"peak_std_breach"`: pico + desvio + amplitude ponderados (ver 2.13) |
+| `w_peak = 1.0` | — | peso do pico médio por ciclo (só em `peak_std_breach`) |
+| `w_std = 1.0` | — | peso do desvio-padrão médio por ciclo (só em `peak_std_breach`) |
+| `w_range = 0.0` | — | peso da amplitude (só em `peak_std_breach`) |
 
 O `100_000` é só `100000` — o `_` é separador de milhar, o Python ignora.
 
@@ -254,9 +267,16 @@ class _Evaluation:
     objective: float  # z_max - z_min
     capacity_penalty: float  # P_cap
     churn_penalty: float  # P_churn
-    energy: float  # objective + rho*(P_cap + P_churn)
+    energy: float  # termo de balanço + rho*(P_cap + P_churn)
     load_by_cd: np.ndarray  # (n_cds, n_dias) - guardado pra reaproveitar
+    daily_totals: np.ndarray  # (n_dias,) demanda total por dia - base da atualização incremental
+    n_changed: int  # setores fora da combinação As-Is
+    exact: bool = True  # False se veio da soma incremental (_evaluate_move)
 ```
+
+Os três últimos campos existem para a avaliação incremental (2.13): `daily_totals` e
+`n_changed` permitem atualizar a energia só com o setor movido, e `exact` marca se a
+avaliação foi calculada do zero (`True`) ou por soma incremental (`False`).
 
 Ao avaliar uma solução, calculamos `load_by_cd` (carga por CD por dia). A
 função de vizinhança **precisa** disso (para saber quais CDs estão estourados).
@@ -337,13 +357,12 @@ folga). `np.maximum(0.0, ...)` → zera as folgas, mantém só os estouros.
 #### _churn_penalty (linhas 130–133)
 
 ```python
-def _churn_penalty(problem, assignment):
-    changed = int(np.count_nonzero(assignment != problem.as_is))
+def _churn_penalty(problem, changed):
     return max(0.0, 2.0 * changed - 2.0 * problem.max_churn)
 ```
 
-`assignment != problem.as_is` → array de True/False (quais setores mudaram).
-`np.count_nonzero(...)` → número de setores realocados. A fórmula do PDF dá
+`changed` é o número de setores realocados (`np.count_nonzero(assignment !=
+problem.as_is)`, calculado em `_evaluate` ou mantido por `_evaluate_move`). A fórmula do PDF dá
 **2·changed** (cada mudança "conta 2": o setor perde 1 ponto na combinação
 antiga que abandonou e ganha 1 na nova). Então a penalidade é
 `max(0, 2·changed − 2M)`: só pune o que passa do teto M.
@@ -351,23 +370,37 @@ antiga que abandonou e ganha 1 na nova). Então a penalidade é
 #### _evaluate — junta tudo (linhas 136–145)
 
 ```python
-def _evaluate(problem, assignment, penalty_coefficient):
+def _evaluate(problem, assignment, params):
     load_by_sector = _daily_load_by_sector(problem, assignment)
     daily_totals = load_by_sector.sum(axis=0)  # soma sobre setores -> vetor de dias
     load_by_cd = _load_by_cd(problem, load_by_sector)
-    objective = float(daily_totals.max() - daily_totals.min())  # z_max - z_min
+    changed = int(np.count_nonzero(assignment != problem.as_is))
+    return _evaluation_from(problem, daily_totals, load_by_cd, changed, params)
+
+
+def _evaluation_from(problem, daily_totals, load_by_cd, changed, params):
+    objective = _balance_objective(problem, daily_totals)  # média por ciclo de (z_max - z_min)
     capacity_penalty = _capacity_penalty(problem, load_by_cd)
-    churn_penalty = _churn_penalty(problem, assignment)
-    energy = objective + penalty_coefficient * (capacity_penalty + churn_penalty)
-    return _Evaluation(objective, capacity_penalty, churn_penalty, energy, load_by_cd)
+    churn_penalty = _churn_penalty(problem, changed)
+    balance = _balance_term(problem, daily_totals, objective, params)
+    energy = balance + params.penalty_coefficient * (capacity_penalty + churn_penalty)
+    return _Evaluation(
+        objective, capacity_penalty, churn_penalty, energy, load_by_cd, daily_totals, changed
+    )
 ```
+
+A assinatura agora recebe `params` inteiro (e não só `penalty_coefficient`), porque o
+termo de balanço depende de `energy_mode` e dos pesos. O objetivo é a **média, entre os
+ciclos do horizonte, da amplitude diária de cada ciclo** (`days_by_cycle`), e não uma
+amplitude global. A parte comum (`_evaluation_from`) é compartilhada com a avaliação
+incremental.
 
 `daily_totals = load_by_sector.sum(axis=0)` — `axis=0` é o eixo dos setores,
 então isso soma "todos os setores", sobrando um valor por dia. z_max/z_min são
 o max/min disso.
 
-`energy = objetivo + rho·(penalidades)` — a função de energia E(X) da Seção
-4.1.3. Com rho = 1e6, qualquer inviabilidade domina completamente: uma solução
+`energy = balanço + rho·(penalidades)` — a função de energia E(X) da Seção
+4.1.3. Em `energy_mode="range"`, o balanço é o próprio objetivo (amplitude). Com rho = 1e6, qualquer inviabilidade domina completamente: uma solução
 com P_cap = 1 tem energia ≥ 1.000.000, então o SA sempre prefere qualquer
 solução viável.
 
@@ -457,14 +490,14 @@ def _neighbor(problem, assignment, evaluation, params, rng):
     violated = _violated_cds(problem, evaluation.load_by_cd)
     sector = _pick_sector(problem, violated, params, rng)
     destination = _pick_destination(problem, sector, assignment, evaluation.load_by_cd, params, rng)
-    neighbor = assignment.copy()
-    neighbor[sector] = destination
-    return neighbor
+    return sector, destination
 ```
 
-Junta os passos: acha CDs violados → escolhe setor → escolhe destino →
-**copia** a solução atual e muda **só uma posição**. `assignment.copy()` é
-essencial — sem isso, mexeríamos na solução atual em vez de criar uma nova.
+Junta os passos: acha CDs violados → escolhe setor → escolhe destino → devolve o
+**movimento** `(setor, destino)`. Quem monta o vizinho é o `_step`, que **copia** a
+solução atual e muda só essa posição (`candidate = state.current.copy()`). A cópia é
+essencial — sem ela, mexeríamos na solução atual em vez de criar uma nova. Devolver o
+movimento (e não o vizinho pronto) é o que permite avaliar só o setor movido (2.13).
 
 ### 2.11 O laço principal (Seções 4.1.3 e 4.1.4)
 
@@ -516,12 +549,14 @@ a nova energia é a melhor de todas → atualiza `best` (com `.copy()`, senão o
 
 ```python
 def _step(problem, state, params, rng, temperature):
-    candidate = _neighbor(problem, state.current, state.current_eval, params, rng)
-    candidate_eval = _evaluate(problem, candidate, params.penalty_coefficient)
+    sector, destination = _neighbor(problem, state.current, state.current_eval, params, rng)
+    candidate = state.current.copy()
+    candidate[sector] = destination
+    candidate_eval = _candidate_evaluation(problem, state, sector, candidate, params)
     delta = candidate_eval.energy - state.current_eval.energy
     if not _accepts(delta, temperature, rng):
         return state  # rejeitado: nada muda
-    return _accept(state, candidate, candidate_eval)  # aceito: avanca
+    return _accept(problem, state, candidate, candidate_eval, params)  # aceito: avanca
 ```
 
 Gera vizinho → avalia → calcula ΔE → Metropolis decide. Se rejeitou, devolve o
@@ -531,8 +566,8 @@ Gera vizinho → avalia → calcula ΔE → Metropolis decide. Se rejeitou, devo
 #### _anneal — o loop (linhas 252–269)
 
 ```python
-def _anneal(problem, params, rng):
-    initial = _evaluate(problem, problem.as_is, params.penalty_coefficient)
+def _anneal(problem, params, rng, callback=None):
+    initial = _evaluate(problem, problem.as_is, params)
     state = _SearchState(
         current=problem.as_is.copy(),
         current_eval=initial,
@@ -543,12 +578,15 @@ def _anneal(problem, params, rng):
     temperature = params.initial_temperature
     for iteration in range(params.max_iterations):
         if temperature <= params.min_temperature:
-            return _build_result(problem, state, iteration, "min_temperature")
+            return _build_result(problem, state, params, iteration, "min_temperature")
         state = _step(problem, state, params, rng, temperature)
+        if (iteration + 1) % RESYNC_EVERY == 0:
+            state = _resync(problem, state, params)  # recalcula do zero (ver 2.13)
+        _notify(callback, iteration, state, temperature)
         if _stagnated(state.energy_window, params):
-            return _build_result(problem, state, iteration + 1, "stagnation")
+            return _build_result(problem, state, params, iteration + 1, "stagnation")
         temperature *= params.cooling_rate  # T <- alfa*T
-    return _build_result(problem, state, params.max_iterations, "max_iterations")
+    return _build_result(problem, state, params, params.max_iterations, "max_iterations")
 ```
 
 - Começa **do As-Is** — tanto `current` quanto `best`. É isso que garante que o
@@ -564,11 +602,11 @@ def _anneal(problem, params, rng):
 #### _build_result (linhas 272–287)
 
 ```python
-def _build_result(problem, state, iterations, stop_reason):
+def _build_result(problem, state, params, iterations, stop_reason):
     assignment = {
         problem.sector_labels[i]: problem.combo_labels[int(d)] for i, d in enumerate(state.best)
     }
-    ev = state.best_eval
+    ev = _evaluate(problem, state.best, params)  # do zero: sem o erro da soma incremental
     return AnnealingResult(
         assignment=assignment,
         energy=ev.energy,
@@ -666,6 +704,63 @@ verdade), sobrescreve para os CDs que ele especificou. CDs não mencionados
 mantêm "aceita tudo".
 
 ---
+
+### 2.13 Energia de pico e desvio e avaliação incremental (2026-10-19)
+
+Duas mudanças independentes entraram no commit `ed87162`. Elas não devem ser confundidas
+ao interpretar resultados.
+
+**a) Avaliação incremental (só velocidade).** Antes, cada vizinho era avaliado do zero:
+reagregava os |S| setores em totais diários e em carga por CD. Agora `_evaluate_move`
+soma só a diferença de demanda do setor movido (`demand[s,:,novo] - demand[s,:,antigo]`,
+|A| valores) em `daily_totals` e na linha do CD dele, e atualiza `n_changed`. O custo por
+avaliação deixa de crescer com |S|. Para o erro de ponto flutuante não acumular:
+
+- `RESYNC_EVERY = 10_000`: a cada tantas iterações a energia corrente é recalculada do
+  zero (`_resync`).
+- `TIE_TOLERANCE = 1e-9`: se `|ΔE|` é menor que isso (relativo), a diferença vem do
+  arredondamento; as duas energias são refeitas do zero antes de decidir
+  (`_near_tie`, `_exact`), para a decisão e o consumo do `rng` serem os da avaliação
+  completa.
+- `_build_result` recalcula a energia final do zero.
+- Mover um setor para a combinação em que já está devolve a própria avaliação corrente.
+
+Por isso as trajetórias são idênticas às da avaliação completa. Isso é verificado em
+`tests/solver/heuristics/test_simulated_annealing_incremental.py`: comparação com
+`_evaluate` ao longo de 2.000 passos aleatórios e hash da sequência de atribuições
+(2 seeds, 2 modos) contra o gravado com o SA original.
+
+**b) Energia `peak_std_breach` (muda o que se otimiza).** Com `energy_mode="range"`
+(padrão) nada muda. Com `"peak_std_breach"` o balanço da energia é
+
+    w_peak · pico + w_std · desvio + w_range · amplitude
+
+cada termo médio entre os ciclos (`_per_cycle_mean` com `np.max`, `np.std` e `np.ptp`).
+Como o objetivo do MIP é a amplitude, o gap contra o MIP continua sendo medido pela
+amplitude, que essa energia não minimiza diretamente.
+
+**O que as rodadas mostraram** (`experiments/sa_calibration/outputs/`, fora do git;
+gap = amplitude contra o ótimo do Gurobi):
+
+| instância | `lhs_32` com energia de amplitude | `tuned_peak_std` | observação |
+|---|---|---|---|
+| `s400` | 4,6% (25 s) | 7,4% (45 s) | 200 mil iterações |
+| `s800` | 8,3% (27 s) | 11,0% (50 s) | 200 mil iterações |
+| `s800` | 4,2% (155 s) | 5,4% (286 s) | 1 milhão de iterações |
+
+Na comparação de 40 e 80 setores, aplicar à energia nova os parâmetros calibrados para a
+amplitude (`lhs_32_peak_std`) é muito pior: gap de 14,6% a 38,9% e 0/8 viáveis em
+`tight40`, porque o ρ calibrado (146) é pequeno para a escala da nova energia. Os
+parâmetros precisam ser calibrados para a energia usada (`tuned_peak_std`, ρ ≈ 311).
+
+Pontos de atenção:
+
+- A avaliação incremental supõe **um CD por setor**: `_evaluate_move` soma o delta em
+  `load_by_cd[sector_cd[sector]]`. Se a carga de um setor passar a ser dividida entre
+  vários CDs, esse delta tem de atualizar todos eles, e os hashes de referência dos
+  testes têm de ser regravados.
+- O plano `docs/plans/2026-10-19-correcoes-e-proximos-passos.md` recomenda manter a
+  energia de amplitude como padrão até haver uma métrica de negócio definida (item 12).
 
 ## Parte 3 — Trace passo a passo (com números)
 

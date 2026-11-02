@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from src.solver.inputs import ProblemInstance, ProjectedDemand
+from src.solver.inputs import ProblemInstance, ProjectedDemand, effective_cd_sector_shares
 
 
 @dataclass(frozen=True)
@@ -15,7 +15,8 @@ class AssignmentProblem:
 
     sectors: tuple[int, ...]
     cd_sectors: dict[int, tuple[int, ...]]  # CD -> setores atendidos (S_c, partição de S)
-    sector_cd: dict[int, int]  # setor -> CD que o atende
+    sector_cd: dict[int, int]  # setor -> CD principal (agrupa as janelas do Relax-and-Fix)
+    sector_shares: dict[int, dict[int, float]]  # setor -> {CD: fração da demanda atendida pelo CD}
     daily_capacity: Mapping[tuple[int, int], float]  # (CD, dia) -> Cap
     as_is: dict[int, int]  # setor -> combinação atual (As-Is)
     max_churn: float  # M: máximo de setores que podem mudar
@@ -39,12 +40,22 @@ def build_problem(instance: ProblemInstance) -> AssignmentProblem:
         sectors=sectors,
         cd_sectors=cd_sectors,
         sector_cd=sector_cd,
+        sector_shares=_sector_shares(instance),
         daily_capacity=instance.daily_capacity,
         as_is=dict(instance.current_assignment),
         max_churn=float(instance.max_churn),
         days_by_cycle={h: tuple(days) for h, days in instance.days_by_cycle.items()},
         demand_by_pair=_index_demand(instance.projected_demand),
     )
+
+
+def _sector_shares(instance: ProblemInstance) -> dict[int, dict[int, float]]:
+    """Setor -> {CD: share}, invertendo os shares efetivos da instância (partição rígida = 1.0)."""
+    sector_shares: dict[int, dict[int, float]] = defaultdict(dict)
+    for cd, shares in effective_cd_sector_shares(instance).items():
+        for sector, share in shares.items():
+            sector_shares[sector][cd] = share
+    return dict(sector_shares)
 
 
 def _sector_cd(sectors: Sequence[int], cd_sectors: Mapping[int, Sequence[int]]) -> dict[int, int]:
