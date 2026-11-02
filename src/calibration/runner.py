@@ -68,9 +68,11 @@ def resolve_params(config: Mapping[str, float], budget: BudgetSettings) -> Annea
 
     Sem `cooling_rate` explícito, o alfa é derivado de (T0, T_min) para gastar o
     orçamento inteiro (`cooling_rate_for_budget`): o resfriamento deixa de
-    controlar quantas iterações a busca tem.
+    controlar quantas iterações a busca tem. Sem `energy_mode` explícito, vale o
+    do orçamento.
     """
     values = dict(config)
+    values.setdefault("energy_mode", budget.energy_mode)
     values.setdefault(
         "cooling_rate",
         cooling_rate_for_budget(
@@ -109,6 +111,10 @@ def run_record(run: SARun) -> dict:
         "sector_bias": params.sector_bias,
         "destination_bias": params.destination_bias,
         "penalty_coefficient": params.penalty_coefficient,
+        "energy_mode": params.energy_mode,
+        "w_peak": params.w_peak,
+        "w_std": params.w_std,
+        "w_range": params.w_range,
         "scheduled_iterations": _scheduled_iterations(params),
         "objective": result.objective,
         "energy": result.energy,
