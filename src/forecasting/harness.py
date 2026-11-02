@@ -1,56 +1,67 @@
-"""Archive backtest inputs, effective candidate settings and execution metadata."""
+"""Shared harness for YAML-configured forecast-candidate comparisons.
+
+Runs every configured candidate through the rolling-origin evaluator and
+archives the backtest inputs, effective candidate settings and execution
+metadata, so a run directory is self-contained and reproducible. Used by
+`experiments/compare_forecasters` and `experiments/sector_vs_city`.
+"""
 
 from __future__ import annotations
 
-import hashlib
-import json
 import platform
 import shutil
-import subprocess
 from dataclasses import asdict
 from datetime import datetime
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+import yaml
 from pydantic import TypeAdapter
 
 from src.config.schema import ForecastParams, LightGBMParams
-from src.forecasting.evaluation import RollingOriginSplit
+from src.forecasting.dataset import DailyBase
+from src.forecasting.evaluation import EvaluationResult, RollingOriginSplit, evaluate
 from src.forecasting.features import feature_columns
 from src.forecasting.model import REGISTRY
+from src.persistence.provenance import code_provenance, package_version, save_manifest, sha256_file
 
 _ADAPTER = TypeAdapter(ForecastParams)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def load_config(path: str | Path) -> dict:
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def evaluate_all(
+    config: dict, panel: pd.DataFrame, daily_base: DailyBase | None = None
+) -> list[EvaluationResult]:
+    split = RollingOriginSplit(**config["split"])
+    curve = config.get("daily", {}).get("curve", "sector")
+    results = []
+    for entry in config["candidates"]:
+        candidate = REGISTRY.build(_ADAPTER.validate_python(entry))
+        print(f"  running {candidate.name} ...", flush=True)
+        results.append(evaluate(candidate, panel, split, daily_base, curve))
+    return results
+
+
+def errors_by_candidate(results: list[EvaluationResult]) -> pd.DataFrame:
+    frames = [result.scored.assign(candidate=result.candidate_name) for result in results]
+    return pd.concat(frames, ignore_index=True)
+
+
+def write_csv(frame: pd.DataFrame, path: str | Path) -> None:
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(output, index=False)
+
+
 def _now() -> str:
     return datetime.now(ZoneInfo("America/Sao_Paulo")).isoformat()
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _package_version(package: str) -> str | None:
-    try:
-        return version(package)
-    except PackageNotFoundError:
-        return None
-
-
-def _git_output(*args: str) -> str | None:
-    try:
-        return subprocess.check_output(
-            ["git", *args], cwd=_REPO_ROOT, stderr=subprocess.DEVNULL, text=True
-        ).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
 
 
 def _features(params: ForecastParams) -> list[str]:
@@ -92,6 +103,15 @@ def _record_directory(config: dict) -> Path:
     return Path(paths["output_csv"]).parent / f"run_{uuid4().hex}"
 
 
+def _create_directory(directory: Path) -> None:
+    try:
+        directory.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as error:
+        raise FileExistsError(
+            f"A pasta da execução já existe: {directory}. Escolha outro paths.run_dir no YAML."
+        ) from error
+
+
 def prepare_record(config_path: str | Path, config: dict) -> tuple[Path, dict]:
     """Validate settings and create a fresh run directory before evaluating any model."""
     source, base = Path(config_path).resolve(), Path(config["paths"]["base_csv"]).resolve()
@@ -102,19 +122,16 @@ def prepare_record(config_path: str | Path, config: dict) -> tuple[Path, dict]:
         "started_at": _now(),
         "timezone": "America/Sao_Paulo",
         "config_source": str(source),
-        "config_sha256": _sha256(source),
-        "data": {"path": str(base), "sha256": _sha256(base)},
+        "config_sha256": sha256_file(source),
+        "data": {"path": str(base), "sha256": sha256_file(base)},
         "split": asdict(RollingOriginSplit(**config["split"])),
         "daily": config.get("daily"),
         "candidates": _candidate_records(config["candidates"]),
-        "code": {
-            "commit": _git_output("rev-parse", "HEAD"),
-            "working_tree_status": _git_output("status", "--porcelain"),
-        },
+        "code": code_provenance(cwd=_REPO_ROOT),
         "runtime": {
             "python": platform.python_version(),
             "packages": {
-                package: _package_version(package)
+                package: package_version(package)
                 for package in ("numpy", "pandas", "pydantic", "pyyaml", "lightgbm", "statsmodels")
             },
         },
@@ -133,18 +150,7 @@ def prepare_record(config_path: str | Path, config: dict) -> tuple[Path, dict]:
     return directory, manifest
 
 
-def _create_directory(directory: Path) -> None:
-    try:
-        directory.mkdir(parents=True, exist_ok=False)
-    except FileExistsError as error:
-        raise FileExistsError(
-            f"A pasta da execução já existe: {directory}. Escolha outro paths.run_dir no YAML."
-        ) from error
-
-
 def update_record(directory: Path, manifest: dict, status: str, **details) -> None:
     """Write the run status and results without serializing nonstandard JSON NaN values."""
     record = {**manifest, **details, "status": status, "updated_at": _now()}
-    (directory / "manifest.json").write_text(
-        json.dumps(record, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8"
-    )
+    save_manifest(directory / "manifest.json", record)

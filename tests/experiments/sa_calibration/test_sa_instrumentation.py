@@ -27,7 +27,7 @@ def _no_stagnation(**overrides) -> AnnealingParams:
 
 
 def test_two_sector_instance_reaches_zero_amplitude(sa_instance):
-    result = solve(**sa_instance, params=_no_stagnation(), rng=random.Random(1))
+    result = solve(sa_instance, params=_no_stagnation(), rng=random.Random(1))
 
     assert result.objective == 0.0
     assert result.zmax == result.zmin == 10.0
@@ -38,7 +38,7 @@ def test_two_sector_instance_reaches_zero_amplitude(sa_instance):
 def test_zmax_minus_zmin_is_the_objective(sa_instance):
     as_is_only = _no_stagnation(initial_temperature=1.0, min_temperature=2.0)  # 0 iterações
 
-    result = solve(**sa_instance, params=as_is_only, rng=random.Random(1))
+    result = solve(sa_instance, params=as_is_only, rng=random.Random(1))
 
     assert result.iterations == 0
     assert (result.zmax, result.zmin) == (20.0, 0.0)
@@ -47,7 +47,7 @@ def test_zmax_minus_zmin_is_the_objective(sa_instance):
 
 
 def test_time_is_measured(sa_instance):
-    result = solve(**sa_instance, params=_no_stagnation(), rng=random.Random(1))
+    result = solve(sa_instance, params=_no_stagnation(), rng=random.Random(1))
 
     assert result.time > 0.0
 
@@ -58,7 +58,7 @@ def test_callback_sees_every_iteration(sa_instance):
     def callback(*, iteration, energy, temperature, assignment):
         calls.append((iteration, energy, temperature, assignment.copy()))
 
-    result = solve(**sa_instance, params=_no_stagnation(), rng=random.Random(1), callback=callback)
+    result = solve(sa_instance, params=_no_stagnation(), rng=random.Random(1), callback=callback)
 
     assert [c[0] for c in calls] == list(range(result.iterations))
     temperatures = [c[2] for c in calls]
@@ -68,8 +68,8 @@ def test_callback_sees_every_iteration(sa_instance):
 
 def test_callback_does_not_change_the_search(sa_instance):
     params = _no_stagnation()
-    without = solve(**sa_instance, params=params, rng=random.Random(7))
-    with_cb = solve(**sa_instance, params=params, rng=random.Random(7), callback=lambda **_: None)
+    without = solve(sa_instance, params=params, rng=random.Random(7))
+    with_cb = solve(sa_instance, params=params, rng=random.Random(7), callback=lambda **_: None)
 
     assert (without.assignment, without.energy, without.iterations) == (
         with_cb.assignment,
@@ -110,7 +110,7 @@ def test_budget_matched_run_spends_the_whole_budget_without_stagnating(sa_instan
     alpha = cooling_rate_for_budget(BUDGET, T0, T_MIN)
     params = _no_stagnation(initial_temperature=T0, min_temperature=T_MIN, cooling_rate=alpha)
 
-    result = solve(**sa_instance, params=params, rng=random.Random(3))
+    result = solve(sa_instance, params=params, rng=random.Random(3))
 
     assert result.stop_reason != "stagnation"
     assert abs(result.iterations - BUDGET) <= 1

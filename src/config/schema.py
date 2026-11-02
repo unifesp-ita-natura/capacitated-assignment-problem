@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from src.forecasting.hierarchy_config import HierarchyForecastParams
+
 
 class Paths(BaseModel):
     instances: str = "data/instances"
@@ -219,9 +221,36 @@ ForecastParams = Annotated[
 ]
 
 
+CombinedLevelParams = Annotated[
+    NaiveParams
+    | ArimaParams
+    | ETSParams
+    | LightGBMParams
+    | CycleFactorParams
+    | HierarchyForecastParams,
+    Field(discriminator="model"),
+]
+
+
 class ForecastConfig(BaseModel):
-    params: ForecastParams = NaiveParams()
+    params: CombinedLevelParams = Field(default_factory=HierarchyForecastParams)
     train_window: TrainWindow = TrainWindow()
+
+
+class PipelineConfig(BaseModel):
+    """Settings of the end-to-end raw data -> forecast -> solve -> explain run (`src.main`)."""
+
+    base_csv: str = "data/base_tratada_v2.csv"
+    history_cycles: int = Field(default=20, ge=1)
+    horizon_cycles: int = Field(default=1, ge=1)
+    solver_family: Literal["mip", "matheuristic", "sa", "sa_mip"] = "sa"
+    shape_model: Literal["uniform", "sector"] = "sector"
+    shape_bins: int = Field(default=10, ge=1)
+    max_churn: float = Field(default=0.2, ge=0, le=1)  # fraction of sectors allowed to move
+    capacity_multiplier: float = Field(default=1.0, gt=0)
+    seed: int = 42
+    max_sectors: int | None = Field(default=None, ge=1)  # keep the largest N sectors (quick runs)
+    report_accuracy: bool = True  # also replay the horizon to report forecast WMAPE
 
 
 class RunConfig(BaseModel):
@@ -231,3 +260,4 @@ class RunConfig(BaseModel):
     paths: Paths = Paths()
 
     forecast: ForecastConfig = ForecastConfig()
+    pipeline: PipelineConfig = PipelineConfig()

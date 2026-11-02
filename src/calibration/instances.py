@@ -13,6 +13,7 @@ from src.forecasting.model import forecast_future_cycles
 from src.forecasting.scoring import score_and_select_strategies
 from src.generate import generator
 from src.solver import inputs as solver_inputs
+from src.solver.inputs import ProblemInstance
 
 
 @dataclass(frozen=True)
@@ -46,32 +47,25 @@ class CalibrationInstance:
     cd_sectors: dict[int, list[int]]
     daily_capacity: dict[tuple[int, int], float]
     projected_demand: dict[tuple[int, int, int], float]
-    current_assignment_sa: dict[int, int]
-    current_assignment_mip: dict[tuple[int, int], int]
+    current_assignment: dict[int, int]
     max_churn: float
     days_by_cycle: dict[int, list[int]]
     level_strategy: str
     shape_strategy: str
 
-    def _common_kwargs(self) -> dict:
-        return {
-            "sectors": self.sectors,
-            "combinations": self.combinations,
-            "days": self.days,
-            "cd_sectors": self.cd_sectors,
-            "daily_capacity": self.daily_capacity,
-            "projected_demand": self.projected_demand,
-            "max_churn": self.max_churn,
-            "days_by_cycle": self.days_by_cycle,
-        }
-
-    def sa_kwargs(self) -> dict:
-        """Argumentos nomeados de `simulated_annealing.solve`, exceto params/rng/callback."""
-        return {**self._common_kwargs(), "current_assignment": self.current_assignment_sa}
-
-    def mip_kwargs(self) -> dict:
-        """Argumentos nomeados de `block_assignment.build_block_assignment_model`."""
-        return {**self._common_kwargs(), "current_assignment": self.current_assignment_mip}
+    def to_instance(self) -> ProblemInstance:
+        """`ProblemInstance` compartilhado pelo MIP, pela matheurística e pelo SA."""
+        return ProblemInstance(
+            sectors=self.sectors,
+            combinations=self.combinations,
+            days=self.days,
+            cd_sectors=self.cd_sectors,
+            daily_capacity=self.daily_capacity,
+            projected_demand=self.projected_demand,
+            current_assignment=self.current_assignment,
+            max_churn=self.max_churn,
+            days_by_cycle=self.days_by_cycle,
+        )
 
     def metadata(self) -> dict:
         """Resumo auditável da instância (tamanho e estratégias de previsão usadas)."""
@@ -169,10 +163,7 @@ def _to_solver_inputs(
             list(cd_sectors), days, spec.capacity_multiplier
         ),
         projected_demand=projected_demand,
-        current_assignment_sa=solver_inputs.build_current_assignment_sa(
-            history.assignment, sector_ids, combo_ids
-        ),
-        current_assignment_mip=solver_inputs.build_current_assignment_mip(
+        current_assignment=solver_inputs.build_current_assignment_sa(
             history.assignment, sector_ids, combo_ids
         ),
         max_churn=spec.max_churn * spec.n_sectors,

@@ -1,10 +1,14 @@
 # sa_calibration
 
 **Name:** `sa_calibration` — driver `experiments/sa_calibration/run.py`, configs
-`configs/experiments/sa_calibration/{full,smoke}.yaml`, código em `src/calibration/`,
-saídas em `experiments/sa_calibration/outputs/` (fora do git).
+`configs/experiments/sa_calibration/` (`full`, `smoke`, `peak_std`, `solver_comparison`,
+`scale800`, `scale800_long`, `scale800_smoke`), código em `src/calibration/`, saídas em `experiments/sa_calibration/outputs/`
+(fora do git).
 
-**Status:** `confirmed` — rodada completa em 2026-09-28; ver **Result** e [`REPORT.md`](REPORT.md).
+**Status:** `confirmed` para a calibração da energia de amplitude (rodada completa em
+2026-09-28; ver **Result** e [`REPORT.md`](REPORT.md)). As rodadas de 2026-10-19
+(energia de pico e desvio, comparação de solvers, escala de 800 setores) são
+`exploratory`; ver **Rodadas posteriores**.
 
 ## Goal
 
@@ -122,3 +126,35 @@ nas 4 instâncias, em 1 a 5 s.
 O TPE não superou o melhor ponto do LHS: o objetivo é ruidoso demais (desvio de 2–3
 p.p. com 5 seeds). Nesses tamanhos, o HiGHS resolve o MIP mais rápido que uma execução do
 SA; o próximo passo é medir onde isso deixa de valer (200–800 setores).
+
+## Rodadas posteriores (2026-10-19)
+
+Registradas no commit `ed87162`, no plano
+[`docs/plans/2026-10-19-correcoes-e-proximos-passos.md`](../../docs/plans/2026-10-19-correcoes-e-proximos-passos.md)
+e na entrada
+[`docs/agent-log/2026-10-19-sa-pico-desvio-solvers-escala.md`](../../docs/agent-log/2026-10-19-sa-pico-desvio-solvers-escala.md).
+O [`REPORT.md`](REPORT.md) cobre só a rodada de 2026-09-28.
+
+| Config (`configs/experiments/sa_calibration/`) | Para quê |
+|---|---|
+| `peak_std.yaml` | Fine-tuning da energia `peak_std_breach` (`w_std`, `w_range`, ρ), com as fases `screen`, `tpe` e `validate`; saída em `outputs/peak_std/` |
+| `solver_comparison.yaml` | Gurobi × HiGHS × SA em `base40`, `tight40`, `base80` e `tight80`, com tolerâncias de 1e-4 e 1e-2 |
+| `scale800.yaml`, `scale800_long.yaml` | SA calibrado em 400 e 800 setores contra o Gurobi (200 mil e 1 milhão de iterações) |
+| `scale800_smoke.yaml` | Fumaça da pipeline de 800 setores (instância de 20 setores) |
+
+```bash
+# subcomandos: mip | sa | report | all (padrão: solver_comparison.yaml)
+uv run python -m experiments.sa_calibration.compare_solvers all \
+  --config configs/experiments/sa_calibration/scale800.yaml
+```
+
+**Resultado resumido** (gap = amplitude contra o ótimo do Gurobi; 8 seeds):
+
+- Em 800 setores o Gurobi fecha o ótimo em ~20 s. O SA com energia de amplitude fica em
+  8,3% com 200 mil iterações (27 s) e 4,2% com 1 milhão (155 s).
+- A energia `peak_std_breach` calibrada (`tpe_b0_04`) fica em 11,0% e 5,4% nas mesmas
+  condições, com cerca de 1,8× o tempo. Com os parâmetros calibrados para a amplitude, o
+  gap sobe para 14,6%–38,9% e `tight40` fica com 0/8 execuções viáveis.
+- A avaliação incremental não altera as trajetórias; só reduz o custo por iteração.
+- A energia de amplitude continua sendo o padrão (`energy_mode="range"`).
+

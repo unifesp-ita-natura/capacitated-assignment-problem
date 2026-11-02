@@ -147,29 +147,63 @@ def nome_modelo(combo: tuple) -> str:
     return "Prophet: " + " + ".join(FEATURES[f]["rotulo"] for f in combo)
 
 
-def gerar_experimentos() -> dict:
-    """Devolve {nome do modelo: tupla de features}, sem duplicatas."""
-    desconhecidas = [f for f in FEATURES_ATIVAS if f not in FEATURES]
-    for c in EXPERIMENTOS_CUSTOM:
-        desconhecidas += [f for f in c if f not in FEATURES]
+def _features_desconhecidas(ativas: list) -> list:
+    todas_citadas = itertools.chain(ativas, *EXPERIMENTOS_CUSTOM)
+    return [f for f in todas_citadas if f not in FEATURES]
+
+
+def _validar_features_conhecidas(ativas: list) -> None:
+    desconhecidas = _features_desconhecidas(ativas)
     if desconhecidas:
         raise ValueError(
             f"Features inexistentes: {sorted(set(desconhecidas))}. Opções: {list(FEATURES)}"
         )
 
-    ativas = list(FEATURES_ATIVAS)
-    combos = []
-    if INCLUIR_BASE:
-        combos.append(())
-    if "individual" in MODOS:
-        combos += [(f,) for f in ativas]
-    if "pares" in MODOS:
-        combos += list(itertools.combinations(ativas, 2))
-    if "ablacao" in MODOS and len(ativas) > 1:
-        combos += [tuple(x for x in ativas if x != f) for f in ativas]
-    if "todas" in MODOS and ativas:
-        combos.append(tuple(ativas))
+
+def _combos_individuais(ativas: list) -> list:
+    return [(f,) for f in ativas]
+
+
+def _combos_pares(ativas: list) -> list:
+    return list(itertools.combinations(ativas, 2))
+
+
+def _combos_ablacao(ativas: list) -> list:
+    if len(ativas) <= 1:
+        return []
+    return [tuple(x for x in ativas if x != f) for f in ativas]
+
+
+def _combos_todas(ativas: list) -> list:
+    return [tuple(ativas)] if ativas else []
+
+
+_GERADORES_POR_MODO = {
+    "individual": _combos_individuais,
+    "pares": _combos_pares,
+    "ablacao": _combos_ablacao,
+    "todas": _combos_todas,
+}
+
+
+def _combos_do_modo(modo: str, ativas: list) -> list:
+    gerador = _GERADORES_POR_MODO.get(modo)
+    return gerador(ativas) if gerador else []
+
+
+def _gerar_combos(ativas: list) -> list:
+    combos = [()] if INCLUIR_BASE else []
+    for modo in MODOS:
+        combos += _combos_do_modo(modo, ativas)
     combos += [tuple(c) for c in EXPERIMENTOS_CUSTOM]
+    return combos
+
+
+def gerar_experimentos() -> dict:
+    """Devolve {nome do modelo: tupla de features}, sem duplicatas."""
+    ativas = list(FEATURES_ATIVAS)
+    _validar_features_conhecidas(ativas)
+    combos = _gerar_combos(ativas)
 
     ordem = list(FEATURES)  # ordem canônica para nomes consistentes
     experimentos = {}
@@ -257,18 +291,25 @@ def datas_nao_uteis(ano: int) -> set:
     return datas
 
 
-def datas_quinto_dia_util(ds_min: pd.Timestamp, ds_max: pd.Timestamp) -> list:
+def _quinto_dia_util_do_mes(periodo, nao_uteis: set, limite_semana: int) -> pd.Timestamp | None:
+    dias = pd.date_range(periodo.start_time, periodo.end_time.normalize())
+    uteis = [d for d in dias if d.weekday() < limite_semana and d not in nao_uteis]
+    return uteis[4] if len(uteis) >= 5 else None
+
+
+def _nao_uteis_no_periodo(ds_min: pd.Timestamp, ds_max: pd.Timestamp) -> set:
     nao_uteis = {pd.Timestamp(d) for d in EXTRA_NAO_UTEIS}
     for ano in range(ds_min.year, ds_max.year + 1):
         nao_uteis |= datas_nao_uteis(ano)
+    return nao_uteis
+
+
+def datas_quinto_dia_util(ds_min: pd.Timestamp, ds_max: pd.Timestamp) -> list:
+    nao_uteis = _nao_uteis_no_periodo(ds_min, ds_max)
     limite_semana = 6 if SABADO_E_DIA_UTIL else 5  # weekday: seg=0 ... sáb=5
-    quintos = []
-    for periodo in pd.period_range(ds_min.to_period("M"), ds_max.to_period("M"), freq="M"):
-        dias = pd.date_range(periodo.start_time, periodo.end_time.normalize())
-        uteis = [d for d in dias if d.weekday() < limite_semana and d not in nao_uteis]
-        if len(uteis) >= 5:
-            quintos.append(uteis[4])
-    return quintos
+    periodos = pd.period_range(ds_min.to_period("M"), ds_max.to_period("M"), freq="M")
+    quintos = (_quinto_dia_util_do_mes(p, nao_uteis, limite_semana) for p in periodos)
+    return [q for q in quintos if q is not None]
 
 
 def adicionar_quinto_du(serie: pd.DataFrame) -> pd.DataFrame:
@@ -343,42 +384,60 @@ def _indice_trimestre(ano, trimestre):
     return np.asarray(ano) * 4 + (np.asarray(trimestre) - 1)
 
 
-def _ler_ibge_trimestral(caminho: Path, nome_valor: str) -> pd.DataFrame:
-    """Lê as tabelas SIDRA (salário e desemprego) e devolve uf, q, <nome_valor>."""
-    # Linhas com número de colunas diferente (títulos, notas): lê com csv e preenche
+def _ler_csv_irregular(caminho: Path) -> pd.DataFrame:
+    """Linhas com número de colunas diferente (títulos, notas): lê com csv e preenche."""
     with open(caminho, encoding="utf-8-sig", newline="") as f:
         linhas_csv = list(csv.reader(f, delimiter=";"))
     largura = max(len(linha) for linha in linhas_csv)
-    bruto = pd.DataFrame(
+    return pd.DataFrame(
         [linha + [None] * (largura - len(linha)) for linha in linhas_csv],
         dtype=object,
     )
-    # Linha de cabeçalho com os trimestres
+
+
+def _localizar_cabecalho_trimestres(bruto: pd.DataFrame) -> pd.Series:
     linha_cab = bruto.index[
         bruto.apply(lambda r: r.astype(str).str.contains("trimestre").any(), axis=1)
     ][0]
-    cab = bruto.loc[linha_cab]
+    return bruto.loc[linha_cab]
+
+
+def _colunas_de_trimestre(cab: pd.Series) -> dict:
     cols_tri = {}
     for j, rot in cab.items():
         m = pd.Series([str(rot)]).str.extract(r"(\d)º trimestre (\d{4})").iloc[0]
         if m.notna().all():
             cols_tri[j] = int(_indice_trimestre(int(m[1]), int(m[0])))
+    return cols_tri
 
-    # Salário: (Nível, Cód., Nome, ...) com Nível == "UF"; desemprego: (Cód., Nome, ...)
+
+def _codigo_uf_da_linha(r: pd.Series, formato_nivel: bool) -> int | None:
+    """Salário: (Nível, Cód., Nome, ...) com Nível == "UF"; desemprego: (Cód., Nome, ...)."""
+    if formato_nivel:
+        if str(r[0]).strip() != "UF":
+            return None
+        cod = r[1]
+    else:
+        cod = r[0]
+    try:
+        cod = int(str(cod).strip())
+    except ValueError:
+        return None
+    return cod if cod in SIGLA_POR_COD else None  # ignora Brasil e Grandes Regiões (1 a 5)
+
+
+def _ler_ibge_trimestral(caminho: Path, nome_valor: str) -> pd.DataFrame:
+    """Lê as tabelas SIDRA (salário e desemprego) e devolve uf, q, <nome_valor>."""
+    bruto = _ler_csv_irregular(caminho)
+    cab = _localizar_cabecalho_trimestres(bruto)
+    cols_tri = _colunas_de_trimestre(cab)
     formato_nivel = str(cab[0]).strip() == "Nível"
+    linha_cab = cab.name
+
     linhas = []
     for _, r in bruto.iloc[linha_cab + 1 :].iterrows():
-        if formato_nivel:
-            if str(r[0]).strip() != "UF":
-                continue
-            cod = r[1]
-        else:
-            cod = r[0]
-        try:
-            cod = int(str(cod).strip())
-        except ValueError:
-            continue
-        if cod not in SIGLA_POR_COD:  # ignora Brasil e Grandes Regiões (códigos 1 a 5)
+        cod = _codigo_uf_da_linha(r, formato_nivel)
+        if cod is None:
             continue
         for j, q in cols_tri.items():
             v = pd.to_numeric(str(r[j]).replace(",", "."), errors="coerce")  # X, ... => NaN
@@ -422,12 +481,7 @@ def _media_ponderada(g: pd.DataFrame, col: str) -> float:
     return np.average(g.loc[ok, col], weights=g.loc[ok, "peso"]) if ok.any() else np.nan
 
 
-def construir_externos(df: pd.DataFrame, usados: set) -> dict:
-    """Devolve {cd: (serie_trimestral_df indexada por q ou None, constantes_dict)}.
-
-    Só lê os arquivos das features que estão em uso nos experimentos.
-    """
-    pesos = pesos_uf_por_cd(df)
+def _carregar_fontes_externas(usados: set) -> tuple:
     sal = _ler_ibge_trimestral(CAMINHO_SALARIO, "salario_medio") if "salario" in usados else None
     des = (
         _ler_ibge_trimestral(CAMINHO_DESEMPREGO, "taxa_desemprego")
@@ -435,36 +489,59 @@ def construir_externos(df: pd.DataFrame, usados: set) -> dict:
         else None
     )
     censo = _ler_censo(CAMINHO_CENSO) if "censo" in usados else None
+    return sal, des, censo
 
-    ufs_base = set(pesos["uf"])
+
+def _avisar_ufs_faltantes(ufs_base: set, sal, des, censo) -> None:
     for nome, t in (("salário", sal), ("desemprego", des), ("censo", censo)):
         if t is not None:
             faltando = ufs_base - set(t["uf"])
             if faltando:
                 print(f"AVISO: UFs da base sem dado de {nome}: {sorted(faltando)}")
 
+
+def _mesclar_trimestrais(sal, des):
     tri = None
     for t in (sal, des):
         if t is not None:
             tri = t if tri is None else tri.merge(t, on=["uf", "q"], how="outer")
+    return tri
 
-    out = {}
-    for cd, g_pesos in pesos.groupby("cd_cd"):
-        serie_tri = None
-        if tri is not None:
-            g = g_pesos.merge(tri, on="uf", how="left")
-            cols_valor = [c for c in ("salario_medio", "taxa_desemprego") if c in g.columns]
-            linhas = [
-                {"q": q, **{c: _media_ponderada(gq, c) for c in cols_valor}}
-                for q, gq in g.groupby("q")
-            ]
-            serie_tri = pd.DataFrame(linhas).set_index("q").sort_index()
-        const = {}
-        if censo is not None:
-            gc = g_pesos.merge(censo, on="uf", how="left")
-            const = {c: _media_ponderada(gc, c) for c in ("censo_log_pop", "censo_log_dens")}
-        out[cd] = (serie_tri, const)
-    return out
+
+def _linha_trimestral(q, gq: pd.DataFrame, cols_valor: list) -> dict:
+    return {"q": q, **{c: _media_ponderada(gq, c) for c in cols_valor}}
+
+
+def _serie_trimestral_do_cd(g_pesos: pd.DataFrame, tri) -> pd.DataFrame | None:
+    if tri is None:
+        return None
+    g = g_pesos.merge(tri, on="uf", how="left")
+    cols_valor = [c for c in ("salario_medio", "taxa_desemprego") if c in g.columns]
+    linhas = [_linha_trimestral(q, gq, cols_valor) for q, gq in g.groupby("q")]
+    return pd.DataFrame(linhas).set_index("q").sort_index()
+
+
+def _constantes_censo_do_cd(g_pesos: pd.DataFrame, censo) -> dict:
+    if censo is None:
+        return {}
+    gc = g_pesos.merge(censo, on="uf", how="left")
+    return {c: _media_ponderada(gc, c) for c in ("censo_log_pop", "censo_log_dens")}
+
+
+def construir_externos(df: pd.DataFrame, usados: set) -> dict:
+    """Devolve {cd: (serie_trimestral_df indexada por q ou None, constantes_dict)}.
+
+    Só lê os arquivos das features que estão em uso nos experimentos.
+    """
+    pesos = pesos_uf_por_cd(df)
+    sal, des, censo = _carregar_fontes_externas(usados)
+    _avisar_ufs_faltantes(set(pesos["uf"]), sal, des, censo)
+    tri = _mesclar_trimestrais(sal, des)
+
+    return {
+        cd: (_serie_trimestral_do_cd(g_pesos, tri), _constantes_censo_do_cd(g_pesos, censo))
+        for cd, g_pesos in pesos.groupby("cd_cd")
+    }
 
 
 def adicionar_externos(serie: pd.DataFrame, serie_tri, const: dict) -> pd.DataFrame:
@@ -502,19 +579,21 @@ def montar_series_por_cd(df: pd.DataFrame, externos: dict) -> dict:
     return series
 
 
+def _linha_diagnostico_externos(cd, s: pd.DataFrame, cols: list) -> dict:
+    linha = {"cd_cd": cd}
+    for c in cols:
+        linha[f"{c}_distintos"] = s[c].nunique()
+        linha[f"{c}_min"] = s[c].min()
+        linha[f"{c}_max"] = s[c].max()
+    return linha
+
+
 def diagnosticar_externos(series: dict) -> None:
     """Quanto cada regressor externo realmente varia dentro de cada CD."""
     cols = [c for f in FEATURES_USADAS & GRUPOS_EXTERNOS for c in FEATURES[f]["colunas"]]
     if not cols:
         return
-    linhas = []
-    for cd, s in series.items():
-        linha = {"cd_cd": cd}
-        for c in cols:
-            linha[f"{c}_distintos"] = s[c].nunique()
-            linha[f"{c}_min"] = s[c].min()
-            linha[f"{c}_max"] = s[c].max()
-        linhas.append(linha)
+    linhas = [_linha_diagnostico_externos(cd, s, cols) for cd, s in series.items()]
     print("\n--- Regressores externos por CD (valores distintos e faixa) ---")
     print(pd.DataFrame(linhas).round(2).to_string(index=False))
 
@@ -545,10 +624,14 @@ def metricas_por(df: pd.DataFrame, chaves: list) -> pd.DataFrame:
 # ==========================================
 # Modelo
 # ==========================================
-def ajustar_prophet(treino: pd.DataFrame, feriados: pd.DataFrame, regressores: list):
-    # Regressor constante no treino é colinear com o intercepto: não traz informação
+def _filtrar_regressores_variaveis(treino: pd.DataFrame, regressores: list) -> tuple:
+    """Regressor constante no treino é colinear com o intercepto: não traz informação."""
     regs = [r for r in regressores if treino[r].nunique() > 1]
     descartados = [r for r in regressores if r not in regs]
+    return regs, descartados
+
+
+def _construir_prophet(feriados: pd.DataFrame, regs: list) -> Prophet:
     modelo = Prophet(
         weekly_seasonality=True,
         daily_seasonality=False,
@@ -557,6 +640,12 @@ def ajustar_prophet(treino: pd.DataFrame, feriados: pd.DataFrame, regressores: l
     )
     for r in regs:
         modelo.add_regressor(r)
+    return modelo
+
+
+def ajustar_prophet(treino: pd.DataFrame, feriados: pd.DataFrame, regressores: list):
+    regs, descartados = _filtrar_regressores_variaveis(treino, regressores)
+    modelo = _construir_prophet(feriados, regs)
     modelo.fit(treino[["ds", "y"] + regs])
     return modelo, regs, descartados
 
@@ -564,40 +653,54 @@ def ajustar_prophet(treino: pd.DataFrame, feriados: pd.DataFrame, regressores: l
 # ==========================================
 # Janela expansiva (por CD)
 # ==========================================
+def _montar_base_teste(
+    cd, teste: pd.DataFrame, treino: pd.DataFrame, fim_treino, janela
+) -> pd.DataFrame:
+    base = teste[["ds", "y"]].copy()
+    base["cd_cd"] = cd
+    base["janela"] = janela
+    base["horizonte"] = (base["ds"] - fim_treino).dt.days + 1
+    base["treino_inicio"] = treino["ds"].min()
+    base["teste_inicio"] = teste["ds"].min()
+    base["n_treino"] = len(treino)
+    return base
+
+
+def _prever_janela_todos_modelos(
+    cd, base: pd.DataFrame, treino: pd.DataFrame, teste: pd.DataFrame, feriados: pd.DataFrame
+) -> list:
+    partes = []
+    for nome in MODELOS_PROPHET:
+        modelo, regs, descartados = ajustar_prophet(treino, feriados, regressores_do_modelo(nome))
+        REG_DESCARTADOS[(nome, cd)].update(descartados)
+        yhat = modelo.predict(teste[["ds"] + regs])["yhat"].clip(lower=0).to_numpy()
+        partes.append(base.assign(yhat=yhat, modelo=nome))
+    return partes
+
+
+def _janelas_expansivas(inicio0, fim_dados):
+    """(fim_treino, fim_teste) exclusivos, origem avançando PASSO dias por janela."""
+    deslocamento = 0
+    while True:
+        fim_treino = inicio0 + pd.Timedelta(days=DIAS_TREINO + deslocamento)
+        fim_teste = fim_treino + pd.Timedelta(days=DIAS_TESTE)
+        if fim_teste > fim_dados + pd.Timedelta(days=1):
+            return
+        yield fim_treino, fim_teste
+        deslocamento += PASSO
+
+
 def avaliar_cd(cd, serie: pd.DataFrame, feriados: pd.DataFrame) -> pd.DataFrame:
     """Treino sempre do início do histórico até a origem; a origem avança PASSO dias por janela."""
-    inicio0 = serie["ds"].min()
-    fim_dados = serie["ds"].max()
     partes = []
     janela = 0
-    deslocamento = 0  # dias que a origem já avançou
-
-    while True:
-        fim_treino = inicio0 + pd.Timedelta(days=DIAS_TREINO + deslocamento)  # exclusivo
-        fim_teste = fim_treino + pd.Timedelta(days=DIAS_TESTE)  # exclusivo
-        if fim_teste > fim_dados + pd.Timedelta(days=1):
-            break
-
+    for fim_treino, fim_teste in _janelas_expansivas(serie["ds"].min(), serie["ds"].max()):
         treino = serie[serie["ds"] < fim_treino]
         teste = serie[(serie["ds"] >= fim_treino) & (serie["ds"] < fim_teste)]
         if len(treino) >= 60 and len(teste) > 0:
             janela += 1
-            base = teste[["ds", "y"]].copy()
-            base["cd_cd"] = cd
-            base["janela"] = janela
-            base["horizonte"] = (base["ds"] - fim_treino).dt.days + 1
-            base["treino_inicio"] = treino["ds"].min()
-            base["teste_inicio"] = teste["ds"].min()
-            base["n_treino"] = len(treino)
-
-            for nome in MODELOS_PROPHET:
-                modelo, regs, descartados = ajustar_prophet(
-                    treino, feriados, regressores_do_modelo(nome)
-                )
-                REG_DESCARTADOS[(nome, cd)].update(descartados)
-                yhat = modelo.predict(teste[["ds"] + regs])["yhat"].clip(lower=0).to_numpy()
-                partes.append(base.assign(yhat=yhat, modelo=nome))
-        deslocamento += PASSO
+            base = _montar_base_teste(cd, teste, treino, fim_treino, janela)
+            partes += _prever_janela_todos_modelos(cd, base, treino, teste, feriados)
 
     if not partes:
         raise ValueError(
@@ -695,12 +798,14 @@ def plotar_bias_residuos(previsoes: pd.DataFrame, modelo: str) -> Path:
 # ==========================================
 # Execução
 # ==========================================
-def main() -> None:
-    SAIDA.mkdir(parents=True, exist_ok=True)
+def _anunciar_modelos() -> None:
     print(f"Modelos Prophet a comparar ({len(MODELOS_PROPHET)}), janela expansiva:")
     for nome in MODELOS_PROPHET:
         print(f"  - {nome}  [{', '.join(regressores_do_modelo(nome)) or 'sem regressores'}]")
 
+
+def _preparar_series() -> tuple:
+    """Carrega a base, roda os diagnósticos e devolve (series por CD, feriados)."""
     df = carregar_base()
     diagnosticar(df)
     externos_usados = FEATURES_USADAS & GRUPOS_EXTERNOS
@@ -710,12 +815,10 @@ def main() -> None:
     if "quinto_du" in FEATURES_USADAS:
         diagnosticar_quinto_du(series)
     feriados = gerar_feriados_brasileiros(df["data_pedido"].min(), df["data_pedido"].max())
+    return series, feriados
 
-    previsoes = pd.concat(
-        [avaliar_cd(cd, s, feriados) for cd, s in series.items()], ignore_index=True
-    )
-    previsoes.to_csv(SAIDA / "previsoes_detalhadas.csv", index=False)
 
+def _resumir_por_cd(previsoes: pd.DataFrame) -> pd.DataFrame:
     por_cd_janela = metricas_por(previsoes, ["modelo", "cd_cd", "janela"])
     resumo = (
         por_cd_janela.groupby(["modelo", "cd_cd"])
@@ -735,7 +838,10 @@ def main() -> None:
     print(tabela_cd.round(2).to_string())
     print("\n--- Melhor modelo por CD (menor WMAPE médio) ---")
     print(tabela_cd.idxmin(axis=1).to_string())
+    return resumo
 
+
+def _comparar_modelos(previsoes: pd.DataFrame) -> pd.DataFrame:
     geral = metricas_por(previsoes.assign(todos="todos"), ["modelo", "todos"]).drop(columns="todos")
     if M_BASE in set(geral["modelo"]):
         wmape_base = geral.loc[geral["modelo"] == M_BASE, "WMAPE"].iloc[0]
@@ -750,12 +856,10 @@ def main() -> None:
         "ordenada por WMAPE) ===================="
     )
     print(geral.to_string(index=False))
+    return geral
 
-    melhor = geral.iloc[0]["modelo"]
-    plotar_comparacao_janelas(previsoes)
-    plotar_metricas_por_horizonte(previsoes)
-    plotar_bias_residuos(previsoes, melhor)
 
+def _reportar_regressores_descartados() -> None:
     print("\n--- Regressores descartados por serem constantes no treino ---")
     for (modelo, cd), regs in sorted(
         REG_DESCARTADOS.items(), key=lambda x: (x[0][0], str(x[0][1]))
@@ -763,6 +867,27 @@ def main() -> None:
         if regs:
             print(f"{modelo} | CD {cd}: {sorted(regs)}")
     print(f"\nArquivos salvos em {SAIDA}")
+
+
+def main() -> None:
+    SAIDA.mkdir(parents=True, exist_ok=True)
+    _anunciar_modelos()
+    series, feriados = _preparar_series()
+
+    previsoes = pd.concat(
+        [avaliar_cd(cd, s, feriados) for cd, s in series.items()], ignore_index=True
+    )
+    previsoes.to_csv(SAIDA / "previsoes_detalhadas.csv", index=False)
+
+    _resumir_por_cd(previsoes)
+    geral = _comparar_modelos(previsoes)
+
+    melhor = geral.iloc[0]["modelo"]
+    plotar_comparacao_janelas(previsoes)
+    plotar_metricas_por_horizonte(previsoes)
+    plotar_bias_residuos(previsoes, melhor)
+
+    _reportar_regressores_descartados()
 
 
 if __name__ == "__main__":

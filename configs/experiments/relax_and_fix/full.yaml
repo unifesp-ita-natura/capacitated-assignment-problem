@@ -1,0 +1,37 @@
+experiment_name: relax_and_fix
+description:
+  goal: >
+    Em quantos setores o Relax-and-Fix + Fix-and-Optimize passa a valer a pena frente ao
+    MIP exato (HiGHS), em qualidade da solução e em tempo?
+  hypothesis: >
+    Até ~80 setores o MIP fecha em segundos e o R&F só o iguala (gap perto de 0). Perto do
+    tamanho real (~800 setores) o MIP deixa de fechar no limite de tempo, e aí o R&F entrega
+    uma solução viável melhor que a incumbente do MIP na mesma janela de tempo. Janelas
+    maiores (W) dão solução melhor e subproblemas mais lentos; o Fix-and-Optimize recupera
+    parte do que a construção deixou na mesa.
+  design_note: >
+    Instâncias sintéticas do gerador do repositório (seed 7, 2 ciclos de horizonte, previsão
+    automática do forecasting), 200/400/800 setores, com capacidade folgada (multiplicador
+    1.0) e apertada (multiplicador = 0.95 x o pico carga/capacidade do As-Is, então o As-Is
+    estoura o pior CD em ~5%). MIP com mip_rel_gap 1e-4 e 600 s; R&F com 60 s por
+    subproblema e 2 varreduras de F&O. Duas configurações de janela, (W=3, P=2) e (W=5,
+    P=3), sobre 9 CDs na ordem de cd_sectors. Uma seed por tamanho, então diferenças de
+    décimos de ponto percentual são ruído. Ordem dos CDs e janelas não calibradas.
+  status: confirmed  # resultado em experiments/relax_and_fix/README.md
+
+output_dir: experiments/relax_and_fix/outputs/full
+mip:
+  solver: appsi_highs
+  mip_rel_gap: 0.0001
+optimize_passes: 2
+subproblem_time_limit: 60
+
+instances:
+  n200_tight: {n_sectors: 200, n_cycles_horizon: 2, seed: 7, capacity: tight, mip_time_limit: 600}
+  n400_tight: {n_sectors: 400, n_cycles_horizon: 2, seed: 7, capacity: tight, mip_time_limit: 600}
+  n800_loose: {n_sectors: 800, n_cycles_horizon: 2, seed: 7, capacity: loose, mip_time_limit: 600}
+  n800_tight: {n_sectors: 800, n_cycles_horizon: 2, seed: 7, capacity: tight, mip_time_limit: 600}
+
+windows:
+  - {window: 3, step: 2}
+  - {window: 5, step: 3}

@@ -1,4 +1,4 @@
-"""Tests for the CLI entrypoint — Gurobi is mocked, never called directly."""
+"""Tests for the CLI entrypoint — solves for real against the bundled HiGHS backend."""
 
 from __future__ import annotations
 
@@ -7,11 +7,12 @@ from unittest.mock import MagicMock, patch
 from src.cli.main import main
 
 
-@patch("src.cli.main.solve_example")
-def test_main_prints_status(mock_solve_example, capsys):
-    mock_results = MagicMock()
-    mock_results.solver.status = "ok"
-    mock_solve_example.return_value = mock_results
+@patch("src.cli.main.load_config")
+def test_main_prints_status(mock_load_config, capsys):
+    mock_config = MagicMock()
+    mock_config.project_name = "capacitated-assignment-problem"
+    mock_config.solver = "appsi_highs"
+    mock_load_config.return_value = mock_config
 
     main()
 

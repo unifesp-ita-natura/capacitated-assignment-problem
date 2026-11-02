@@ -5,24 +5,18 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import yaml
-
 from src.config.schema import NaiveParams
 from src.forecasting.candidates import naive  # noqa: F401 - registers "naive" into REGISTRY
 from src.forecasting.dataset import build_item_panel, load_demand_base
 from src.forecasting.evaluation import EvaluationResult, RollingOriginSplit, evaluate
+from src.forecasting.harness import load_config
 from src.forecasting.model import REGISTRY
 
 DEFAULT_CONFIG_PATH = "configs/experiments/forecast_baseline/naive.yaml"
 
 
-def _load_run_config(path: str | Path) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
-
-
 def run(config_path: str | Path = DEFAULT_CONFIG_PATH) -> EvaluationResult:
-    config = _load_run_config(config_path)
+    config = load_config(config_path)
 
     raw = load_demand_base(config["paths"]["base_csv"])
     panel = build_item_panel(raw)
@@ -54,4 +48,4 @@ def _print_report(result: EvaluationResult, output_path: str) -> None:
 if __name__ == "__main__":
     config_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CONFIG_PATH
     run_result = run(config_path)
-    _print_report(run_result, _load_run_config(config_path)["paths"]["output_csv"])
+    _print_report(run_result, load_config(config_path)["paths"]["output_csv"])

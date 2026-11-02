@@ -34,18 +34,37 @@ again after cloning or creating a new worktree.
 
 - `CONTRIBUTING.md` — plain-English, step-by-step workflow guide for anyone
   new to git/software engineering; `docs/glossary.md` backs it with term
-  definitions
+  definitions. `AGENTS.md` is the same workflow, condensed for AI agents.
 - `src/config/` — YAML config loading via a typed `RunConfig` (pydantic)
 - `src/solver/` — solving approaches as sibling families, each reporting into
   the same `SolveResult` so they're directly comparable: `mip/` (Pyomo +
-  Gurobi/HiGHS, with a working example), `cpsat/` and `heuristics/`
-  (placeholders — see their READMEs). The "mock the solver in tests"
-  convention is already wired up in `mip/`.
+  Gurobi/HiGHS, the exact formulation), `matheuristics/` (Relax-and-Fix +
+  Fix-and-Optimize over the MIP), and `heuristics/` (Simulated Annealing,
+  calibrated against the MIP — see `docs/calibration.md` and
+  `docs/simulated_annealing_explicado.md`). The "mock the solver in tests"
+  convention is wired up throughout.
+- `src/forecasting/` — predicts per-sector/cycle demand (`L_{s,k}`) that
+  feeds the assignment MIP as input; see its README for the level/shape
+  split and `docs/guides/` for the user-facing how-tos it backs
+- `src/processamento_dados/`, `src/generate/`, `src/calibration/`,
+  `src/visualizations/` — data preprocessing, synthetic instance
+  generation, SA-vs-MIP calibration runner, and plotting helpers shared
+  across experiments and notebooks
 - `src/persistence/` — `SolveResult` schema + CSV writer, the common shape
   every solver/formulation comparison reports into
 - `src/cli/` — a thin entrypoint tying config + solver together
+- `dashboard/`, `shape_dashboard/` — standalone local browser dashboards
+  (no build step) for inspecting archived forecast/backtest runs; see each
+  directory's README
 - `docs/conventions/` — commit format, module headers, function design,
-  testing/mocking conventions
+  testing/mocking, agent-log entry conventions
+- `docs/agent-log/` — dated record of nontrivial AI-agent work, indexed in
+  `docs/agent-log/README.md`
+- `docs/guides/` — user-facing how-tos for the forecasting pipeline
+  (features, backtesting, organization, metrics)
+- `docs/context/` — business-rule answers from the client (Natura); consult
+  before assuming a business premise
+- `docs/plans/` — incremental feature roadmaps and their evaluation protocol
 - `docs/literature/` — one file per paper/source read for the project, plus
   an index; see `docs/literature/README.md`
 - `docs/papers/` — formal write-ups (definitions, model specs) meant to feed
@@ -66,7 +85,9 @@ again after cloning or creating a new worktree.
   README with the same goal/hypothesis/design-note/status structure); run
   outputs are gitignored, not committed. `compare_modeling/` is a working
   reference: runs the example model across multiple solvers and writes a
-  comparison table.
+  comparison table. Most other subdirectories are forecasting-candidate
+  experiments (ARIMA/LightGBM/ETS variants, feature ablations, panel
+  shapes) following the same structure.
 - `.github/workflows/ci.yml` — lint (`ruff`) + test (`pytest --cov=src`) on
   push/PR to `main`
 - `.github/CODEOWNERS` — placeholder owners; fill in before enabling branch

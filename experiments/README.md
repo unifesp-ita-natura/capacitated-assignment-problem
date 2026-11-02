@@ -8,6 +8,33 @@ into `src/`. Keep experiment-specific glue here; keep reusable logic in
 Run artifacts belong under `<experiment>/outputs/` or `<experiment>/results/`
 — both are gitignored — not committed alongside the driver script.
 
+## Never import from another experiment
+
+An experiment must not import from another experiment's directory, even when
+it needs the same helper. Anything shared between experiments belongs in
+`src/`: move it there (with tests) and have every experiment import it from
+there. This keeps each experiment self-contained, so deleting or changing one
+cannot break another.
+
+## Make experiments resumable and incremental
+
+Long runs get interrupted (timeouts, crashes, a closed laptop). Where it
+applies, write the driver so a rerun picks up where it stopped instead of
+redoing finished work:
+
+- **Append, don't rewrite.** When results go to a CSV (or JSONL), append one
+  row per finished unit of work (instance, seed, cycle, solver...) as soon as
+  it completes, rather than writing the whole file at the end.
+- **Check where it stopped.** On start, read the existing output, work out
+  which units are already done (by their key columns) and skip them.
+- **Offer an overwrite.** Provide a flag (e.g. `--overwrite`) that discards
+  the existing outputs and starts from scratch. Without it, resume. Use it
+  after changing the config, code or data, since old rows would otherwise be
+  mixed with results from a different setup.
+
+Skip this only when it does not fit, for example a single short run whose
+output is one atomic file.
+
 ## Every experiment gets a README with a goal, hypothesis, and design note
 
 Before writing the driver script, write `<experiment>/README.md`. This is
@@ -69,3 +96,4 @@ size of the change on `v2_baseline`.
 | [ets_level](ets_level/README.md) | confirmed | Where does exponential smoothing land as a level forecaster? (On two years it beats naive:mean by 4.4% and LightGBM beats it by 7.0%. On one year it loses per cycle but wins per CD-day through lower bias. One alpha shared by every sector is 1.5% better on two years; averaging it with LightGBM cuts bias sixfold.) |
 | [v2_baseline](v2_baseline/README.md) | confirmed | Reference scores on base_tratada_v2 (two years, daily base) for the scenario harness. (LightGBM leads the pooled ETS by 1.1% per cycle and 0.4% per CD-day; their average beats both by 2.3% per cycle.) |
 | [window_aware](window_aware/README.md) | confirmed | Does telling the ETS and LightGBM the scenario window improve the forecast? (A little: −0.7% per cycle for LightGBM, −0.3% for the ETS, all of it on short windows, −3.5%/−2.1% there. Items scale with length as days^0.2, not per day; the opening day itself moves nothing.) |
+| [relax_and_fix](relax_and_fix/README.md) | confirmed | When does Relax-and-Fix + Fix-and-Optimize beat the exact MIP? (Not on time: the MIP closes 800 sectors and 7 cycles, in 28 s with Gurobi and ~6 min with HiGHS. Yes when capacity restricts the optimum: HiGHS finds no feasible solution in 600 s and the matheuristic returns one within 0.05-0.3% of the Gurobi optimum.) |

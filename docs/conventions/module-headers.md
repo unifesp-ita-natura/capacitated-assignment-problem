@@ -17,4 +17,4 @@ Header rules:
 * Put detailed architecture/workflow notes in `docs/`, not in per-file headers.
 
 This is the convention followed across the codebase, e.g.
-`src/solver/example.py`, `src/config/loader.py`.
+`src/solver/mip/block_assignment.py`, `src/config/loader.py`.

@@ -25,8 +25,10 @@ uv run pytest tests/solver/mip/test_example.py
 uv run ruff format src tests experiments
 uv run ruff check src tests experiments
 
-# Demo solve (default config)
-uv run python -m src.cli.main
+
+
+# End-to-end: raw CSV -> forecast -> mip|matheuristic|sa -> explained metric
+uv run --extra forecast python -m src.main --solver sa
 ```
 
 ## Architecture
@@ -49,7 +51,12 @@ Cross-cutting references:
 
 ## Environment
 
-Avoid using a commercial solver considering we are going to propose this solution to a company. We can use open-source solvers like HiGHS, CBC, GLPK, or SCIP.
+The MIP solver defaults to Gurobi (commercial, requires a license — see
+`src/solver/README.md`). Natura, the client, already has a Gurobi license,
+so this is fine for the proposed solution. If no working Gurobi
+license/install is found on the machine running it, the code falls back to
+HiGHS automatically (open-source, bundled via `highspy`) and logs a warning,
+so the project stays runnable without a license too.
 
 ## Conventions
 
@@ -59,6 +66,15 @@ These apply whenever you touch code, commit, or write a paper. Each is short —
 - `docs/conventions/module-headers.md` — the one-sentence module docstring convention
 - `docs/conventions/function-design.md` — small, single-purpose function guidelines
 - `docs/conventions/testing.md` — mocking the solver, coverage targets, ruff/radon commands
+
+**Before writing a new helper in `experiments/`, check if `src/` already has one.**
+Experiment scripts are orchestration/glue around real logic; if you're writing
+config loading, data loading/validation, metric computation, plotting, or
+file/manifest I/O, search `src/` first (`grep -r` for the operation, or check
+the relevant `src/*/README.md`). Only write it in `experiments/` if it's
+genuinely specific to that one experiment. If two or more experiment scripts
+end up with similar helper code, that's a signal to move it to `src/`
+immediately rather than letting a third copy appear.
 
 ## Formal proofs (optional)
 

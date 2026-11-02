@@ -16,6 +16,7 @@ import src.forecasting.candidates  # noqa: F401 - populate REGISTRY
 from src.config.schema import ForecastParams
 from src.forecasting.dataset import build_item_panel, load_demand_base
 from src.forecasting.model import REGISTRY
+from src.visualizations.formatting import annotate_ends, br, style_spines
 
 CONFIG_PATH = "configs/experiments/window_aware/all.yaml"
 CANDIDATE_LABEL = "razao + lag 19 + media anual"
@@ -103,34 +104,6 @@ def main() -> None:
     print(fc.assign(lower=lower[1:] * 1e6, upper=upper[1:] * 1e6).to_string(index=False))
 
     plot(hist, fc_x, mid, lower, upper, fc["CICLOS"].iloc[-1], sigma)
-
-
-def br(value: float, decimals: int) -> str:
-    """Number with a decimal comma, as the client reads it."""
-    return f"{value:.{decimals}f}".replace(".", ",")
-
-
-def annotate_ends(ax, last_x, labels) -> None:
-    """Print each (value, color, size, weight) at the right end of its line."""
-    end_x = last_x + pd.Timedelta(days=5)
-    for value, color, size, weight in labels:
-        ax.annotate(
-            br(value, 2),
-            (last_x, value),
-            xytext=(end_x, value),
-            va="center",
-            ha="left",
-            color=color,
-            fontsize=size,
-            fontweight=weight,
-        )
-
-
-def style_spines(ax) -> None:
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color("#999999")
 
 
 def plot(hist, fc_x, mid, lower, upper, last_code, sigma) -> None:

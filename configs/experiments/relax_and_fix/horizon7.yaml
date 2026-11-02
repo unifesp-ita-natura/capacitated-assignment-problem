@@ -1,0 +1,32 @@
+experiment_name: relax_and_fix_horizon7
+description:
+  goal: >
+    Com o horizonte real (7 ciclos), o MIP deixa de fechar em 800 setores e o Relax-and-Fix
+    passa a ganhar dele?
+  hypothesis: >
+    Com 7 ciclos o modelo tem ~3,5x mais dias e restrições que em full.yaml, então o MIP não
+    deve fechar no limite de tempo; aí o R&F entrega uma solução melhor que a incumbente do
+    MIP no mesmo tempo.
+  design_note: >
+    Mesmo gerador e seed de full.yaml, 800 setores, 7 ciclos de horizonte (10 de histórico),
+    capacidade apertada (headroom 0.95). MIP com mip_rel_gap 1e-4 e limite de 900 s; R&F com
+    120 s por subproblema e fatias de ~100 setores por grupo (com um grupo por CD a 1a janela
+    tinha 557 dos 800 setores e estourava o tempo sem solução). Uma seed.
+  status: confirmed  # resultado em experiments/relax_and_fix/README.md
+
+output_dir: experiments/relax_and_fix/outputs/horizon7
+mip:
+  solver: appsi_highs
+  mip_rel_gap: 0.0001
+optimize_passes: 2
+subproblem_time_limit: 120
+
+instances:
+  n800_h7_tight: {n_sectors: 800, n_cycles_horizon: 7, n_cycles_history: 10, seed: 7, capacity: tight, mip_time_limit: 900}
+
+# Com um grupo por CD a 1a janela (W=3) já tinha 557 dos 800 setores e estourou o limite de
+# tempo sem solução; aqui cada CD é dividido em fatias de ~100 setores.
+windows:
+  - {window: 3, step: 2, max_group_sectors: 100}
+  - {window: 2, step: 1, max_group_sectors: 100}
+  - {window: 4, step: 2, max_group_sectors: 100}
