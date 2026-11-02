@@ -16,7 +16,7 @@ from src.scaling.store import append_row, load_completed
 from src.scaling.sweep import Trial, sweep
 from src.solver.heuristics import simulated_annealing
 from src.solver.inputs import ProblemInstance
-from src.solver.mip.block_assignment import DEFAULT_TIME_LIMIT_SECONDS, solve_with_assignment
+from src.solver.mip.block_assignment import solve_with_assignment
 from src.solver.real_inputs import build_real_instance
 
 CONFIG_PATH = Path("configs/pipeline.yaml")
@@ -26,6 +26,7 @@ RESULTS_CSV = OUTPUT_DIR / "scaling.csv"
 SECTOR_SWEEP = list(range(40, 1001, 40))
 CYCLE_SWEEP = list(range(1, 7))
 MAX_TIMEOUTS = 2
+TIME_LIMIT_SECONDS = 3600.0
 
 
 def _solve(instance: ProblemInstance, config: RunConfig, time_limit: float) -> Trial:
@@ -74,7 +75,7 @@ def _point_runner(config: RunConfig, time_limit: float):
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
-    parser.add_argument("--time-limit", type=float, default=DEFAULT_TIME_LIMIT_SECONDS)
+    parser.add_argument("--time-limit", type=float, default=TIME_LIMIT_SECONDS)
     parser.add_argument("--max-timeouts", type=int, default=MAX_TIMEOUTS)
     parser.add_argument(
         "--overwrite", action="store_true", help="ignore and overwrite earlier results"
