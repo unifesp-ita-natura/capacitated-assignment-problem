@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from src.forecasting.hierarchy_config import HierarchyForecastParams
+
 
 class Paths(BaseModel):
     instances: str = "data/instances"
@@ -162,8 +164,19 @@ ForecastParams = Annotated[
 ]
 
 
+CombinedLevelParams = Annotated[
+    NaiveParams
+    | ArimaParams
+    | ETSParams
+    | LightGBMParams
+    | CycleFactorParams
+    | HierarchyForecastParams,
+    Field(discriminator="model"),
+]
+
+
 class ForecastConfig(BaseModel):
-    params: ForecastParams = NaiveParams()
+    params: CombinedLevelParams = Field(default_factory=HierarchyForecastParams)
     train_window: TrainWindow = TrainWindow()
 
 

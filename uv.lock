@@ -223,6 +223,7 @@ forecast = [
     { name = "lightgbm" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14'" },
     { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14'" },
+    { name = "scipy" },
     { name = "statsmodels" },
 ]
 tracking = [
@@ -257,6 +258,7 @@ requires-dist = [
     { name = "pyomo", specifier = ">=6.9.0" },
     { name = "python-calamine", specifier = ">=0.8.2" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
+    { name = "scipy", marker = "extra == 'forecast'", specifier = ">=1.15.0" },
     { name = "seaborn", marker = "extra == 'viz'", specifier = ">=0.13.2" },
     { name = "statsmodels", marker = "extra == 'forecast'", specifier = ">=0.15.0" },
 ]
