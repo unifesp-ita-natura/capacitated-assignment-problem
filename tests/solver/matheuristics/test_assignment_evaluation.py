@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import random
+
 import pytest
 
+from src.solver.heuristics.simulated_annealing import AnnealingParams, solve
 from src.solver.inputs import ProblemInstance
 from src.solver.matheuristics.evaluation import capacity_utilization, evaluate_assignment
 from src.solver.matheuristics.problem import build_problem
@@ -133,3 +136,45 @@ def test_sector_without_as_is_charges_one():
     problem = _problem(current_assignment={1: 1})
 
     assert evaluate_assignment(problem, {1: 1, 2: 1}).churn_budget_used == 1.0
+
+
+def test_shares_split_a_sectors_load_across_its_cds():
+    # Setor 1: 70% no CD 1 e 30% no CD 2; os demais seguem 100% no seu CD.
+    shares = {1: {1: 0.7, 2: 1.0}, 2: {1: 0.3, 3: 1.0, 4: 1.0}}
+    problem = _problem(
+        cd_sector_shares=shares,
+        daily_capacity={(1, 1): 10.0, (1, 2): 100.0, (2, 1): 20.0, (2, 2): 100.0},
+    )
+
+    evaluation = evaluate_assignment(problem, {1: 1, 2: 1, 3: 1, 4: 1})
+
+    # Dia 1: CD 1 = 0,7*10 + 10 = 17 (excesso 7); CD 2 = 0,3*10 + 10 + 10 = 23 (excesso 3).
+    assert evaluation.capacity_violation == pytest.approx(10.0)
+    assert evaluation.objective == 40.0  # o balanceamento usa a demanda inteira do setor
+
+
+def test_evaluator_and_annealing_agree_on_capacity_with_shares():
+    shares = {1: {1: 0.7, 2: 1.0}, 2: {1: 0.3, 3: 1.0, 4: 1.0}}
+    problem_args = dict(
+        cd_sector_shares=shares,
+        daily_capacity={(1, 1): 10.0, (1, 2): 12.0, (2, 1): 15.0, (2, 2): 15.0},
+        max_churn=4,
+    )
+    instance_problem = _problem(**problem_args)
+    # reconstrói a mesma instância pro SA (o helper só devolve o AssignmentProblem)
+    demand = {(s, d, d): 10.0 for s in (1, 2, 3, 4) for d in (1, 2)}
+    instance = ProblemInstance(
+        sectors=[1, 2, 3, 4],
+        combinations=[1, 2],
+        days=[1, 2],
+        cd_sectors={1: [1, 2], 2: [3, 4]},
+        projected_demand=demand,
+        current_assignment={s: 1 for s in (1, 2, 3, 4)},
+        days_by_cycle={0: [1, 2]},
+        **problem_args,
+    )
+
+    result = solve(instance, rng=random.Random(0), params=AnnealingParams(max_iterations=300))
+
+    evaluation = evaluate_assignment(instance_problem, result.assignment)
+    assert evaluation.capacity_violation == pytest.approx(result.capacity_penalty)

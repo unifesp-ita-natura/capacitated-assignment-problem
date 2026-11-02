@@ -11,7 +11,7 @@ from contextlib import contextmanager
 import pyomo.environ as pyo
 
 from src.persistence import SolveResult
-from src.solver.inputs import ProblemInstance, ProjectedDemand
+from src.solver.inputs import ProblemInstance, ProjectedDemand, effective_cd_sector_shares
 
 try:
     import resource  # POSIX-only; see `_memory_limit`
@@ -79,18 +79,25 @@ def build_block_assignment_model(instance: ProblemInstance) -> pyo.ConcreteModel
     tirada a média, pra não confundir tendência entre ciclos com
     desbalanceamento dentro de um ciclo.
     """
-    cd_sectors = {cd: list(members) for cd, members in instance.cd_sectors.items()}
+    cd_sector_shares = effective_cd_sector_shares(instance)
     days_by_cycle = {h: list(members) for h, members in instance.days_by_cycle.items()}
 
     model = pyo.ConcreteModel()
     _add_sets(
-        model, instance.sectors, instance.combinations, instance.days, cd_sectors, days_by_cycle
+        model,
+        instance.sectors,
+        instance.combinations,
+        instance.days,
+        cd_sector_shares,
+        days_by_cycle,
     )
     _add_variables(model)
     _add_objective(model)
     _add_assignment_constraint(model)
     _add_demand_range_constraints(model, instance.projected_demand, days_by_cycle)
-    _add_capacity_constraints(model, cd_sectors, instance.daily_capacity, instance.projected_demand)
+    _add_capacity_constraints(
+        model, cd_sector_shares, instance.daily_capacity, instance.projected_demand
+    )
     _add_churn_constraint(model, instance.current_assignment, instance.max_churn)
     return model
 
@@ -264,14 +271,14 @@ def _add_sets(
     sectors: Iterable[int],
     combinations: Iterable[int],
     days: Iterable[int],
-    cd_sectors: Mapping[int, list[int]],
+    cd_sector_shares: Mapping[int, dict[int, float]],
     days_by_cycle: Mapping[int, list[int]],
 ) -> None:
     """Declara S, D, A, C, H (§3.1: setores, combinações, dias, CDs, ciclos do horizonte)."""
     model.S = pyo.Set(initialize=list(sectors))
     model.D = pyo.Set(initialize=list(combinations))
     model.A = pyo.Set(initialize=list(days))
-    model.C = pyo.Set(initialize=list(cd_sectors))
+    model.C = pyo.Set(initialize=list(cd_sector_shares))
     model.H = pyo.Set(initialize=list(days_by_cycle))
 
 
@@ -335,15 +342,22 @@ def _add_demand_range_constraints(
 
 def _add_capacity_constraints(
     model: pyo.ConcreteModel,
-    cd_sectors: Mapping[int, list[int]],
+    cd_sector_shares: Mapping[int, dict[int, float]],
     daily_capacity: Mapping[tuple[int, int], float],
     projected_demand: ProjectedDemand,
 ) -> None:
-    """Limita a demanda diária total de cada CD à sua capacidade (§3.5.4)."""
+    """Limita a demanda diária total de cada CD à sua capacidade (§3.5.4).
+
+    Cada setor s pode contribuir pra mais de um CD ao mesmo tempo: sua demanda
+    do dia é pesada pelo share histórico fixo `cd_sector_shares[c][s]` daquele
+    CD, em vez de contar 100% pra um único CD como numa partição rígida.
+    """
 
     def rule(m: pyo.ConcreteModel, c: int, a: int) -> bool:
         cd_demand = sum(
-            projected_demand.get((s, a, d), 0.0) * m.x[s, d] for s in cd_sectors[c] for d in m.D
+            share * projected_demand.get((s, a, d), 0.0) * m.x[s, d]
+            for s, share in cd_sector_shares[c].items()
+            for d in m.D
         )
         return cd_demand <= daily_capacity.get((c, a), 0.0)
 
