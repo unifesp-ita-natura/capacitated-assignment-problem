@@ -58,3 +58,25 @@ def test_explanation_reports_infeasible_solve() -> None:
     explanation = explain.explain(TOY_INSTANCE, solved, {})
     assert explanation.to_be is None
     assert "no feasible" in explain.render(explanation)
+
+
+def test_realized_daily_sums_items_per_sector_cycle_day() -> None:
+    from src.pipeline.realized import realized_daily
+
+    raw = load_demand_base(FIXTURE)
+    frame = realized_daily(raw, ["202612"])
+    assert (
+        frame["items_pred"].sum()
+        == raw.loc[raw["CICLOS"].eq("202612"), "total_itens_mascarado"].sum()
+    )
+    assert frame["relative_day"].min() >= 1
+
+
+def test_rescore_on_same_demand_matches_explain() -> None:
+    from src.pipeline.realized import rescore
+
+    solved = run_solver("sa", TOY_INSTANCE, _config("sa"))
+    explanation = explain.explain(TOY_INSTANCE, solved, {})
+    as_is, to_be = rescore(TOY_INSTANCE, TOY_INSTANCE, solved.assignment)
+    assert as_is.objective == explanation.as_is.objective
+    assert to_be.objective == explanation.to_be.objective

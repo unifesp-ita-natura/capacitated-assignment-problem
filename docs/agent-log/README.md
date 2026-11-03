@@ -5,6 +5,7 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-11-02 realized-demand re-score](2026-11-02-realized-demand-rescore.md) — To-Be beats As-Is by 19.0% on the held-out actuals vs 22.1% on the forecast; the gain survives forecast error
 - [2026-10-30 hierarchy forecast presets](2026-10-30-hierarchy-forecast-presets.md) — Default sector-city ETS/LightGBM distribution and selectable management-city preset connected to daily shapes
 - [2026-10-30 remove legacy hierarchy comparisons](2026-10-30-remove-legacy-hierarchy-comparisons.md) — Checkpoint the current implementation, then remove historical candidate execution and dedicated YAMLs while preserving retained forecasts
 - [2026-10-30 standard hierarchy comparison](2026-10-30-standard-hierarchy-comparison.md) — Three default candidates with a pure five-cycle moving average and explicit historical reproduction mode
