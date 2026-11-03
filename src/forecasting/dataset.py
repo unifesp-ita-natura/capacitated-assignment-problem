@@ -118,24 +118,33 @@ def build_item_panel(
     calendar = cycle_calendar(raw) if calendar is None else calendar
     complete = raw[raw["CICLOS"].isin(set(calendar.loc[calendar["is_complete"], "CICLOS"]))]
 
+    panel = _aggregate_cycles(complete, by_city)
+    panel = panel.merge(calendar[["CICLOS", "opening_date"]], on="CICLOS", how="left")
+    panel = panel.merge(_sector_windows(complete), on=CYCLE_KEYS)
+    panel = _attach_organization(panel, complete)
+    if external:
+        panel = _attach_external(panel)
+    panel.insert(0, SERIES_KEY, _series_key(panel, by_city))
+    return panel.sort_values([SERIES_KEY, "opening_date"]).reset_index(drop=True)
+
+
+def _aggregate_cycles(complete: pd.DataFrame, by_city: bool) -> pd.DataFrame:
+    """Sum items, orders and volumes per (sector[, city], cycle), padding quiet city cycles."""
     keys = [*CYCLE_KEYS, *CITY_COLUMNS] if by_city else CYCLE_KEYS
     panel = complete.groupby(keys, as_index=False).agg(
         items=("total_itens_mascarado", "sum"),
         orders=("total_pedidos_mascarado", "sum"),
         volumes=("total_volumes_mascarado", "sum"),
     )
-    if by_city:
-        panel = _fill_quiet_cycles(panel)
-    panel = panel.merge(calendar[["CICLOS", "opening_date"]], on="CICLOS", how="left")
-    panel = panel.merge(_sector_windows(complete), on=CYCLE_KEYS)
-    panel = _attach_organization(panel, complete)
-    if external:
-        panel = _attach_external(panel)
+    return _fill_quiet_cycles(panel) if by_city else panel
+
+
+def _series_key(panel: pd.DataFrame, by_city: bool) -> pd.Series:
+    """Series id: `cd_setor`, plus `|estado|cidade` when the panel is by city."""
     series = panel["cd_setor"].astype(str)
     if by_city:
         series = series + "|" + panel["estado"] + "|" + panel["cidade"]
-    panel.insert(0, SERIES_KEY, series)
-    return panel.sort_values([SERIES_KEY, "opening_date"]).reset_index(drop=True)
+    return series
 
 
 def _attach_external(panel: pd.DataFrame) -> pd.DataFrame:

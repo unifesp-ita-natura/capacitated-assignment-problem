@@ -183,16 +183,20 @@ class _Converter:
             self.code = []
 
     def feed(self, line: str) -> None:
-        cells = None if self.in_code else _table_cells(line)
         if line.startswith("```"):
             self.fence()
         elif self.in_code:
             self.code.append(line)
-        elif cells is not None:
-            self.table += [] if _is_separator(cells) else [cells]
         else:
+            self.feed_text(line)
+
+    def feed_text(self, line: str) -> None:
+        cells = _table_cells(line)
+        if cells is None:
             self.flush_table()
             _line(self.pdf, line)
+        elif not _is_separator(cells):
+            self.table.append(cells)
 
 
 def render() -> None:
