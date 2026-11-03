@@ -1,0 +1,32 @@
+experiment_name: sa_seed_stability
+description:
+  goal: >
+    A recomendação do SA (melhoria da métrica de balanceamento sobre o As-Is) é estável entre
+    seeds e entre cenários de previsão, ou depende de um sorteio de sorte?
+  hypothesis: >
+    A variação entre seeds é pequena (CV do objetivo < 2%), porque a busca é de 200 mil
+    iterações sobre um espaço com muitas soluções quase equivalentes. A variação entre
+    cenários de previsão é maior que a entre seeds, e a melhoria realizada (demanda real)
+    fica abaixo da prevista, pois o SA otimiza o erro de previsão junto com a demanda.
+  design_note: >
+    Pipeline de configs/pipeline.yaml (20 ciclos de histórico, 6 de horizonte, churn 20%).
+    Para cada cenário de previsão, prevê-se uma vez e roda-se o SA com cada seed na mesma
+    instância. Cada atribuição é avaliada duas vezes, com a mesma definição da métrica: na
+    demanda prevista (o que o SA otimizou) e na demanda real do horizonte (mesma grade
+    cidade-dia da previsão, itens reais no lugar dos previstos). A melhoria é a queda
+    percentual da métrica em relação ao As-Is.
+  status: exploratory
+
+base_config: configs/pipeline.yaml
+output_dir: experiments/sa_seed_stability/outputs
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+scenarios:
+  hierarchical_sector:
+    model: hierarchical
+    city_grouping: sector
+  hierarchical_management:
+    model: hierarchical
+    city_grouping: management
+  naive_mean:
+    model: naive
+    strategy: mean
