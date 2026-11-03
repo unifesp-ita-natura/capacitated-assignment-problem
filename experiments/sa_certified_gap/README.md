@@ -17,10 +17,16 @@ reported: `vs_incumbent = (SA - LB) / SA` (comparable to Gurobi's own gap) and
 incumbent's own gap is reported alongside.
 
 ```bash
-uv run --extra forecast python -m experiments.sa_certified_gap.run [--cycles 6] [--max-sectors N] [--time-limit 7200]
+uv run --extra forecast python -m experiments.sa_certified_gap.run [--cycles 6] [--max-sectors N] [--time-limit 7200] [--mip-gap 1e-4]
 ```
 
-Writes `outputs/result.json` and `outputs/gurobi.log` (gitignored).
+The MIP stops at whichever comes first: `--time-limit` seconds, or a relative gap below
+`--mip-gap` (e.g. `--mip-gap 0.01` for 1%). Either way the best incumbent is returned. Gurobi
+reports a gap stop as `termination: optimal`, so read `gap` next to it: it is the real distance
+to the bound.
+
+Writes `outputs/result.json`, `outputs/assignment.json` (the MIP incumbent, sector -> combination)
+and `outputs/gurobi.log` (gitignored).
 
 **Results:** (568 sectors, 6 cycles, seed 42, Gurobi 12.0.3, 7200 s)
 
