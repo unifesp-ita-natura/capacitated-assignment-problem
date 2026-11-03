@@ -31,6 +31,8 @@ class SolveResult(BaseModel):
     termination_condition: str
     objective: float | None
     wall_time_seconds: float
+    best_bound: float | None = None  # MIP lower bound at stop; None for heuristics
+    mip_gap: float | None = None  # relative gap (objective - bound) / objective; None if unknown
     git_commit: str | None = Field(default_factory=current_git_commit)
 
 

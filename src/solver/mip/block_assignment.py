@@ -208,6 +208,16 @@ def _warmstart_kwargs(resolved_solver: str, warm_start: bool) -> dict[str, objec
     return {}
 
 
+def _bound_and_gap(pyomo_results, objective: float | None) -> tuple[float | None, float | None]:
+    """Best lower bound the solver reports and the relative gap to `objective` (None if absent)."""
+    bound = getattr(pyomo_results.problem, "lower_bound", None)
+    if bound is None or isinstance(bound, bool) or abs(bound) == float("inf"):
+        return None, None
+    if objective is None:
+        return float(bound), None
+    return float(bound), abs(objective - bound) / max(abs(objective), 1e-9)
+
+
 def solve_with_assignment(
     instance: ProblemInstance,
     solver: str = "gurobi",
@@ -255,13 +265,17 @@ def solve_with_assignment(
             wall_time_seconds=wall_time_seconds,
         ), None
     wall_time_seconds = time.perf_counter() - start
+    objective = pyo.value(model.objective, exception=False)
+    bound, gap = _bound_and_gap(pyomo_results, objective)
     result = SolveResult(
         model_name="mip_block_assignment",
         solver=resolved_solver,
         status=str(pyomo_results.solver.status),
         termination_condition=str(pyomo_results.solver.termination_condition),
-        objective=pyo.value(model.objective, exception=False),
+        objective=objective,
         wall_time_seconds=wall_time_seconds,
+        best_bound=bound,
+        mip_gap=gap,
     )
     return result, (extract_assignment(model) if result.objective is not None else None)
 

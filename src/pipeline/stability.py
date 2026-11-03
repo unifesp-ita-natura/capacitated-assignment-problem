@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from src.pipeline.explain import describe
@@ -25,6 +26,8 @@ class SeedOutcome:
     realized_to_be: float
     sectors_moved: int
     seconds: float
+    iterations: int = 0
+    stop_reason: str = ""
 
     @property
     def forecast_improvement_pct(self) -> float:
@@ -58,6 +61,8 @@ def run_seed(seed: int, forecast: ProblemInstance, realized: ProblemInstance) ->
         realized_to_be=on_realized[1].objective,
         sectors_moved=on_forecast[1].sectors_moved,
         seconds=found.time,
+        iterations=found.iterations,
+        stop_reason=found.stop_reason,
     )
 
 
@@ -72,3 +77,43 @@ def spread(values: pd.Series) -> dict[str, float]:
         "max": float(values.max()),
         "cv_pct": 100.0 * std / abs(mean) if mean else 0.0,
     }
+
+
+def selection_cell(frame: pd.DataFrame) -> dict[str, float]:
+    """Does the seed with the lowest predicted objective also realize the best improvement?
+
+    `frame` holds the seeds of one (scenario, window) cell. Returns the Spearman correlation
+    between predicted and realized objective, and the realized improvement (percent of As-Is) of
+    the picked seed, of the average seed and of the oracle (best realized) seed.
+    """
+    picked = frame.loc[frame["forecast_to_be"].idxmin()]
+    return {
+        "spearman": float(frame["forecast_to_be"].corr(frame["realized_to_be"], method="spearman")),
+        "picked_improvement_pct": float(picked["realized_improvement_pct"]),
+        "mean_improvement_pct": float(frame["realized_improvement_pct"].mean()),
+        "oracle_improvement_pct": float(frame["realized_improvement_pct"].max()),
+    }
+
+
+def best_of_k(frame: pd.DataFrame, ks: list[int], draws: int = 1000, seed: int = 0) -> pd.DataFrame:
+    """Expected realized improvement when keeping the lowest-predicted seed of k random seeds.
+
+    Bootstraps `draws` subsets of k seeds without replacement for each k <= the number of seeds.
+    """
+    rng = np.random.default_rng(seed)
+    forecast = frame["forecast_to_be"].to_numpy()
+    realized = frame["realized_improvement_pct"].to_numpy()
+    rows = [
+        {"k": k, "mean_improvement_pct": _mean_picked(forecast, realized, k, draws, rng)}
+        for k in ks
+        if k <= len(frame)
+    ]
+    return pd.DataFrame(rows)
+
+
+def _mean_picked(
+    forecast: np.ndarray, realized: np.ndarray, k: int, draws: int, rng: np.random.Generator
+) -> float:
+    """Mean realized improvement of the lowest-forecast seed over `draws` random k-subsets."""
+    subsets = [rng.choice(len(forecast), size=k, replace=False) for _ in range(draws)]
+    return float(np.mean([realized[idx[np.argmin(forecast[idx])]] for idx in subsets]))

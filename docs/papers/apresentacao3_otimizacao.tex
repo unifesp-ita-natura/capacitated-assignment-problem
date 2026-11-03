@@ -203,35 +203,38 @@
 % 6. PIPELINE PONTA A PONTA COM DADOS REAIS  (~1,5 min)
 % ------------------------------------------------------------
 \begin{frame}{Ponta a ponta com dados reais}
-  % Fonte: results/pipeline_explanation.csv (SA, 568 setores, 6 ciclos de horizonte, histórico 20 ciclos)
-  % - As-Is 56.729 -> To-Be 43.209 itens (amplitude diária), 23,8% melhor, 113 setores movidos (churn 20%)
-  % - capacidade: utilização máxima 41,5% -> 36,6%; nenhuma violação
-  % - WMAPE da previsão 1,83 (nível cidade-dia): erro da previsão limita o que a otimização enxerga
+  % Fonte: experiments/sa_seed_stability (SA, 568 setores, histórico 20 ciclos, horizonte 6 ciclos, churn 20%)
+  % - 30 execuções: 3 previsões x sementes 1-10; só 1 janela de horizonte; 113 setores movidos em todas
+  % - melhora prevista 26,5±2,4%; realizada 18,1±2,9% (9,3-24,0%); 30/30 positivas; cenários empatam
+  % - Removida a execução única (23,8%, results/pipeline_explanation.csv): não mostra variação entre sementes
   % - Caveats: posições As-Is inferidas (base não tem bloco/subloco); ciclos sobrepostos (~21 dias)
-  \small
+  \footnotesize
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
       \centering
+      \textbf{Melhora sobre o As-Is (amplitude diária)}\par
+      \vspace{0.3em}
       \begin{tabular}{lcc}
         \toprule
-        & As-Is & To-Be (SA) \\
+        Previsão & Prevista & \textbf{Realizada} \\
         \midrule
-        Amplitude diária (itens) & 56.729 & \textbf{43.209} \\
-        Utilização máx. do CD    & 41,5\% & 36,6\% \\
-        Violação de capacidade   & 0 & 0 \\
-        Setores movidos          & -- & 113 \\
+        Hier. (setor) & 26,7 $\pm$ 2,4\% & \textbf{18,1 $\pm$ 2,5\%} \\
+        Hier. (gerência) & 26,3 $\pm$ 2,4\% & \textbf{17,7 $\pm$ 3,6\%} \\
+        Média ingênua        & 26,6 $\pm$ 2,5\% & \textbf{18,6 $\pm$ 2,8\%} \\
+        \midrule
+        Todas (30 exec.) & 26,5 $\pm$ 2,4\% & \textbf{18,1 $\pm$ 2,9\%} \\
+        Mín--máx             & 23,2--31,1\%    & 9,3--24,0\% \\
         \bottomrule
       \end{tabular}
-
-      \vspace{0.4em}
-      \textbf{Melhora de 23,8\%} no nivelamento
+      {\scriptsize Média $\pm$ desvio em 10 sementes por previsão; 113 setores movidos.\par}
     \end{column}
     \begin{column}{0.46\textwidth}
       \begin{itemize}
-        \item 568 setores, histórico de 20 ciclos, horizonte de 6 ciclos \textbf{retido} (previsão só com dados anteriores ao corte)
-        \item Limite de \textit{churn} de 20\% dos setores
-        \item Métrica medida só nos dias de regime (descarta 14 dias de cada ponta do horizonte)
-        \item \textbf{Limite:} WMAPE da previsão de 1,83 (cidade-dia); a melhora é \textbf{prevista}, não observada
+        \item 568 setores, 20 ciclos de histórico, 6 de horizonte \textbf{retido}; \textit{churn} $\le$ 20\%
+        \item Só dias de regime (descarta 14 dias em cada ponta)
+        \item \textbf{Realizada} = reavaliada na demanda real do horizonte: \textbf{positiva em 30/30} execuções, mas ${\sim}8$ p.p. abaixo da prevista
+        \item Esperar $\sim$\textbf{18\%} (faixa 13--22\%), não os 26\%; o CV do objetivo entre sementes é 3--4\%
+        \item Os 3 cenários de previsão (inclusive média ingênua) empatam dentro do ruído das sementes
       \end{itemize}
     \end{column}
   \end{columns}
@@ -241,13 +244,13 @@
 % 7. RECOMENDAÇÃO E PRÓXIMOS PASSOS  (~1 min)
 % ------------------------------------------------------------
 \begin{frame}{Qual método usar, e o que falta}
-  \small
+  \footnotesize
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
       \begin{block}{Conclusões da otimização}
         \begin{itemize}
-          \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não fecha em 2 h} nem com Gurobi e warm-start do SA (que melhora muito a solução, mas não basta)
-          \item \textbf{SA:} resposta em segundos; sem garantia, \textit{gap} medido só em sintético (4--8\%)
+          \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não fecha em 2 h} nem com Gurobi e warm-start do SA
+          \item \textbf{SA:} resposta em segundos; sem garantia, \textit{gap} medido só em sintético (4--8\%); nos dados reais, melhora \textbf{realizada} de $\sim$18\% (positiva em 30/30 sementes)
           \item \textbf{Matheurística:} acha solução viável onde o MIP com HiGHS não acha (sintético), mas \textbf{não fechou no tamanho real}
         \end{itemize}
       \end{block}
@@ -257,7 +260,8 @@
         \begin{itemize}
           \item Quantificar a qualidade do SA \textbf{no tamanho real}: limite inferior do MIP após 2 h $\Rightarrow$ \textit{gap} certificado
           \item Matheurística no tamanho real: calibrar $W$, $P$, tamanho de grupo e limite por subproblema para caber no tempo
-          \item warm-start do SA também na matheurística; tolerância de \textit{gap} no MIP (ex.: 1\%) em vez de ótimo exato
+          \item Warm-start do SA também na matheurística; tolerância de \textit{gap} no MIP (ex.: 1\%) em vez de ótimo exato
+          \item Melhor de $N$ sementes: o menor objetivo previsto prediz a melhor realizada? Medir outras janelas
           \item Fechar a 5ª rodada de fronteira (5 e 6 ciclos) com mais sementes
         \end{itemize}
       \end{block}

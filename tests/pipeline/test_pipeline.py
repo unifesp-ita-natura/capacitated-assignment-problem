@@ -80,3 +80,21 @@ def test_rescore_on_same_demand_matches_explain() -> None:
     as_is, to_be = rescore(TOY_INSTANCE, TOY_INSTANCE, solved.assignment)
     assert as_is.objective == explanation.as_is.objective
     assert to_be.objective == explanation.to_be.objective
+
+
+def test_pick_targets_shift_moves_the_horizon_back():
+    import pandas as pd
+
+    from src.pipeline.forecast_stage import pick_targets
+
+    calendar = pd.DataFrame(
+        {
+            "CICLOS": [f"c{i}" for i in range(6)],
+            "opening_date": pd.date_range("2025-01-01", periods=6, freq="14D"),
+            "is_complete": True,
+        }
+    )
+    assert pick_targets(calendar, 2, 2) == ["c4", "c5"]
+    assert pick_targets(calendar, 2, 2, shift=2) == ["c2", "c3"]
+    with pytest.raises(ValueError, match="shift"):
+        pick_targets(calendar, 2, 2, shift=3)
