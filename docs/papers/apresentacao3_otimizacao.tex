@@ -26,32 +26,36 @@
 % 1. O PROBLEMA: O TAMANHO REAL NÃO FECHA  (~1,5 min)
 % ------------------------------------------------------------
 \begin{frame}{Do protótipo ao tamanho real: o MIP não fecha}
+  % Fonte: rodadas reais (568 setores, 6 ciclos, histórico 20; Gurobi; limite 2 h; computador sem suspender)
+  % - MIP a frio: obj 16.350, limite inferior 16.282, gap 0,41%, 7.207 s (limite)
+  % - MIP c/ warm-start do SA: obj 16.350 (mesma solução), limite 16.284, gap 0,41%
+  % - Matheurística c/ warm-start do SA (Fix-and-Optimize): 16.995 em 569 s; +3,9% do MIP, +4,4% do limite inferior
+  % - SA sozinho (sa_seed_stability, mesma instância): ~34.900, ~2,1x o MIP
+  \small
   \begin{columns}[T]
-    \begin{column}{0.50\textwidth}
-      \begin{block}{O que testamos}
-        \small
-        \begin{itemize}
-          \item \textbf{Dados reais:} $\sim$600 setores, 6--7 ciclos
-          \item Gurobi, limite de \textbf{2 horas}
-          \item \textbf{Resultado:} não fechou no limite
-          \item[] \tiny TODO: \textit{gap} final = \texttt{XX}\%; melh. sol. = \texttt{XX}
-          \item Matheurística R\&F+F\&O: não fechou
-          \item[] \tiny TODO: limite, fase, melh. sol. = \texttt{XX}
-          \item \textbf{Warm-start do SA:} melhorou muito, mas \textbf{ainda não fechou}
-          \item[] \tiny TODO: \textit{gap} c/ e s/ warm-start = \texttt{XX}\% $\to$ \texttt{XX}\%
-        \end{itemize}
-      \end{block}
+    \begin{column}{0.54\textwidth}
+      \centering
+      \footnotesize
+      \begin{tabular}{lccc}
+        \toprule
+        & Objetivo & \textit{Gap} & Tempo \\
+        \midrule
+        MIP a frio & 16.350 & 0,41\% & 2 h \\
+        MIP + SA & 16.350 & 0,41\% & 2 h \\
+        Matheur. + SA & 16.995 & 4,4\%$^{*}$ & 9,5 min \\
+        SA (200 mil it.)           & 34.900 & 114\%$^{*}$ & $\sim$1 s \\
+        \bottomrule
+      \end{tabular}
+
+      {\scriptsize $^{*}$contra o melhor limite inferior do MIP (16.282). Dados reais: 568 setores, 6 ciclos.\par}
     \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{block}{Por que importa}
-        \small
-        \begin{itemize}
-          \item Hipótese da 2ª apresentação; agora é \textbf{medida}
-          \item Nem MIP exato (com Gurobi + SA) nem matheurística fecham no tamanho real
-          \item SA responde em segundos: base para tudo (sozinho ou partida do MIP)
-          \item MIP certifica qualidade só em escala menor
-        \end{itemize}
-      \end{block}
+    \begin{column}{0.40\textwidth}
+      \begin{itemize}
+        \item O MIP \textbf{não prova o ótimo} em 2 h, mas chega a \textbf{0,41\%} do limite inferior
+        \item \textbf{Warm-start do SA não mudou} o resultado em 2 h (mesma solução, mesmo \textit{gap})
+        \item A matheurística termina em \textbf{9,5 min} a \textbf{+3,9\%} do MIP
+        \item O SA é rápido, mas \textbf{longe do ótimo} ($\sim$2$\times$)
+      \end{itemize}
     \end{column}
   \end{columns}
 \end{frame}
@@ -159,7 +163,7 @@
         \item Energia de \textbf{amplitude continua o padrão}: pico+desvio reduz o desvio da carga em 1--3\%, mas piora o \textit{gap} da amplitude
         \item Cada energia precisa de \textbf{calibração própria}: com os parâmetros da amplitude, 0/8 execuções viáveis em \texttt{tight40}
         \item Nos dados reais (568 setores, 6 ciclos) o SA devolve solução em $\sim$1 s
-        \item \textbf{Ressalva:} o \textit{gap} é medido contra o ótimo do MIP, que só existe nas instâncias sintéticas
+        \item \textbf{Ressalva:} o \textit{gap} de 4--8\% é sintético; \textbf{no tamanho real o SA fica a $\sim$2$\times$ do MIP} (slide 1)
       \end{itemize}
     \end{column}
   \end{columns}
@@ -195,7 +199,7 @@
     \item \textbf{Capacidade restritiva:} onde o HiGHS não acha solução viável, a matheurística acha
     \item \textbf{\textit{Backtracking}} (libera os últimos grupos e tenta de novo) é o que recupera viabilidade perto da borda; sem ele, 0,70 não tem solução
     \item Capacidade folgada: sempre viável, mas só empata com o MIP (+0,02\% a +0,08\%)
-    \item \textbf{Limite:} esses resultados são sintéticos de 800 setores e 2 ciclos; no tamanho real (dados reais, 6--7 ciclos) \textbf{também não fechou no limite de tempo}
+    \item \textbf{Limite:} esses resultados são sintéticos de 800 setores e 2 ciclos; no tamanho real (dados reais, 6 ciclos), partindo do SA, \textbf{terminou em 9,5 min a +3,9\% do MIP}
   \end{itemize}
 \end{frame}
 
@@ -249,18 +253,18 @@
     \begin{column}{0.5\textwidth}
       \begin{block}{Conclusões da otimização}
         \begin{itemize}
-          \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não fecha em 2 h} nem com Gurobi e warm-start do SA
-          \item \textbf{SA:} resposta em segundos; sem garantia, \textit{gap} medido só em sintético (4--8\%); nos dados reais, melhora \textbf{realizada} de $\sim$18\% (positiva em 30/30 sementes)
-          \item \textbf{Matheurística:} acha solução viável onde o MIP com HiGHS não acha (sintético), mas \textbf{não fechou no tamanho real}
+          \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não prova o ótimo em 2 h}, mas chega a 0,41\% do limite inferior; warm-start do SA não mudou o resultado
+          \item \textbf{SA:} resposta em segundos; no tamanho real fica a $\sim$2$\times$ do MIP no objetivo previsto; melhora \textbf{realizada} de $\sim$18\% (positiva em 30/30 sementes)
+          \item \textbf{Matheurística:} com warm-start do SA, \textbf{9,5 min a +3,9\% do MIP} no tamanho real; acha solução onde o HiGHS não acha (sintético)
         \end{itemize}
       \end{block}
     \end{column}
     \begin{column}{0.46\textwidth}
       \begin{block}{Próximos passos}
         \begin{itemize}
-          \item Quantificar a qualidade do SA \textbf{no tamanho real}: limite inferior do MIP após 2 h $\Rightarrow$ \textit{gap} certificado
-          \item Matheurística no tamanho real: calibrar $W$, $P$, tamanho de grupo e limite por subproblema para caber no tempo
-          \item Warm-start do SA também na matheurística; tolerância de \textit{gap} no MIP (ex.: 1\%) em vez de ótimo exato
+          \item Melhorar o SA no tamanho real (energia, iterações): hoje $\sim$2$\times$ o ótimo
+          \item Matheurística: calibrar $W$, $P$ e grupos para fechar a diferença de 3,9\%; repetir em outras janelas
+          \item Tolerância de \textit{gap} no MIP (ex.: 1\%): o MIP já está a 0,41\% em 2 h
           \item Melhor de $N$ sementes: o menor objetivo previsto prediz a melhor realizada? Medir outras janelas
           \item Fechar a 5ª rodada de fronteira (5 e 6 ciclos) com mais sementes
         \end{itemize}
