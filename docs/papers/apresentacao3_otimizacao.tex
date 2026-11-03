@@ -1,0 +1,275 @@
+% Terceira apresentação: bloco de OTIMIZAÇÃO (7 slides).
+% Os 7 slides de previsão ficam em outro arquivo; este assume que a formulação,
+% o SA (calibração) e a ideia do R&F+F&O já foram apresentados na 2ª apresentação
+% (apresentacao2_natura.tex) e só recapitula o mínimo.
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds,calc}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+
+\title[Otimização]{Desafio Natura: Otimização e Recomendação Proativa\\de Blocos e Sublocos}
+\subtitle{Terceira apresentação parcial --- Otimização}
+\author[Equipe UNIFESP]{Luiza Santos, Leonardo Ferreira, Leonardo Leal, Mateus Martins, \newline Layza Carvalho, Ana Clara Felizardo, Tasso Canellas}
+\institute{UNIFESP}
+\date{\today}
+
+\begin{document}
+
+% ------------------------------------------------------------
+% 1. O PROBLEMA: O TAMANHO REAL NÃO FECHA  (~1,5 min)
+% ------------------------------------------------------------
+\begin{frame}{Do protótipo ao tamanho real: o MIP não fecha}
+  % - Na 2ª apresentação: MIP como referência exata, calibração em 40-80 setores
+  % - Hipótese então: "em ~800 setores não deve fechar". Agora medimos.
+  % - Rodamos o tamanho real (~600 setores, 6-7 ciclos) com limite de 2 h, Gurobi:
+  %   não terminou dentro do limite.
+  % TODO: preencher com o log da rodada de 2 h (gap final, melhor limite inferior,
+  %       se havia solução viável e qual). O log não está commitado no repositório.
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \begin{block}{O que testamos}
+        \begin{itemize}
+          \item Dados reais: $\sim$600 setores, horizonte de 6--7 ciclos
+          \item Gurobi, limite de \textbf{2 horas}
+          \item \textbf{Resultado: não fechou no limite}
+          \item[] \footnotesize TODO: \textit{gap} final = \texttt{XX}\%; melhor solução = \texttt{XX}
+          \item A \textbf{matheurística R\&F+F\&O também não fechou} no limite
+          \item[] \footnotesize TODO: limite usado, fase em que parou, melhor solução = \texttt{XX}
+          \item \textbf{Partida a quente do SA no MIP:} melhorou muito a solução, mas \textbf{ainda não fechou} no limite
+          \item[] \footnotesize TODO: \textit{gap} com e sem partida a quente = \texttt{XX}\% $\to$ \texttt{XX}\%
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.44\textwidth}
+      \begin{block}{Por que importa}
+        \begin{itemize}
+          \item Era a hipótese da 2ª apresentação; agora é \textbf{medida}
+          \item Nem o MIP exato (mesmo com Gurobi e partida a quente do SA) nem a matheurística fecham no tamanho real dentro do limite
+          \item O SA responde em segundos e é a base de tudo: sozinho, ou como partida do MIP. O MIP certifica a qualidade só em escala menor
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------
+% 2. POR QUE NÃO FECHA: TAMANHO x DIFICULDADE  (~1 min)
+% ------------------------------------------------------------
+\begin{frame}{O modelo é pequeno, mas difícil}
+  % Fonte: experiments/mip_size (contagem em forma fechada, conferida contra o modelo Pyomo)
+  % - binárias = 15*S ; restrições = S + 4*dias + 1 (com 2 CDs)
+  % - 800 setores, 7 ciclos: 12.000 binárias, 1.389 restrições
+  \small
+  \centering
+  \begin{tabular}{rrrrr}
+    \toprule
+    Setores & Ciclos & Dias & Binárias & Restrições \\
+    \midrule
+    40   & 1 & 21  & 600    & 125 \\
+    600  & 6 & 126 & 9.000  & 1.105 \\
+    800  & 7 & 147 & 12.000 & 1.389 \\
+    1000 & 7 & 147 & 15.000 & 1.589 \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.5em}
+  \raggedright
+  \begin{itemize}
+    \item Variáveis crescem \textbf{linearmente} nos setores ($15\,|S|$); os ciclos só acrescentam restrições diárias
+    \item Poucas restrições para muitas binárias: o relaxamento linear é \textbf{fraco}, e a busca em árvore domina o tempo
+    \item Ou seja: o tamanho do modelo \textbf{não} explica a falha; a dificuldade é combinatória (empacotamento com carga equilibrada)
+  \end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+% 3. FRONTEIRA DO MIP  (~1,5 min)
+% ------------------------------------------------------------
+\begin{frame}{Onde está a fronteira do MIP}
+  % Fonte: experiments/mip_warmstart_scaling/outputs/scaling.csv
+  % Gurobi, partida a quente do SA, limite 600 s por ponto, 1 semente, setores = maiores por itens previstos
+  % - 5 ciclos: rodada ainda em andamento (só até 120 setores)
+  \small
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tabular}{cccc}
+        \toprule
+        Ciclos & Maior fechado & Tempo & 1º \textit{time-out} \\
+        \midrule
+        1 & 40  & 34 s  & 80 \\
+        2 & 120 & 137 s & 160 \\
+        3 & 280 & 102 s & 320 \\
+        4 & 280 & 224 s & 320 \\
+        5 & $\ge$120$^{*}$ & 540 s & -- \\
+        \bottomrule
+      \end{tabular}
+
+      {\scriptsize $^{*}$rodada em andamento. Limite de 600 s por ponto, 1 semente.\par}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{itemize}
+        \item Fronteira em \textbf{centenas} de setores, bem abaixo dos $\sim$600 reais
+        \item Mesmo com \textbf{partida a quente} do SA e Gurobi
+        \item Não monotônica nos ciclos: o tempo depende da instância (1 semente $\Rightarrow$ ruído)
+        \item Em dados sintéticos com capacidade folgada o MIP fechava 800 setores em 28 s: \textbf{os dados reais são mais difíceis}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------
+% 4. SA EM ESCALA  (~1,5 min)
+% ------------------------------------------------------------
+\begin{frame}{Simulated Annealing em escala}
+  % Fonte: docs/agent-log/2026-10-19-sa-pico-desvio-solvers-escala.md (instância sintética de 800 setores)
+  % - SA 200 mil iterações: gap médio 8,3% em 27 s ; 1 milhão: 4,2% em 155 s
+  % - energia pico+desvio (calibrada): gap 11,0% em 800 setores, ~1,8x o tempo; reduz desvio da carga 1-3%
+  % - avaliação incremental dos vizinhos: só acelera, trajetória idêntica
+  % - Dados reais (pipeline): 568 setores, 6 ciclos, SA em ~1 s
+  \small
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{O que mudou desde a calibração}
+      \begin{itemize}
+        \item Avaliação \textbf{incremental} dos vizinhos (mesma trajetória, mais rápida)
+        \item Nova energia \textbf{pico + desvio}: testada contra a amplitude
+        \item Mais iterações: o \textit{gap} cai
+      \end{itemize}
+
+      \vspace{0.3em}
+      \textbf{Resultado em 800 setores (sintético)}
+      \begin{center}
+        \begin{tabular}{lcc}
+          \toprule
+          Configuração & \textit{Gap} & Tempo \\
+          \midrule
+          Amplitude, 200 mil it. & 8,3\% & 27 s \\
+          Amplitude, 1 mi it.    & 4,2\% & 155 s \\
+          Pico+desvio, 200 mil   & 11,0\% & $\sim$1,8$\times$ \\
+          \bottomrule
+        \end{tabular}
+      \end{center}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{itemize}
+        \item Energia de \textbf{amplitude continua o padrão}: pico+desvio reduz o desvio da carga em 1--3\%, mas piora o \textit{gap} da amplitude
+        \item Cada energia precisa de \textbf{calibração própria}: com os parâmetros da amplitude, 0/8 execuções viáveis em \texttt{tight40}
+        \item Nos dados reais (568 setores, 6 ciclos) o SA devolve solução em $\sim$1 s
+        \item \textbf{Ressalva:} o \textit{gap} é medido contra o ótimo do MIP, que só existe nas instâncias sintéticas
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------
+% 5. MATHEURÍSTICA: RESULTADOS  (~1,5 min)
+% ------------------------------------------------------------
+\begin{frame}{Matheurística R\&F + F\&O: resultados}
+  % Fonte: experiments/relax_and_fix/README.md (sintético, 800 setores, 2 ciclos, 1 semente)
+  % Desenho/janelas já foram apresentados na 2ª apresentação. Aqui só o que é novo: resultado e backtracking.
+  % - Capacidade folgada: ótimo definido pelo churn; matheurística viável, +0,02% a +0,08%, não mais rápida que o MIP
+  % - Capacidade restritiva: HiGHS sem solução viável em 600 s (0,75 e 0,70), matheurística devolve solução
+  % - Backtracking: sem ele, 0,70 não tem solução; com ele recupera
+  % - Janelas por CDs eram desbalanceadas: primeira janela com 557 dos 800 setores -> janelas por grupos/fatias de CD
+  \footnotesize
+  \begin{center}
+  \begin{tabular}{lcccc}
+    \toprule
+    \textit{Headroom} & MIP Gurobi & MIP HiGHS & R\&F+F\&O HiGHS & R\&F+F\&O Gurobi \\
+    \midrule
+    0,80 & 88.794 \; (9 s)   & 88.794 \; (158 s) & +0,04\% \; (125 s) & +0,02\% \; (38 s) \\
+    0,75 & 88.970 \; (10 s)  & \textbf{sem solução viável} & \textbf{viável}, 169 s & +0,07\% \; (39 s) \\
+    0,70 & 90.426 \; (155 s) & \textbf{sem solução viável} & \textbf{viável}, +0,27\% \; (919 s) & +0,14\% \; (288 s) \\
+    0,65 & inviável & inviável & sem solução (correto) & sem solução (correto) \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  {\scriptsize \textit{Headroom}: 0,80 $\approx$ As-Is 20\% acima da capacidade; 0,65 $\approx$ 35\%. Limite de 600 s no MIP. 800 setores, 2 ciclos, sintético, 1 semente.\par}
+
+  \vspace{0.3em}
+  \begin{itemize}
+    \item \textbf{Capacidade restritiva:} onde o HiGHS não acha solução viável, a matheurística acha
+    \item \textbf{\textit{Backtracking}} (libera os últimos grupos e tenta de novo) é o que recupera viabilidade perto da borda; sem ele, 0,70 não tem solução
+    \item Capacidade folgada: sempre viável, mas só empata com o MIP (+0,02\% a +0,08\%)
+    \item \textbf{Limite:} esses resultados são sintéticos de 800 setores e 2 ciclos; no tamanho real (dados reais, 6--7 ciclos) \textbf{também não fechou no limite de tempo}
+  \end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+% 6. PIPELINE PONTA A PONTA COM DADOS REAIS  (~1,5 min)
+% ------------------------------------------------------------
+\begin{frame}{Ponta a ponta com dados reais}
+  % Fonte: results/pipeline_explanation.csv (SA, 568 setores, 6 ciclos de horizonte, histórico 20 ciclos)
+  % - As-Is 56.729 -> To-Be 43.209 itens (amplitude diária), 23,8% melhor, 113 setores movidos (churn 20%)
+  % - capacidade: utilização máxima 41,5% -> 36,6%; nenhuma violação
+  % - WMAPE da previsão 1,83 (nível cidade-dia): erro da previsão limita o que a otimização enxerga
+  % - Caveats: posições As-Is inferidas (base não tem bloco/subloco); ciclos sobrepostos (~21 dias)
+  % TODO: reexecutar com CD shares (commit c6b617d em diante) antes de apresentar; os números abaixo são de 25/10
+  \small
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tabular}{lcc}
+        \toprule
+        & As-Is & To-Be (SA) \\
+        \midrule
+        Amplitude diária (itens) & 56.729 & \textbf{43.209} \\
+        Utilização máx. do CD    & 41,5\% & 36,6\% \\
+        Violação de capacidade   & 0 & 0 \\
+        Setores movidos          & -- & 113 \\
+        \bottomrule
+      \end{tabular}
+
+      \vspace{0.4em}
+      \textbf{Melhora de 23,8\%} no nivelamento
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{itemize}
+        \item 568 setores, histórico de 20 ciclos, horizonte de 6 ciclos \textbf{retido} (previsão só com dados anteriores ao corte)
+        \item Limite de \textit{churn} de 20\% dos setores
+        \item Métrica medida só nos dias de regime (descarta 14 dias de cada ponta do horizonte)
+        \item \textbf{Limite:} WMAPE da previsão de 1,83 (cidade-dia); a melhora é \textbf{prevista}, não observada
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ------------------------------------------------------------
+% 7. RECOMENDAÇÃO E PRÓXIMOS PASSOS  (~1 min)
+% ------------------------------------------------------------
+\begin{frame}{Qual método usar, e o que falta}
+  \small
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \begin{block}{Conclusões da otimização}
+        \begin{itemize}
+          \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não fecha em 2 h} nem com Gurobi e partida a quente do SA (que melhora muito a solução, mas não basta)
+          \item \textbf{SA:} resposta em segundos; sem garantia, \textit{gap} medido só em sintético (4--8\%)
+          \item \textbf{Matheurística:} acha solução viável onde o MIP com HiGHS não acha (sintético), mas \textbf{não fechou no tamanho real}
+        \end{itemize}
+      \end{block}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \begin{block}{Próximos passos}
+        \begin{itemize}
+          \item Quantificar a qualidade do SA \textbf{no tamanho real}: limite inferior do MIP após 2 h $\Rightarrow$ \textit{gap} certificado
+          \item Matheurística no tamanho real: calibrar $W$, $P$, tamanho de grupo e limite por subproblema para caber no tempo
+          \item Partida a quente do SA também na matheurística; tolerância de \textit{gap} no MIP (ex.: 1\%) em vez de ótimo exato
+          \item Fechar a 5ª rodada de fronteira (5 e 6 ciclos) com mais sementes
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\end{document}
