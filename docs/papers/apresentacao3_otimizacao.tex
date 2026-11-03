@@ -1,7 +1,4 @@
-% Terceira apresentação: bloco de OTIMIZAÇÃO (7 slides).
-% Os 7 slides de previsão ficam em outro arquivo; este assume que a formulação,
-% o SA (calibração) e a ideia do R&F+F&O já foram apresentados na 2ª apresentação
-% (apresentacao2_natura.tex) e só recapitula o mínimo.
+% Terceira apresentação
 \documentclass[aspectratio=169,11pt]{beamer}
 
 \usepackage[utf8]{inputenc}
@@ -18,7 +15,7 @@
 \setbeamertemplate{navigation symbols}{}
 
 \title[Otimização]{Desafio Natura: Otimização e Recomendação Proativa\\de Blocos e Sublocos}
-\subtitle{Terceira apresentação parcial --- Otimização}
+\subtitle{Terceira apresentação parcial}
 \author[Equipe UNIFESP]{Luiza Santos, Leonardo Ferreira, Leonardo Leal, Mateus Martins, \newline Layza Carvalho, Ana Clara Felizardo, Tasso Canellas}
 \institute{UNIFESP}
 \date{\today}
@@ -29,33 +26,30 @@
 % 1. O PROBLEMA: O TAMANHO REAL NÃO FECHA  (~1,5 min)
 % ------------------------------------------------------------
 \begin{frame}{Do protótipo ao tamanho real: o MIP não fecha}
-  % - Na 2ª apresentação: MIP como referência exata, calibração em 40-80 setores
-  % - Hipótese então: "em ~800 setores não deve fechar". Agora medimos.
-  % - Rodamos o tamanho real (~600 setores, 6-7 ciclos) com limite de 2 h, Gurobi:
-  %   não terminou dentro do limite.
-  % TODO: preencher com o log da rodada de 2 h (gap final, melhor limite inferior,
-  %       se havia solução viável e qual). O log não está commitado no repositório.
   \begin{columns}[T]
-    \begin{column}{0.52\textwidth}
+    \begin{column}{0.50\textwidth}
       \begin{block}{O que testamos}
+        \small
         \begin{itemize}
-          \item Dados reais: $\sim$600 setores, horizonte de 6--7 ciclos
+          \item \textbf{Dados reais:} $\sim$600 setores, 6--7 ciclos
           \item Gurobi, limite de \textbf{2 horas}
-          \item \textbf{Resultado: não fechou no limite}
-          \item[] \footnotesize TODO: \textit{gap} final = \texttt{XX}\%; melhor solução = \texttt{XX}
-          \item A \textbf{matheurística R\&F+F\&O também não fechou} no limite
-          \item[] \footnotesize TODO: limite usado, fase em que parou, melhor solução = \texttt{XX}
-          \item \textbf{Partida a quente do SA no MIP:} melhorou muito a solução, mas \textbf{ainda não fechou} no limite
-          \item[] \footnotesize TODO: \textit{gap} com e sem partida a quente = \texttt{XX}\% $\to$ \texttt{XX}\%
+          \item \textbf{Resultado:} não fechou no limite
+          \item[] \tiny TODO: \textit{gap} final = \texttt{XX}\%; melh. sol. = \texttt{XX}
+          \item Matheurística R\&F+F\&O: não fechou
+          \item[] \tiny TODO: limite, fase, melh. sol. = \texttt{XX}
+          \item \textbf{Warm-start do SA:} melhorou muito, mas \textbf{ainda não fechou}
+          \item[] \tiny TODO: \textit{gap} c/ e s/ warm-start = \texttt{XX}\% $\to$ \texttt{XX}\%
         \end{itemize}
       \end{block}
     \end{column}
-    \begin{column}{0.44\textwidth}
+    \begin{column}{0.46\textwidth}
       \begin{block}{Por que importa}
+        \small
         \begin{itemize}
-          \item Era a hipótese da 2ª apresentação; agora é \textbf{medida}
-          \item Nem o MIP exato (mesmo com Gurobi e partida a quente do SA) nem a matheurística fecham no tamanho real dentro do limite
-          \item O SA responde em segundos e é a base de tudo: sozinho, ou como partida do MIP. O MIP certifica a qualidade só em escala menor
+          \item Hipótese da 2ª apresentação; agora é \textbf{medida}
+          \item Nem MIP exato (com Gurobi + SA) nem matheurística fecham no tamanho real
+          \item SA responde em segundos: base para tudo (sozinho ou partida do MIP)
+          \item MIP certifica qualidade só em escala menor
         \end{itemize}
       \end{block}
     \end{column}
@@ -96,7 +90,7 @@
 % ------------------------------------------------------------
 \begin{frame}{Onde está a fronteira do MIP}
   % Fonte: experiments/mip_warmstart_scaling/outputs/scaling.csv
-  % Gurobi, partida a quente do SA, limite 600 s por ponto, 1 semente, setores = maiores por itens previstos
+  % Gurobi, warm-start do SA, limite 600 s por ponto, 1 semente, setores = maiores por itens previstos
   % - 5 ciclos: rodada ainda em andamento (só até 120 setores)
   \small
   \begin{columns}[T]
@@ -119,7 +113,7 @@
     \begin{column}{0.46\textwidth}
       \begin{itemize}
         \item Fronteira em \textbf{centenas} de setores, bem abaixo dos $\sim$600 reais
-        \item Mesmo com \textbf{partida a quente} do SA e Gurobi
+        \item Mesmo com \textbf{warm-start} do SA e Gurobi
         \item Não monotônica nos ciclos: o tempo depende da instância (1 semente $\Rightarrow$ ruído)
         \item Em dados sintéticos com capacidade folgada o MIP fechava 800 setores em 28 s: \textbf{os dados reais são mais difíceis}
       \end{itemize}
@@ -214,7 +208,6 @@
   % - capacidade: utilização máxima 41,5% -> 36,6%; nenhuma violação
   % - WMAPE da previsão 1,83 (nível cidade-dia): erro da previsão limita o que a otimização enxerga
   % - Caveats: posições As-Is inferidas (base não tem bloco/subloco); ciclos sobrepostos (~21 dias)
-  % TODO: reexecutar com CD shares (commit c6b617d em diante) antes de apresentar; os números abaixo são de 25/10
   \small
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
@@ -253,7 +246,7 @@
     \begin{column}{0.5\textwidth}
       \begin{block}{Conclusões da otimização}
         \begin{itemize}
-          \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não fecha em 2 h} nem com Gurobi e partida a quente do SA (que melhora muito a solução, mas não basta)
+          \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não fecha em 2 h} nem com Gurobi e warm-start do SA (que melhora muito a solução, mas não basta)
           \item \textbf{SA:} resposta em segundos; sem garantia, \textit{gap} medido só em sintético (4--8\%)
           \item \textbf{Matheurística:} acha solução viável onde o MIP com HiGHS não acha (sintético), mas \textbf{não fechou no tamanho real}
         \end{itemize}
@@ -264,7 +257,7 @@
         \begin{itemize}
           \item Quantificar a qualidade do SA \textbf{no tamanho real}: limite inferior do MIP após 2 h $\Rightarrow$ \textit{gap} certificado
           \item Matheurística no tamanho real: calibrar $W$, $P$, tamanho de grupo e limite por subproblema para caber no tempo
-          \item Partida a quente do SA também na matheurística; tolerância de \textit{gap} no MIP (ex.: 1\%) em vez de ótimo exato
+          \item warm-start do SA também na matheurística; tolerância de \textit{gap} no MIP (ex.: 1\%) em vez de ótimo exato
           \item Fechar a 5ª rodada de fronteira (5 e 6 ciclos) com mais sementes
         \end{itemize}
       \end{block}
