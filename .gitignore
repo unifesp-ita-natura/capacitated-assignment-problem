@@ -15,11 +15,15 @@ wheels/
 *.aux
 *.fdb_latexmk
 *.fls
-docs/paper/*.log
-docs/paper/*.out
-docs/paper/*.gz
-docs/paper/*.bbl
-docs/paper/*.blg
+docs/papers/*.log
+docs/papers/*.out
+docs/papers/*.gz
+docs/papers/*.bbl
+docs/papers/*.blg
+docs/papers/*.synctex.gz
+docs/papers/*.toc
+docs/papers/*.nav
+docs/papers/*.snm
 
 # result files
 results/
