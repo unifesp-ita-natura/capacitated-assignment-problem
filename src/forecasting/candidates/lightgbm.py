@@ -63,14 +63,25 @@ class _PooledLightGBMCandidate:
             columns += COMPANION_SERIES
         return columns
 
+    @property
+    def _carried_columns(self) -> list[str]:
+        """Static per-sector columns a target cycle inherits from the sector's latest history."""
+        return list(self._params.categorical_features)
+
+    def _derive(self, featured: pd.DataFrame) -> pd.DataFrame:
+        """Hook for subclasses to add derived feature columns to an already-featured frame."""
+        return featured
+
     def fit_predict(self, history: pd.DataFrame, targets: pd.DataFrame) -> pd.DataFrame:
         complete = _trainable_rows(
-            complete_feature_frame(
-                history,
-                self._params.lags,
-                self._params.rolling_windows,
-                self._params.companion_lags,
-                self._params.categorical_features,
+            self._derive(
+                complete_feature_frame(
+                    history,
+                    self._params.lags,
+                    self._params.rolling_windows,
+                    self._params.companion_lags,
+                    self._params.categorical_features,
+                )
             ),
             self._params.target,
         )
@@ -178,7 +189,7 @@ class _PooledLightGBMCandidate:
 
         for cycle in _chronological_cycles(targets):
             pending = _pending_rows(targets, cycle, self._panel_columns)
-            pending = _carry_organization(pending, working, self._params.categorical_features)
+            pending = _carry_organization(pending, working, self._carried_columns)
             working = pd.concat([working, pending], ignore_index=True)
             rows = self._predictable_rows(working, cycle)
             if rows.empty:
@@ -217,11 +228,13 @@ class _PooledLightGBMCandidate:
         sector is still predictable; a sector with no prior cycle at all is
         not, and is left out so the harness reports it as missing instead.
         """
-        featured = build_features(
-            working,
-            self._params.lags,
-            self._params.rolling_windows,
-            self._params.companion_lags,
+        featured = self._derive(
+            build_features(
+                working,
+                self._params.lags,
+                self._params.rolling_windows,
+                self._params.companion_lags,
+            )
         )
         rows = featured[featured["CICLOS"] == cycle]
         has_any_lag = rows[lag_columns(self._params.lags)].notna().any(axis=1)

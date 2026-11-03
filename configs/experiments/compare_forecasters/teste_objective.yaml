@@ -1,0 +1,83 @@
+experiment_name: teste_objective
+description:
+  goal: >
+    Atacar o vies de -26% do lgbm_ratio trocando o objetivo de treino do
+    LightGBM. Tweedie (massa em zero + cauda positiva, perfil da demanda
+    intermitente) e Quantile (mediana) contra o lgbm_ratio e o lgbm_base.
+  hypothesis: >
+    Tweedie deve reduzir o vies por modelar a distribuicao com massa em zero;
+    a duvida e se mantem ou melhora o mae_common. Quantile(0.5) preve a
+    mediana, que em serie intermitente pode ter vies diferente da media L1.
+  design_note: >
+    lightgbm_objective herda o LightGBM base e so troca _settings(). Mesmo
+    split e ranking (mae_common) dos outros testes. Tweedie exige alvo nao
+    negativo (level/ratio sao). variance_power em 1.3 (padrao) e 1.5.
+  status: in_progress
+
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: lightgbm
+    label: lgbm_base
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm
+    label: lgbm_ratio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    target: ratio
+
+  - model: lightgbm_objective
+    label: lgbm_tweedie_13
+    objective: tweedie
+    tweedie_variance_power: 1.3
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm_objective
+    label: lgbm_tweedie_15
+    objective: tweedie
+    tweedie_variance_power: 1.5
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm_objective
+    label: lgbm_tweedie_ratio
+    objective: tweedie
+    tweedie_variance_power: 1.3
+    target: ratio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm_objective
+    label: lgbm_quantile_50
+    objective: quantile
+    quantile_alpha: 0.5
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-19_objective
