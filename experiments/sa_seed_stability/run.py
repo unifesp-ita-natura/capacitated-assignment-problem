@@ -14,7 +14,8 @@ from src.config.schema import CombinedLevelParams
 from src.forecasting.dataset import load_demand_base
 from src.main import _build_instance
 from src.pipeline.forecast_stage import forecast_horizon, plan_horizon
-from src.pipeline.stability import SeedOutcome, realized_daily, run_seed, spread
+from src.pipeline.realized import realized_instance
+from src.pipeline.stability import SeedOutcome, run_seed, spread
 
 DEFAULT_CONFIG = "configs/experiments/sa_seed_stability/full.yaml"
 KEYS = ["scenario", "seed"]
@@ -50,14 +51,13 @@ def _run_scenario(name: str, level, base: RunConfig, raw, seeds, path: Path) -> 
     plan = plan_horizon(raw, pipeline.horizon_cycles, pipeline.history_cycles)
     forecast = forecast_horizon(raw, plan, pipeline, level)
     cycles = forecast.training_cycles
-    predicted = _build_instance(raw, plan, base, forecast.daily, cycles).instance
-    actual = _build_instance(raw, plan, base, realized_daily(raw, forecast.daily), cycles)
-    if actual.instance.days != predicted.days:
-        raise ValueError(f"{name}: realized and forecast instances disagree on the day grid")
+    real = _build_instance(raw, plan, base, forecast.daily, cycles)
+    predicted = real.instance
+    actual = realized_instance(predicted, real, raw, plan.targets)
     todo = [s for s in seeds if (name, s) not in _done(path)]
     print(f"[{name}] {len(seeds) - len(todo)} done, {len(todo)} to run", flush=True)
     for seed in todo:
-        outcome = run_seed(seed, predicted, actual.instance)
+        outcome = run_seed(seed, predicted, actual)
         _append(path, _record(name, outcome))
         print(
             f"[{name}] seed {seed}: forecast {outcome.forecast_improvement_pct:.1f}% "

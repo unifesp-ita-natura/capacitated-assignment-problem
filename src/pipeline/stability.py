@@ -7,12 +7,11 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from src.pipeline import explain as explain_stage
+from src.pipeline.explain import describe
+from src.pipeline.realized import rescore
 from src.solver.heuristics import simulated_annealing
 from src.solver.inputs import ProblemInstance
 from src.solver.matheuristics.problem import build_problem
-
-ACTUAL_KEYS = ["cd_setor", "estado", "cidade", "CICLOS", "date"]
 
 
 @dataclass(frozen=True)
@@ -42,31 +41,15 @@ def _drop_pct(before: float, after: float) -> float:
     return 100.0 * (before - after) / before if before else 0.0
 
 
-def realized_daily(raw: pd.DataFrame, forecast_daily: pd.DataFrame) -> pd.DataFrame:
-    """The forecast's city-day grid with `items_pred` replaced by the orders that really came."""
-    actual = (
-        raw.groupby(["cd_setor", "estado", "cidade", "CICLOS", "data_pedido"], as_index=False)
-        .agg(actual=("total_itens_mascarado", "sum"))
-        .rename(columns={"data_pedido": "date"})
-    )
-    merged = forecast_daily.merge(actual, on=ACTUAL_KEYS, how="left", validate="many_to_one")
-    forecasted = merged["items_pred"].notna()
-    merged["items_pred"] = merged["actual"].fillna(0.0).where(forecasted)
-    return merged.drop(columns="actual")
-
-
-def _score(instance: ProblemInstance, assignment: dict[int, int]):
-    """(As-Is, To-Be) scenarios of `assignment` on `instance`'s demand."""
-    problem = build_problem(instance)
-    as_is = explain_stage.describe(problem, instance, instance.current_assignment)
-    return as_is, explain_stage.describe(problem, instance, assignment)
-
-
 def run_seed(seed: int, forecast: ProblemInstance, realized: ProblemInstance) -> SeedOutcome:
     """Solve the forecast instance with `seed`, then score As-Is and To-Be on both demands."""
     found = simulated_annealing.solve(forecast, rng=random.Random(seed))
-    on_forecast = _score(forecast, found.assignment)
-    on_realized = _score(realized, found.assignment)
+    problem = build_problem(forecast)
+    on_forecast = (
+        describe(problem, forecast, forecast.current_assignment),
+        describe(problem, forecast, found.assignment),
+    )
+    on_realized = rescore(forecast, realized, found.assignment)
     return SeedOutcome(
         seed=seed,
         forecast_as_is=on_forecast[0].objective,

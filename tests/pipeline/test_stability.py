@@ -2,32 +2,7 @@
 
 import pandas as pd
 
-from src.pipeline.stability import SeedOutcome, realized_daily, spread
-
-
-def test_realized_daily_swaps_forecast_for_actual_and_keeps_grid():
-    date = pd.Timestamp("2026-01-02")
-    keys = {"cd_setor": "S1", "estado": "SP", "cidade": "X", "CICLOS": "C1", "date": date}
-    forecast = pd.DataFrame(
-        [
-            {**keys, "items_pred": 5.0},
-            {**keys, "date": date + pd.Timedelta(days=1), "items_pred": 7.0},
-        ]
-    )
-    raw = pd.DataFrame(
-        [
-            {
-                "cd_setor": "S1",
-                "estado": "SP",
-                "cidade": "X",
-                "CICLOS": "C1",
-                "data_pedido": date,
-                "total_itens_mascarado": 3,
-            }
-        ]
-    )
-    result = realized_daily(raw, forecast)
-    assert result["items_pred"].tolist() == [3.0, 0.0]
+from src.pipeline.stability import SeedOutcome, spread
 
 
 def test_improvement_is_drop_relative_to_as_is():
