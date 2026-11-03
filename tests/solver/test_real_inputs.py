@@ -10,6 +10,7 @@ from src.solver.real_inputs import (
     build_real_instance,
     cycle_spacing,
     dominant_cd,
+    historical_cd_shares,
     infer_as_is,
     sector_curves,
 )
@@ -82,3 +83,33 @@ def test_build_real_instance_is_consistent() -> None:
 def test_max_sectors_keeps_the_largest() -> None:
     real = build_real_instance(_daily(), _raw(), ["202601"], "202601", max_churn=0.5, max_sectors=1)
     assert real.sector_ids == {"A": 1}
+
+
+def test_historical_cd_shares_are_item_weighted_and_sum_to_one() -> None:
+    shares = historical_cd_shares(_raw(), ["A", "B"], "202602", window_cycles=6)
+    assert shares["A"] == {2700: 10 / 101, 5100: 91 / 101}
+    assert shares["B"] == {5100: 1.0}
+
+
+def test_historical_cd_shares_window_ignores_older_cycles_and_falls_back() -> None:
+    shares = historical_cd_shares(_raw(), ["A", "C"], "202602", window_cycles=1)
+    assert shares["A"] == {5100: 1.0}  # only 202602 counts for A
+    assert shares["C"] == {2700: 1.0}  # no orders in 202602: whole-history fallback
+
+
+def test_build_real_instance_carries_shares_and_covers_every_share_cd() -> None:
+    real = build_real_instance(_daily(), _raw(), ["202601"], "202601", max_churn=0.5)
+    instance = real.instance
+    assert instance.cd_sector_shares is not None
+    share_cds = set(instance.cd_sector_shares)
+    assert share_cds == {2700, 5100}
+    assert {cd for cd, _ in instance.daily_capacity} == share_cds
+    assert real.sector_to_cd == {"A": 5100, "B": 5100}
+
+
+def test_disabling_shares_restores_the_hard_partition() -> None:
+    real = build_real_instance(
+        _daily(), _raw(), ["202601"], "202601", max_churn=0.5, share_window_cycles=None
+    )
+    assert real.instance.cd_sector_shares is None
+    assert set(real.instance.cd_sectors) == {5100}

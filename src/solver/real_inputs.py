@@ -7,12 +7,14 @@ from typing import NamedTuple
 import numpy as np
 import pandas as pd
 
+from src.forecasting.daily import sector_cd_shares
 from src.forecasting.dataset import cycle_calendar
 from src.generate import generator
 from src.solver import inputs as solver_inputs
 from src.solver.inputs import ProblemInstance
 
 AS_IS_QUANTILE = 0.05  # robust "cycle start": a few sectors open far earlier than the rest
+SHARE_WINDOW_CYCLES = 6  # recent cycles behind each sector's CD split; sectors move CDs over time
 
 
 class RealInstance(NamedTuple):
@@ -47,6 +49,28 @@ def dominant_cd(raw: pd.DataFrame, sectors: list[str]) -> dict[str, int]:
     return {sector: int(cd) for sector, (_, cd) in top.items()}
 
 
+def historical_cd_shares(
+    raw: pd.DataFrame, sectors: list[str], as_of_cycle: str, window_cycles: int
+) -> dict[str, dict[int, float]]:
+    """Each sector's share of items per CD over the `window_cycles` cycles up to `as_of_cycle`.
+
+    Shares are in items, the unit of the CD capacities. A sector with no orders in the
+    window falls back to its whole history, so every sector in `sectors` gets a split
+    that sums to 1.
+    """
+    items = raw[raw["cd_setor"].isin(sectors)].rename(columns={"total_itens_mascarado": "items"})
+    cycles = sorted(c for c in items["CICLOS"].unique() if c <= as_of_cycle)
+    recent = _shares_by_sector(items[items["CICLOS"].isin(cycles[-window_cycles:])])
+    return {**_shares_by_sector(items), **recent}
+
+
+def _shares_by_sector(items: pd.DataFrame) -> dict[str, dict[int, float]]:
+    shares: dict[str, dict[int, float]] = {}
+    for row in sector_cd_shares(items).itertuples(index=False):
+        shares.setdefault(row.cd_setor, {})[int(row.cd_cd)] = float(row.cd_share)
+    return shares
+
+
 def infer_as_is(raw: pd.DataFrame, cycle: str, sectors: list[str]) -> dict[str, int]:
     """Each sector's slot day (= combination id) from when it opened relative to its peers.
 
@@ -69,15 +93,23 @@ def build_real_instance(
     max_churn: float,
     capacity_multiplier: float = 1.0,
     max_sectors: int | None = None,
+    share_window_cycles: int | None = SHARE_WINDOW_CYCLES,
 ) -> RealInstance:
-    """Assemble the solver instance for the forecast `cycles` (in order) of the real data."""
+    """Assemble the solver instance for the forecast `cycles` (in order) of the real data.
+
+    With `share_window_cycles`, a sector's demand is split across CDs by its recent
+    historical shares (`cd_sector_shares`) and `sector_to_cd` is its top-share CD. With
+    None the sector is a hard 100% member of its dominant CD, as before.
+    """
     curves = _largest_sectors(sector_curves(daily, cycles), max_sectors)
     labels = sorted(curves["sector"].unique())
     sector_ids, combo_slots = solver_inputs.build_id_maps(labels)
     spacing = cycle_spacing(raw, cycles)
     demand = solver_inputs.build_projected_demand(curves, sector_ids, combo_slots, spacing, 0)
     days = sorted({day for _, day, _ in demand})
-    sector_to_cd = dominant_cd(raw, labels)
+    sector_to_cd, cd_sector_shares = _cd_layout(
+        raw, labels, sector_ids, as_is_cycle, share_window_cycles
+    )
     cd_sectors = solver_inputs.build_cd_sectors(sector_to_cd, sector_ids)
     as_is = infer_as_is(raw, as_is_cycle, labels)
     instance = ProblemInstance(
@@ -86,14 +118,32 @@ def build_real_instance(
         days=days,
         cd_sectors=cd_sectors,
         daily_capacity=solver_inputs.build_daily_capacity(
-            list(cd_sectors), days, capacity_multiplier
+            list(cd_sector_shares or cd_sectors), days, capacity_multiplier
         ),
         projected_demand=demand,
         current_assignment={sector_ids[s]: slot for s, slot in as_is.items()},
         max_churn=max_churn * len(labels),
         days_by_cycle=solver_inputs.balance_days_by_cycle(days, spacing),
+        cd_sector_shares=cd_sector_shares,
     )
     return RealInstance(instance, sector_ids, sector_to_cd)
+
+
+def _cd_layout(
+    raw: pd.DataFrame,
+    labels: list[str],
+    sector_ids: dict[str, int],
+    as_is_cycle: str,
+    share_window_cycles: int | None,
+) -> tuple[dict[str, int], dict[int, dict[int, float]] | None]:
+    """Each sector's CD, and the per-CD sector shares (None for a hard dominant-CD partition)."""
+    if share_window_cycles is None:
+        return dominant_cd(raw, labels), None
+    shares = historical_cd_shares(raw, labels, as_is_cycle, share_window_cycles)
+    return (
+        solver_inputs.top_cd_per_sector(shares),
+        solver_inputs.build_cd_sector_shares(shares, sector_ids),
+    )
 
 
 def _largest_sectors(curves: pd.DataFrame, max_sectors: int | None) -> pd.DataFrame:

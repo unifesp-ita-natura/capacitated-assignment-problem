@@ -1,0 +1,65 @@
+experiment_name: teste_prophet_amostra
+description:
+  goal: >
+    Ranquear o Prophet (por serie setor/cidade, no nivel por ciclo) contra os
+    outros candidatos temporais e o LightGBM, numa amostra reproduzivel de
+    setores. Prophet na base completa seria ~133k fits (>6h), inviavel para
+    um experimento de rotina; a amostra responde "o Prophet bate os temporais
+    nesta tarefa?" com significancia, sem o custo proibitivo.
+  hypothesis: >
+    Prophet tende a perder: o painel e por ciclo (~20 pontos anuais por serie,
+    sem sazonalidade sub-anual), fora do regime em que o Prophet brilha. A
+    expectativa e que naive:mean, ETS e LightGBM o superem.
+  design_note: >
+    Amostra de setores inteiros (toda cidade do setor), seed fixa, via
+    experiments.compare_forecasters.run_sampled. Ranking por mae_common na
+    intersecao dos pontos que todos preveem. Mesmo split dos outros testes.
+  status: in_progress
+
+sample:
+  n_sectors: 60
+  seed: 42
+
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+
+  - model: ets
+    error: add
+    trend: null
+    seasonal: null
+
+  - model: cycle_factor
+    strategy: mean
+    window: 3
+
+  - model: lightgbm
+    label: lgbm_base
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  - model: lightgbm
+    label: lgbm_ratio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    target: ratio
+
+  - model: prophet
+    growth: linear
+    n_changepoints: 5
+    changepoint_prior_scale: 0.05
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-19_prophet_amostra

@@ -41,6 +41,7 @@ class Histories(NamedTuple):
     shape: pd.DataFrame
     cities: pd.DataFrame
     cycles: list[str]
+    hierarchy: pd.DataFrame
 
 
 def prepare_windows(frame: pd.DataFrame) -> pd.DataFrame:
@@ -98,7 +99,11 @@ def prepare_histories(raw: pd.DataFrame, as_of: pd.Timestamp, history_cycles: in
     cities = panel[CITY_IDS].drop_duplicates()
     selected = available[available["CICLOS"].isin(cycles)]
     shape = build_shape_days(selected, calendar=complete[complete["CICLOS"].isin(cycles)])
-    return Histories(panel[panel["CICLOS"].isin(cycles)].copy(), shape, cities, cycles)
+    hierarchy = panel.merge(
+        complete[["CICLOS", "closing_date"]], on="CICLOS", validate="many_to_one"
+    )
+    level = hierarchy[hierarchy["CICLOS"].isin(cycles)].copy()
+    return Histories(level, shape, cities, cycles, hierarchy)
 
 
 def validate_known_gaps(

@@ -1,0 +1,63 @@
+﻿"Tabela 4099 - Taxas de desocupação e de subutilização da força de trabalho, na semana de referência, das pessoas de 14 anos ou mais de idade"
+"Variável - Taxa de desocupação, na semana de referência, das pessoas de 14 anos ou mais de idade (%)"
+"Cód.";"Brasil, Grande Região e Unidade da Federação";"Trimestre"
+"Cód.";"Brasil, Grande Região e Unidade da Federação";"1º trimestre 2024";"2º trimestre 2024";"3º trimestre 2024";"4º trimestre 2024";"1º trimestre 2025";"2º trimestre 2025";"3º trimestre 2025";"4º trimestre 2025";"1º trimestre 2026";"2º trimestre 2026"
+"1";"Brasil";"7,9";"6,9";"6,4";"6,2";"7,0";"5,8";"5,6";"5,1";"6,1";"5,4"
+"1";"Norte";"8,2";"6,9";"6,6";"6,9";"8,2";"6,5";"6,2";"5,8";"7,0";"6,1"
+"2";"Nordeste";"11,1";"9,4";"8,7";"8,7";"9,9";"8,2";"7,8";"7,1";"8,4";"7,6"
+"3";"Sudeste";"7,6";"6,7";"6,2";"5,9";"6,6";"5,3";"5,3";"4,8";"5,9";"5,2"
+"4";"Sul";"4,9";"4,6";"4,1";"3,6";"4,2";"3,6";"3,4";"3,1";"3,5";"3,2"
+"5";"Centro-Oeste";"6,0";"5,4";"4,9";"4,9";"5,4";"4,6";"4,4";"3,9";"4,8";"3,8"
+"11";"Rondônia";"3,7";"3,2";"2,1";"2,8";"3,1";"2,3";"2,6";"2,6";"3,7";"2,6"
+"12";"Acre";"8,9";"7,2";"7,4";"7,3";"8,2";"7,3";"7,4";"6,4";"8,2";"6,6"
+"13";"Amazonas";"9,8";"8,0";"8,2";"8,3";"10,0";"7,7";"7,6";"7,3";"8,3";"7,5"
+"14";"Roraima";"7,7";"7,1";"6,2";"6,6";"7,5";"5,9";"4,7";"4,7";"5,7";"5,0"
+"15";"Pará";"8,5";"7,4";"6,9";"7,2";"8,7";"6,9";"6,5";"5,8";"7,0";"6,2"
+"16";"Amapá";"10,9";"8,9";"8,3";"8,7";"8,6";"6,9";"8,7";"8,4";"10,0";"9,8"
+"17";"Tocantins";"6,1";"4,3";"5,1";"5,1";"6,4";"5,3";"3,8";"4,0";"5,6";"4,1"
+"21";"Maranhão";"8,5";"7,3";"7,6";"6,9";"8,1";"6,6";"6,1";"5,6";"6,9";"6,0"
+"22";"Piauí";"10,0";"7,6";"8,0";"7,5";"10,2";"8,5";"7,5";"8,0";"8,9";"8,3"
+"23";"Ceará";"8,7";"7,5";"6,7";"6,5";"8,0";"6,6";"6,4";"5,0";"7,3";"6,6"
+"24";"Rio Grande do Norte";"9,8";"9,2";"8,9";"8,7";"9,9";"7,5";"7,5";"6,7";"7,6";"5,6"
+"25";"Paraíba";"9,9";"8,7";"7,8";"8,5";"8,7";"7,0";"7,0";"5,7";"7,0";"5,4"
+"26";"Pernambuco";"12,4";"11,6";"10,6";"10,3";"11,6";"10,4";"10,0";"8,8";"9,2";"8,3"
+"27";"Alagoas";"9,9";"8,2";"7,8";"8,1";"9,0";"7,5";"7,7";"8,0";"9,2";"7,9"
+"28";"Sergipe";"10,0";"9,2";"8,4";"8,4";"9,3";"8,1";"7,7";"7,5";"8,6";"7,9"
+"29";"Bahia";"14,0";"11,0";"9,7";"10,0";"11,1";"9,1";"8,5";"8,0";"9,2";"9,1"
+"31";"Minas Gerais";"6,3";"5,3";"5,0";"4,3";"5,7";"4,0";"4,1";"3,8";"5,0";"3,8"
+"32";"Espírito Santo";"5,9";"4,5";"4,1";"4,0";"4,0";"3,1";"2,6";"2,4";"3,2";"2,3"
+"33";"Rio de Janeiro";"10,3";"9,7";"8,6";"8,2";"9,3";"8,1";"7,5";"6,9";"7,3";"7,1"
+"35";"São Paulo";"7,4";"6,4";"6,1";"5,9";"6,3";"5,1";"5,2";"4,7";"6,0";"5,4"
+"41";"Paraná";"4,8";"4,4";"4,0";"3,2";"4,0";"3,8";"3,5";"3,2";"3,5";"3,1"
+"42";"Santa Catarina";"3,9";"3,2";"2,8";"2,7";"3,0";"2,2";"2,3";"2,2";"2,7";"2,1"
+"43";"Rio Grande do Sul";"5,8";"5,9";"5,1";"4,5";"5,3";"4,3";"4,1";"3,7";"4,0";"4,2"
+"50";"Mato Grosso do Sul";"5,0";"3,8";"3,4";"3,7";"4,0";"2,9";"2,9";"2,4";"3,8";"2,7"
+"51";"Mato Grosso";"3,8";"3,3";"2,3";"2,5";"3,5";"2,8";"2,3";"2,4";"3,1";"2,2"
+"52";"Goiás";"6,1";"5,2";"5,2";"4,9";"5,3";"4,4";"4,5";"3,9";"5,1";"4,0"
+"53";"Distrito Federal";"9,6";"9,7";"8,9";"9,1";"9,2";"8,7";"8,0";"6,8";"7,1";"6,5"
+"Fonte: IBGE - Pesquisa Nacional por Amostra de Domicílios Contínua trimestral"
+
+"Notas"
+"A partir do 4º trimestre de 2015, em acordo com as recomendações da 19ª Conferência Internacional de Estatísticos do Trabalho - CIET, da OIT, pessoas em licença remunerada, independentemente do tempo de afastamento, passaram a ser classificadas como ""ocupadas"" e seus rendimentos do trabalho foram coletados normalmente. Anteriormente, as pessoas em licença remunerada na semana de referência da pesquisa e que estavam afastadas por período inferior a 4 meses eram classificadas como ""ocupadas"". Caso esse afastamento fosse igual ou superior a 4 meses, essas pessoas eram definidas como ""fora da força de trabalho"" e, portanto, não se investigava o rendimento do trabalho.
+Além disso, a partir do 4º trimestre de 2015, também passaram a ser classificadas como ""ocupadas"" as pessoas que ajudaram, sem receber remuneração, no trabalho remunerado de parente, adicionalmente àquelas que ajudaram no trabalho remunerado de outro morador do mesmo domicílio. Anteriormente, eram consideradas ""ocupadas"" apenas as pessoas que ajudaram, sem receber remuneração, no trabalho remunerado de outro morador do mesmo domicílio.
+A partir do 4º trimestre de 2015 houve mudança da forma de captação do quesito de horas efetivamente trabalhadas. Anteriormente, investigavam-se as horas trabalhadas diariamente, que eram somadas para obter o total semanal. A partir do referido trimestre, passou-se a perguntar diretamente a quantidade de horas semanais efetivamente trabalhadas.
+A partir do 4º trimestre de 2015 houve mudança de conceito na subutilização da força de trabalho por insuficiência de horas trabalhadas. Anteriormente, considerava-se no cálculo do indicador as horas efetivamente trabalhadas e, a partir do referido trimestre, as habitualmente trabalhadas.
+A partir de abril de 2016, um aspecto do conceito de desocupação foi alterado de forma a se adequar inteiramente à 19ª Conferência Internacional de Estatísticos do Trabalho - CIET, realizada em outubro de 2013, sendo o questionário ajustado. Com a alteração desse aspecto, passam a ser considerados desocupados aqueles que conseguiram proposta de trabalho para começar após a semana de referência e que iriam começar a trabalhar em até 3 meses; os demais, isto é, aqueles que conseguiram proposta para começar a trabalhar após 3 meses da semana de referência, passam a ser contabilizados na população fora da força de trabalho. Anteriormente, eram considerados desocupados todos aqueles que conseguiram proposta de trabalho para começar após a semana de referência, independentemente do tempo em que iniciariam o trabalho que conseguiram.
+A partir de 15 de agosto de 2025, as estimativas deste tema passaram a ser divulgadas com base na nova ponderação da pesquisa, conforme a Nota Técnica 02/2025. Consequentemente, a série histórica dos indicadores foi atualizada."
+""
+"Legenda"
+"Símbolo";"Significado"
+"-";"Zero absoluto, não resultante de um cálculo ou arredondamento.
+Ex: Em determinado município não existem pessoas de 14 anos de idade sem instrução."
+"0";"Zero resultante de um cálculo ou arredondamento.
+Ex: A inflação do feijão em determinada Região Metropolitana foi 0.
+Determinado município produziu 400 kg de sementes de girassol e os dados da tabela são expressos em toneladas."
+"X";"Valor inibido para não identificar o informante.
+Ex: Determinado município só possui uma empresa produtora de cimento, logo o valor de sua produção deve ser inibido."
+"..";"Valor não se aplica.
+Ex: Não se pode obter o total da produção agrícola em determinado município quando os produtos agrícolas são contabilizados com unidades de medida distintas."
+"...";"Valor não disponível.
+Ex: A produção de feijão em determinado município não foi pesquisada ou determinado município não existia no ano da pesquisa."
+"A a Z
+(exceto X)";"Significa uma faixa de valores. Varia em função da tabela (se for o caso).
+Ex: O nível de precisão da produção estimada de combustíveis está na faixa A (95 a 100%)"
