@@ -20,6 +20,11 @@ docs/paper/*.out
 docs/paper/*.gz
 docs/paper/*.bbl
 docs/paper/*.blg
+docs/papers/*.log
+docs/papers/*.nav
+docs/papers/*.pdf
+docs/papers/*.snm
+docs/papers/*.toc
 
 # result files
 results/
