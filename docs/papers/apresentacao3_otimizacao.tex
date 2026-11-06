@@ -248,19 +248,13 @@
 % ------------------------------------------------------------
 % 7. RECOMENDAÇÃO E PRÓXIMOS PASSOS  (~1 min)
 % ------------------------------------------------------------
-\begin{frame}{Qual método usar, e o que falta}
+\begin{frame}{Qual método usar}
   \footnotesize
-  \begin{columns}[T]
-    \begin{column}{0.5\textwidth}
-      \begin{block}{Conclusões da otimização}
-        \begin{itemize}
-          \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não prova o ótimo em 2 h}, mas chega a 0,41\% do limite inferior; warm-start do SA não mudou o resultado
-          \item \textbf{SA:} resposta em segundos; no tamanho real fica a $\sim$2$\times$ do MIP no objetivo previsto; melhora \textbf{realizada} de $\sim$18\% (positiva em 30/30 sementes)
-          \item \textbf{Matheurística:} com warm-start do SA, \textbf{9,5 min a +3,9\% do MIP} no tamanho real
-        \end{itemize}
-      \end{block}
-    \end{column}
-  \end{columns}
+  \begin{itemize}
+    \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não prova o ótimo em 2 h}, mas chega a 0,41\% do limite inferior; warm-start do SA não mudou o resultado
+    \item \textbf{SA:} resposta em segundos; no tamanho real fica a $\sim$2$\times$ do MIP no objetivo previsto; melhora \textbf{realizada} de $\sim$18\% (positiva em 30/30 sementes)
+    \item \textbf{Matheurística:} com warm-start do SA, \textbf{9,5 min a +3,9\% do MIP} no tamanho real
+  \end{itemize}
 \end{frame}
 
 \end{document}
