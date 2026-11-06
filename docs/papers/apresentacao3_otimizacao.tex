@@ -140,43 +140,25 @@
 % ------------------------------------------------------------
 \begin{frame}{Simulated Annealing em escala}
   % Fonte: docs/agent-log/2026-10-19-sa-pico-desvio-solvers-escala.md (instância sintética de 800 setores)
-  % - SA 200 mil iterações: gap médio 8,3% em 27 s ; 1 milhão: 4,2% em 155 s
-  % - energia pico+desvio (calibrada): gap 11,0% em 800 setores, ~1,8x o tempo; reduz desvio da carga 1-3%
-  % - avaliação incremental dos vizinhos: só acelera, trajetória idêntica
-  % - Dados reais (pipeline): 568 setores, 6 ciclos, SA em ~1 s
   \small
-  \begin{columns}[T]
-    \begin{column}{0.5\textwidth}
-      \textbf{O que mudou desde a calibração}
-      \begin{itemize}
-        \item Avaliação \textbf{incremental} dos vizinhos (mesma trajetória, mais rápida)
-        \item Nova energia \textbf{pico + desvio}: testada contra a amplitude
-        \item Mais iterações: o \textit{gap} cai
-      \end{itemize}
-
-      \vspace{0.3em}
-      \textbf{Resultado em 800 setores}
-      \begin{center}
-        \begin{tabular}{lcc}
-          \toprule
-          Configuração & \textit{Gap} & Tempo \\
-          \midrule
-          Amplitude, 200 mil it. & 8,3\% & 27 s \\
-          Amplitude, 1 mi it.    & 4,2\% & 155 s \\
-          Pico+desvio, 200 mil   & 11,0\% & $\sim$1,8$\times$ \\
-          \bottomrule
-        \end{tabular}
-      \end{center}
-    \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{itemize}
-        \item Energia de \textbf{amplitude continua o padrão}: pico+desvio reduz o desvio da carga em 1--3\%, mas piora o \textit{gap} da amplitude
-        \item Cada energia precisa de \textbf{calibração própria}: com os parâmetros da amplitude, 0/8 execuções viáveis em \texttt{tight40}
-        \item Nos dados reais (568 setores, 6 ciclos) o SA devolve solução em $\sim$1 s
-        \item \textbf{Ressalva:} o \textit{gap} de 4--8\% é sintético; \textbf{no tamanho real o SA fica a $\sim$2$\times$ do MIP} (slide 1)
-      \end{itemize}
-    \end{column}
-  \end{columns}
+  \textbf{Resultado em 800 setores (instância sintética)}
+  \begin{center}
+    \begin{tabular}{lcc}
+      \toprule
+      Configuração & \textit{Gap} & Tempo \\
+      \midrule
+      Amplitude, 200 mil it. & 8,3\% & 27 s \\
+      Amplitude, 1 mi it.    & 4,2\% & 155 s \\
+      Pico+desvio, 200 mil   & 11,0\% & $\sim$1,8$\times$ (de 27 s) \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item Mais iterações reduzem o \textit{gap} (8,3\% $\to$ 4,2\%)
+    \item \textbf{Pico+desvio} reduz o desvio da carga em 1--3\%, mas piora o \textit{gap} da amplitude; cada energia exige \textbf{calibração própria}
+    \item Dados reais (568 setores, 6 ciclos): SA devolve solução em $\sim$1 s
+  \end{itemize}
+  \note{Avaliação incremental dos vizinhos: mesma trajetória, só mais rápida. Com os parâmetros da amplitude, a energia pico+desvio teve 0/8 execuções viáveis em \texttt{tight40}, por isso precisou de calibração própria.}
 \end{frame}
 
 % ------------------------------------------------------------
