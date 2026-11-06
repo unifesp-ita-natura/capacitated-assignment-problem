@@ -21,11 +21,57 @@
 \date{\today}
 
 \begin{document}
+\begin{frame}{Recapitulando -- Demanda}
+    \small
+    \begin{itemize}
+        \item Limpeza e tratamento dos dados;
+
+        \item Adição de variáveis temporais e regionais
+        para previsão de demanda;
+
+        \item Decomposição da previsão em duas componentes:
+        \begin{itemize}
+            \item \textbf{Level:} demanda total por ciclo;
+            \item \textbf{Shape:} distribuição percentual
+            da demanda ao longo do ciclo.
+        \end{itemize}
+
+        \item Avaliação de diferentes modelos de previsão:
+        \begin{itemize}
+            \item \textbf{Séries temporais:} ARIMA e ETS;
+            \item \textbf{Machine Learning:} LightGBM.
+        \end{itemize}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Recapitulando -- Otimização}
+    \small
+
+    Foram adotadas três abordagens para a resolução
+    do problema de otimização:
+
+    \vspace{0.5cm}
+
+    \begin{itemize}
+        \setlength{\itemsep}{1em}
+
+        \item \textbf{Modelo exato:}
+        resolução via solver Gurobi;
+
+        \item \textbf{Metaheurística:}
+        Simulated Annealing (SA);
+
+        \item \textbf{Matheurística:}
+        Relax-and-Fix (R\&F).
+
+    \end{itemize}
+\end{frame}
+
 
 % ------------------------------------------------------------
 % 1. O PROBLEMA: O TAMANHO REAL NÃO FECHA  (~1,5 min)
 % ------------------------------------------------------------
-\begin{frame}{Do protótipo ao tamanho real: o MIP não fecha}
+\begin{frame}{Comparação de solvers}
   % Fonte: rodadas reais (568 setores, 6 ciclos, histórico 20; Gurobi; limite 2 h; computador sem suspender)
   % - MIP a frio: obj 16.350, limite inferior 16.282, gap 0,41%, 7.207 s (limite)
   % - MIP c/ warm-start do SA: obj 16.350 (mesma solução), limite 16.284, gap 0,41%
@@ -40,7 +86,7 @@
         \toprule
         & Objetivo & \textit{Gap} & Tempo \\
         \midrule
-        MIP a frio & 16.350 & 0,41\% & 2 h \\
+        MIP & 16.350 & 0,41\% & 2 h \\
         MIP + SA & 16.350 & 0,41\% & 2 h \\
         Matheur. + SA & 16.995 & 4,4\%$^{*}$ & 9,5 min \\
         SA (200 mil it.)           & 34.900 & 114\%$^{*}$ & $\sim$1 s \\
@@ -54,7 +100,7 @@
         \item O MIP \textbf{não prova o ótimo} em 2 h, mas chega a \textbf{0,41\%} do limite inferior
         \item \textbf{Warm-start do SA não mudou} o resultado em 2 h (mesma solução, mesmo \textit{gap})
         \item A matheurística termina em \textbf{9,5 min} a \textbf{+3,9\%} do MIP
-        \item O SA é rápido, mas \textbf{longe do ótimo} ($\sim$2$\times$)
+        \item O SA sozinho é rápido, mas \textbf{longe do ótimo} ($\sim$2$\times$)
       \end{itemize}
     \end{column}
   \end{columns}
@@ -63,7 +109,7 @@
 % ------------------------------------------------------------
 % 2. POR QUE NÃO FECHA: TAMANHO x DIFICULDADE  (~1 min)
 % ------------------------------------------------------------
-\begin{frame}{O modelo é pequeno, mas difícil}
+\begin{frame}{Dificuldade do problema}
   % Fonte: experiments/mip_size (contagem em forma fechada, conferida contra o modelo Pyomo)
   % - binárias = 15*S ; restrições = S + 4*dias + 1 (com 2 CDs)
   % - 800 setores, 7 ciclos: 12.000 binárias, 1.389 restrições
@@ -85,45 +131,9 @@
   \begin{itemize}
     \item Variáveis crescem \textbf{linearmente} nos setores ($15\,|S|$); os ciclos só acrescentam restrições diárias
     \item Poucas restrições para muitas binárias: o relaxamento linear é \textbf{fraco}, e a busca em árvore domina o tempo
-    \item Ou seja: o tamanho do modelo \textbf{não} explica a falha; a dificuldade é combinatória (empacotamento com carga equilibrada)
   \end{itemize}
 \end{frame}
 
-% ------------------------------------------------------------
-% 3. FRONTEIRA DO MIP  (~1,5 min)
-% ------------------------------------------------------------
-\begin{frame}{Onde está a fronteira do MIP}
-  % Fonte: experiments/mip_warmstart_scaling/outputs/scaling.csv
-  % Gurobi, warm-start do SA, limite 600 s por ponto, 1 semente, setores = maiores por itens previstos
-  % - 5 ciclos: rodada ainda em andamento (só até 120 setores)
-  \small
-  \begin{columns}[T]
-    \begin{column}{0.5\textwidth}
-      \centering
-      \begin{tabular}{cccc}
-        \toprule
-        Ciclos & Maior fechado & Tempo & 1º \textit{time-out} \\
-        \midrule
-        1 & 40  & 34 s  & 80 \\
-        2 & 120 & 137 s & 160 \\
-        3 & 280 & 102 s & 320 \\
-        4 & 280 & 224 s & 320 \\
-        5 & $\ge$120$^{*}$ & 540 s & -- \\
-        \bottomrule
-      \end{tabular}
-
-      {\scriptsize $^{*}$rodada em andamento. Limite de 600 s por ponto, 1 semente.\par}
-    \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{itemize}
-        \item Fronteira em \textbf{centenas} de setores, bem abaixo dos $\sim$600 reais
-        \item Mesmo com \textbf{warm-start} do SA e Gurobi
-        \item Não monotônica nos ciclos: o tempo depende da instância (1 semente $\Rightarrow$ ruído)
-        \item Em dados sintéticos com capacidade folgada o MIP fechava 800 setores em 28 s: \textbf{os dados reais são mais difíceis}
-      \end{itemize}
-    \end{column}
-  \end{columns}
-\end{frame}
 
 % ------------------------------------------------------------
 % 4. SA EM ESCALA  (~1,5 min)
@@ -145,7 +155,7 @@
       \end{itemize}
 
       \vspace{0.3em}
-      \textbf{Resultado em 800 setores (sintético)}
+      \textbf{Resultado em 800 setores}
       \begin{center}
         \begin{tabular}{lcc}
           \toprule
@@ -194,24 +204,18 @@
   \end{center}
   {\scriptsize \textit{Headroom}: 0,80 $\approx$ As-Is 20\% acima da capacidade; 0,65 $\approx$ 35\%. Limite de 600 s no MIP. 800 setores, 2 ciclos, sintético, 1 semente.\par}
 
-  \vspace{0.3em}
-  \begin{itemize}
-    \item \textbf{Capacidade restritiva:} onde o HiGHS não acha solução viável, a matheurística acha
-    \item \textbf{\textit{Backtracking}} (libera os últimos grupos e tenta de novo) é o que recupera viabilidade perto da borda; sem ele, 0,70 não tem solução
-    \item Capacidade folgada: sempre viável, mas só empata com o MIP (+0,02\% a +0,08\%)
-    \item \textbf{Limite:} esses resultados são sintéticos de 800 setores e 2 ciclos; no tamanho real (dados reais, 6 ciclos), partindo do SA, \textbf{terminou em 9,5 min a +3,9\% do MIP}
-  \end{itemize}
+  % \vspace{0.3em}
+  % \begin{itemize}
+    % \item \textbf{Capacidade restritiva:} onde o HiGHS não acha solução viável, a matheurística acha
+    % \item \textbf{\textit{Backtracking}} (libera os últimos grupos e tenta de novo) é o que recupera viabilidade perto da borda; sem ele, 0,70 não tem solução
+    % \item Capacidade folgada: sempre viável, mas só empata com o MIP (+0,02\% a +0,08\%)
+  % \end{itemize}
 \end{frame}
 
 % ------------------------------------------------------------
 % 6. PIPELINE PONTA A PONTA COM DADOS REAIS  (~1,5 min)
 % ------------------------------------------------------------
-\begin{frame}{Ponta a ponta com dados reais}
-  % Fonte: experiments/sa_seed_stability (SA, 568 setores, histórico 20 ciclos, horizonte 6 ciclos, churn 20%)
-  % - 30 execuções: 3 previsões x sementes 1-10; só 1 janela de horizonte; 113 setores movidos em todas
-  % - melhora prevista 26,5±2,4%; realizada 18,1±2,9% (9,3-24,0%); 30/30 positivas; cenários empatam
-  % - Removida a execução única (23,8%, results/pipeline_explanation.csv): não mostra variação entre sementes
-  % - Caveats: posições As-Is inferidas (base não tem bloco/subloco); ciclos sobrepostos (~21 dias)
+\begin{frame}{End-to-end com dados reais}
   \footnotesize
   \begin{columns}[T]
     \begin{column}{0.5\textwidth}
@@ -235,10 +239,7 @@
     \begin{column}{0.46\textwidth}
       \begin{itemize}
         \item 568 setores, 20 ciclos de histórico, 6 de horizonte \textbf{retido}; \textit{churn} $\le$ 20\%
-        \item Só dias de regime (descarta 14 dias em cada ponta)
-        \item \textbf{Realizada} = reavaliada na demanda real do horizonte: \textbf{positiva em 30/30} execuções, mas ${\sim}8$ p.p. abaixo da prevista
-        \item Esperar $\sim$\textbf{18\%} (faixa 13--22\%), não os 26\%; o CV do objetivo entre sementes é 3--4\%
-        \item Os 3 cenários de previsão (inclusive média ingênua) empatam dentro do ruído das sementes
+        \item \textbf{Realizada} = reavaliada na demanda real do horizonte
       \end{itemize}
     \end{column}
   \end{columns}
@@ -255,18 +256,7 @@
         \begin{itemize}
           \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não prova o ótimo em 2 h}, mas chega a 0,41\% do limite inferior; warm-start do SA não mudou o resultado
           \item \textbf{SA:} resposta em segundos; no tamanho real fica a $\sim$2$\times$ do MIP no objetivo previsto; melhora \textbf{realizada} de $\sim$18\% (positiva em 30/30 sementes)
-          \item \textbf{Matheurística:} com warm-start do SA, \textbf{9,5 min a +3,9\% do MIP} no tamanho real; acha solução onde o HiGHS não acha (sintético)
-        \end{itemize}
-      \end{block}
-    \end{column}
-    \begin{column}{0.46\textwidth}
-      \begin{block}{Próximos passos}
-        \begin{itemize}
-          \item Melhorar o SA no tamanho real (energia, iterações): hoje $\sim$2$\times$ o ótimo
-          \item Matheurística: calibrar $W$, $P$ e grupos para fechar a diferença de 3,9\%; repetir em outras janelas
-          \item Tolerância de \textit{gap} no MIP (ex.: 1\%): o MIP já está a 0,41\% em 2 h
-          \item Melhor de $N$ sementes: o menor objetivo previsto prediz a melhor realizada? Medir outras janelas
-          \item Fechar a 5ª rodada de fronteira (5 e 6 ciclos) com mais sementes
+          \item \textbf{Matheurística:} com warm-start do SA, \textbf{9,5 min a +3,9\% do MIP} no tamanho real
         \end{itemize}
       \end{block}
     \end{column}
