@@ -7,26 +7,15 @@ import json
 import random
 from pathlib import Path
 
-import pyomo.environ as pyo
-
-from src.calibration.mip import finite_or_none, relative_gap
-from src.config import load_config
-from src.forecasting.dataset import load_demand_base
-from src.pipeline.forecast_stage import forecast_horizon, plan_horizon
+from src.calibration.mip import relative_gap
+from src.pipeline.real_instance import build_instance_for_cycles
 from src.solver.heuristics import simulated_annealing
-from src.solver.inputs import ProblemInstance
-from src.solver.mip.block_assignment import (
-    apply_warm_start,
-    build_block_assignment_model,
-    extract_assignment,
-)
-from src.solver.real_inputs import build_real_instance
+from src.solver.mip.gurobi_run import solve_logged
 
 CONFIG_PATH = Path("configs/pipeline.yaml")
 OUTPUT_DIR = Path("experiments/sa_certified_gap/outputs")
 TIME_LIMIT_SECONDS = 7200.0
 MIP_GAP = 1e-4  # Gurobi's default: effectively "run until the time limit"
-MEMORY_LIMIT_GB = 16.0
 
 
 def certified_gap(sa_objective: float, lower_bound: float | None) -> dict[str, float | None]:
@@ -39,56 +28,6 @@ def certified_gap(sa_objective: float, lower_bound: float | None) -> dict[str, f
     if lower_bound is None or lower_bound <= 0:
         return {"vs_incumbent": vs_incumbent, "vs_optimum": None}
     return {"vs_incumbent": vs_incumbent, "vs_optimum": (sa_objective - lower_bound) / lower_bound}
-
-
-def _build_instance(config_path: Path, n_cycles: int, max_sectors: int | None) -> ProblemInstance:
-    config = load_config(config_path)
-    pipeline = config.pipeline.model_copy(update={"horizon_cycles": n_cycles})
-    raw = load_demand_base(pipeline.base_csv)
-    plan = plan_horizon(raw, n_cycles, pipeline.history_cycles)
-    forecast = forecast_horizon(raw, plan, pipeline, config.forecast.params)
-    return build_real_instance(
-        forecast.daily,
-        raw,
-        plan.targets,
-        as_is_cycle=forecast.training_cycles[-1],
-        max_churn=pipeline.max_churn,
-        capacity_multiplier=pipeline.capacity_multiplier,
-        max_sectors=max_sectors,
-    ).instance
-
-
-def _solve_mip(
-    instance: ProblemInstance,
-    start: dict[int, int],
-    time_limit: float,
-    mip_gap: float,
-    log_path: Path,
-) -> tuple[dict, dict[int, int]]:
-    """Warm-started Gurobi solve, stopped at `time_limit` or relative gap `mip_gap`.
-
-    Returns the incumbent/bound summary and the incumbent assignment (sector -> combination).
-    """
-    model = build_block_assignment_model(instance)
-    apply_warm_start(model, instance, start)
-    solver = pyo.SolverFactory("gurobi")
-    options = {
-        "TimeLimit": time_limit,
-        "MIPGap": mip_gap,
-        "MemLimit": MEMORY_LIMIT_GB,
-        "LogFile": str(log_path),
-    }
-    results = solver.solve(model, options=options, warmstart=True, tee=True)
-    upper = finite_or_none(results.problem.upper_bound)
-    lower = finite_or_none(results.problem.lower_bound)
-    summary = {
-        "termination": str(results.solver.termination_condition),
-        "objective": upper,
-        "lower_bound": lower,
-        "gap": relative_gap(lower, upper),
-        "wall_time_seconds": results.solver.wall_time,
-    }
-    return summary, extract_assignment(model)
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -110,7 +49,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> dict:
     args = _parse_args(argv)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    instance = _build_instance(args.config, args.cycles, args.max_sectors)
+    instance = build_instance_for_cycles(args.config, args.cycles, args.max_sectors)
     sa = simulated_annealing.solve(instance, rng=random.Random(args.seed))
     record = {
         "n_cycles": args.cycles,
@@ -122,7 +61,7 @@ def main(argv: list[str] | None = None) -> dict:
     # Written before the long solve so the SA result survives a crash or interruption.
     (OUTPUT_DIR / "result.json").write_text(json.dumps(record, indent=2))
     record["mip_gap_target"] = args.mip_gap
-    record["mip"], incumbent = _solve_mip(
+    record["mip"], incumbent = solve_logged(
         instance, sa.assignment, args.time_limit, args.mip_gap, OUTPUT_DIR / "gurobi.log"
     )
     record["certified_gap"] = certified_gap(sa.objective, record["mip"]["lower_bound"])
