@@ -621,6 +621,21 @@ Gerência-cidade & ETS + LightGBM (Rec.)
 \end{frame}
 
 % ------------------------------------------------------------
+% CAMINHO TESTADO: MATEURÍSTICA  (~0,5 min)
+% ------------------------------------------------------------
+\begin{frame}{Relax-and-Fix + Fix-and-Optimize}
+  % Fonte: experiments/relax_and_fix/ (sintético) e experiments/mip_anytime/ (dados reais)
+  \small
+  \begin{itemize}
+    \item Matheurística testada como alternativa ao MIP, com janelas de CDs
+    \item Sintético (até 800 setores, 7 ciclos): viável e a $\leq$0,08\% do ótimo, mas \textbf{não mais rápida} que o MIP com Gurobi
+    \item Dados reais (Gurobi): 16.995 em 9,5 min, \textbf{3,5\% pior} que o MIP em 10 s
+    \item Só compensa com HiGHS quando a capacidade é apertada e o MIP não acha solução viável
+    \item \textbf{Conclusão:} não adotada; parâmetros ainda sem calibração
+  \end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
 % 5. MIP COM TEMPO LIMITADO  (~1,5 min)
 % ------------------------------------------------------------
 \begin{frame}{MIP com tempo limitado}
@@ -696,10 +711,11 @@ Gerência-cidade & ETS + LightGBM (Rec.)
 % RECOMENDAÇÃO  (~1 min)
 % ------------------------------------------------------------
 \begin{frame}{Qual método usar}
-  \footnotesize
   \begin{itemize}
-    \item \textbf{MIP:} referência até centenas de setores; no tamanho real, \textbf{não prova o ótimo em 2 h}, mas chega a 0,41\% do limite inferior; warm-start do SA não mudou o resultado
-    \item \textbf{SA:} resposta em segundos; no tamanho real fica a $\sim$2$\times$ do MIP no objetivo previsto; melhora \textbf{realizada} de $\sim$18\% (positiva em 30/30 sementes)
+    \item \textbf{Recomendação:} MIP com limite de tempo
+    \item Limite ajustado ao tempo disponível
+    \item 1,1\% do limite inferior em 10 s
+    \item SA: \textit{fallback} rápido
   \end{itemize}
 \end{frame}
 
