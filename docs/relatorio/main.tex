@@ -1,0 +1,111 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{tabularx}   % for the X (auto-wrapping) column type used in the notation tables
+\usepackage{booktabs}   % for \toprule, \midrule, \bottomrule
+
+%-------- references ---------- %
+\usepackage{csquotes}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+
+\usepackage[
+    backend=biber,
+    style=authoryear,
+    sorting=nyt,
+    giveninits=true,
+    maxbibnames=99,
+    maxcitenames=2,
+    doi=false,
+    url=false,
+    isbn=false
+]{biblatex}
+
+\addbibresource{references.bib}
+
+\AtBeginBibliography{%
+    \small
+    \setlength{\bibitemsep}{0.6\baselineskip}
+    \setlength{\bibhang}{0pt}
+}
+
+
+%-------- math packages ---------- %
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\numberwithin{equation}{subsection}
+
+\usepackage[utf8]{inputenc}     % acentos (ç, ã, é...)
+\usepackage[brazilian]{babel}      % hifenização em português
+\usepackage{amsmath}            % \text{...}
+\usepackage{algorithm}          % ambiente algorithm e opção [H]
+\usepackage{algpseudocode}      % \State, \While, \If, \Require, \Comment...
+\usepackage{authblk}
+
+%--------------------------------- %
+
+\title{desafio natura}
+\author[1,2]{Luiza Santos}
+\author[1,2]{Leonardo Ferreira}
+\author[1]{Leonardo Leal}
+\author[1,2]{Mateus Martins}
+\author[1]{Layza Carvalho}
+\author[1]{Ana Clara Felizardo}
+\author[1]{Tasso Canellas}
+
+\affil[1]{UNIFESP}
+\affil[2]{ITA}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introdução}
+\label{sec:introducao}
+
+
+\input{introduction}
+
+\section{Related Works}
+\label{sec:related}
+
+\input{literatura}
+
+\section{Formulação Matematica}
+\label{sec:formulacao}
+
+\input{formulacao-matematica}
+
+\section{Previsão de demanda}
+
+\input{previsao_demanda}
+\label{sec:previsao}
+
+\section{Métricas}
+\label{sec:metricas}
+
+\input{metrics}
+
+\section{Curva de Shape}
+\label{sec:shape}
+\input{metodologia_curva_de_shape}
+
+
+\section{Estrutura do Simulated Annealing}
+\label{sec:sa}
+\input{estrutura-sa}
+
+\section{Calibração do Simulated Annealing}
+\label{sec:calibracao}
+\input{calibracao-sa}
+
+\section{Matheurística \textit{Relax-and-Fix} com \textit{Fix-and-Optimize}}
+\label{sec:matheuristica}
+
+\input{relax-and-fit-enxuto}
+
+\clearpage
+\printbibliography[title={Referências}]
+
+\end{document}

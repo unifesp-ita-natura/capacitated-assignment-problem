@@ -1,0 +1,173 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{top=2.5cm,bottom=2.5cm,left=3cm,right=2cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[alf]{abntex2cite}
+
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,numbers=left,
+numberstyle=\tiny,showstringspaces=false,captionpos=b}
+
+% Edite os dados do projeto
+\newcommand{\TituloProjeto}{Título do projeto}
+\newcommand{\Disciplina}{Resolução de Problemas via Modelagem Matemática}
+\newcommand{\Universidade}{Universidade Federal de São Paulo (UNIFESP)}
+\newcommand{\Ano}{2026}
+
+\begin{document}
+\begin{titlepage}
+    \centering
+    {\large \Universidade\par}
+    \vspace{1.5cm}
+    {\large \Disciplina\par}
+    \vspace{2.5cm}
+    {\LARGE\bfseries \TituloProjeto\par}
+    \vspace{1.5cm}
+    {\large Relatório de projeto\par}
+    \vfill
+    \begin{minipage}{0.8\textwidth}
+        \centering
+        \textbf{Integrantes do grupo (ordem alfabética)}\\[0.4cm]
+        Nome Sobrenome\\
+        Nome Sobrenome\\
+        Nome Sobrenome
+    \end{minipage}
+    \vfill
+    {\large São José dos Campos\par}
+    {\large \Ano\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Projeto}
+Apresente o contexto, a relevância e o escopo do projeto. Informe o título e os integrantes do grupo em ordem alfabética.
+
+\subsection{Proponente}
+Identifique a empresa, instituição ou pessoa que interage com o grupo. Descreva brevemente sua atuação e sua relação com o problema.
+
+\subsection{Definição do problema e objetivo}
+Descreva o problema, o contexto, as decisões envolvidas, as restrições relevantes e o objetivo do trabalho. Delimite o escopo e os critérios de avaliação, quando aplicável.
+
+\subsection{Fundamentos teóricos}
+Apresente os conceitos, teorias, aplicações, algoritmos e técnicas de modelagem pertinentes. Explique a abordagem adotada e cite as fontes ao longo do texto.
+
+\section{Modelo matemático}
+Apresente o modelo proposto e explique sua relação com os fundamentos teóricos. Defina conjuntos, índices, parâmetros, variáveis de decisão, função objetivo e restrições, conforme aplicável.
+
+\subsection{Conjuntos e índices}
+\begin{itemize}[leftmargin=*]
+    \item $\mathcal{I}$: descrição do conjunto;
+    \item $i \in \mathcal{I}$: interpretação do índice.
+\end{itemize}
+
+\subsection{Parâmetros de entrada}
+\begin{table}[H]
+\centering
+\caption{Parâmetros do modelo}
+\begin{tabular}{lll}
+\toprule
+Símbolo & Descrição & Unidade/fonte\\
+\midrule
+$p_1$ & Descrição do parâmetro & Unidade ou fonte\\
+$p_2$ & Descrição do parâmetro & Unidade ou fonte\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Variáveis de decisão}
+\begin{table}[H]
+\centering
+\caption{Variáveis de decisão}
+\begin{tabular}{lll}
+\toprule
+Símbolo & Descrição & Domínio\\
+\midrule
+$x_1$ & Descrição da variável & $\{0,1\}$, $\mathbb{R}_+$ etc.\\
+$x_2$ & Descrição da variável & $\mathbb{Z}_+$ etc.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Formulação}
+Escreva a função objetivo e as restrições. Explique a interpretação de cada expressão e as hipóteses adotadas.
+\begin{align}
+\min \quad & f(x) \label{eq:objetivo}\\
+\text{sujeito a} \quad & g_j(x) \leq 0, \quad j \in \mathcal{J}, \label{eq:restricao}\\
+& x \in X. \nonumber
+\end{align}
+
+\section{Resultados}
+Apresente resultados analíticos ou computacionais. Inclua tabelas, gráficos, imagens, listas e medidas de desempenho, quando pertinentes. Descreva os dados e as condições experimentais. Discuta limitações.
+
+\subsection{Resultados quantitativos}
+\begin{table}[H]
+\centering
+\caption{Exemplo de tabela de resultados}
+\begin{tabular}{lrr}
+\toprule
+Instância & Valor objetivo & Tempo (s)\\
+\midrule
+Instância 1 & 0,00 & 0,00\\
+Instância 2 & 0,00 & 0,00\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Gráficos e imagens}
+Envie a figura ao projeto Overleaf e atualize o nome do arquivo.
+\begin{figure}[H]
+\centering
+% Exemplo: envie figura.png ao Overleaf.
+\includegraphics[width=0.75\textwidth]{figura.png}
+\caption{Descrição da figura.}
+\label{fig:exemplo}
+\small Fonte: elaboração própria.
+\end{figure}
+
+\subsection{Discussão e limitações}
+Interprete os resultados em relação aos objetivos. Discuta limitações do modelo, dos dados, dos algoritmos ou da implementação.
+
+\section{Oportunidades para pesquisas futuras}
+Indique extensões, melhorias e novas questões que possam ser investigadas.
+
+\section{Conclusões}
+Retome o problema e os objetivos. Sintetize as principais contribuições, os resultados e as limitações mais importantes.
+
+\section{Referências}
+Inclua todas as obras citadas no texto. Cadastre as referências no arquivo \texttt{referencias.bib} e cite-as com comandos como \texttt{\textbackslash cite\{chave\}}.
+\bibliography{referencias}
+
+\appendix
+\section{Documentação complementar}
+Inclua documentação necessária para compreender e reproduzir o projeto:
+\begin{itemize}[leftmargin=*]
+    \item códigos-fonte e modelos computacionais;
+    \item fontes web e pessoas consultadas, quando pertinente;
+    \item problemas-teste, dados e exemplos executados;
+    \item instruções de instalação e execução.
+\end{itemize}
+
+\section{Repositório e reprodutibilidade}
+Os códigos-fonte, modelos e arquivos necessários devem ser disponibilizados em uma conta de equipe no GitHub. Informe o link do repositório e mantenha um arquivo \texttt{README.md} com instruções de instalação, execução, dados e organização dos arquivos.
+
+\noindent\textbf{Repositório GitHub:} \url{https://github.com/organizacao/repositorio}
+
+\section{Outros materiais}
+Inclua outros apêndices ou materiais relevantes.
+
+\end{document}
+
