@@ -1,3 +1,4 @@
+
 % Terceira apresentação
 \documentclass[aspectratio=169,11pt]{beamer}
 
@@ -9,18 +10,158 @@
 \usepackage{graphicx}
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta,fit,backgrounds,calc}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.16}
 
 \usetheme{Madrid}
 \usecolortheme{default}
 \setbeamertemplate{navigation symbols}{}
 
-\title[Otimização]{Desafio Natura: Otimização e Recomendação Proativa\\de Blocos e Sublocos}
+% Informações da apresentação
+\title[Desafio Natura]{
+    Desafio Natura:\\
+    Previsão de Demanda e Otimização da Distribuição
+}
+
 \subtitle{Terceira apresentação parcial}
-\author[Equipe UNIFESP]{Luiza Santos, Leonardo Ferreira, Leonardo Leal, Mateus Martins, \newline Layza Carvalho, Ana Clara Felizardo, Tasso Canellas}
+
+\author[Equipe UNIFESP]{
+    Luiza Santos, Leonardo Ferreira,
+    Leonardo Leal, Mateus Martins,\\
+    Layza Carvalho, Ana Clara Felizardo,
+    Tasso Canellas
+}
+
 \institute{UNIFESP}
-\date{\today}
+
+\date{10 de novembro de 2026}
+
+
+
 
 \begin{document}
+
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+
+\begin{frame}{Sumário}
+
+    \large
+
+    \vspace{0.6cm}
+
+    \begin{enumerate}
+        \setlength{\itemsep}{1.1cm}
+
+        \item Contextualização
+
+        \item Desenvolvimentos
+
+        \item Resultados
+
+        \item Próximos Passos
+
+    \end{enumerate}
+
+\end{frame}
+
+
+
+\begin{frame}{Contextualização}
+    \small
+
+    \begin{itemize}
+        \setlength{\itemsep}{0.65cm}
+
+        \item \textbf{Estrutura comercial:}
+        setores distribuídos em blocos e subblocos,
+        com diferentes datas de abertura dos ciclos;
+
+        \item \textbf{Comportamento da demanda:}
+        a data de abertura influencia o volume
+        e a distribuição diária dos pedidos;
+
+        \item \textbf{Desequilíbrio operacional:}
+        concentração de aproximadamente 45\%
+        dos pedidos no Bloco 2, gerando picos
+        de demanda;
+
+        \item \textbf{Restrições logísticas:}
+        necessidade de respeitar a capacidade
+        dos centros de distribuição e as
+        regras operacionais.
+
+    \end{itemize}
+
+\end{frame}
+
+
+\begin{frame}{Proposta de solução}
+
+\footnotesize
+
+\begin{minipage}{\linewidth}
+Desenvolvimento de duas ferramentas complementares
+para \textbf{previsão de demanda} e
+\textbf{otimização da distribuição}.
+\end{minipage}
+
+\vspace{0.6cm}
+
+\begin{columns}[T,onlytextwidth]
+
+    \begin{column}{0.48\linewidth}
+
+        \begin{block}{\small 1. Previsão de demanda}
+            \footnotesize
+
+            \begin{itemize}
+                \setlength{\itemsep}{0.5em}
+
+                \item Previsão da
+                \textbf{demanda diária}
+                dos setores;
+
+                \item Estimativa do
+                \textbf{volume e distribuição temporal}
+                dos pedidos nos ciclos comerciais.
+
+            \end{itemize}
+
+        \end{block}
+
+    \end{column}
+
+    \begin{column}{0.48\linewidth}
+
+        \begin{block}{\small 2. Otimização da distribuição}
+            \footnotesize
+
+            \begin{itemize}
+                \setlength{\itemsep}{0.5em}
+
+                \item \textbf{Alocação dos setores}
+                em blocos e subblocos;
+
+                \item \textbf{Balanceamento da demanda},
+                respeitando a capacidade dos CDs
+                e as regras de negócio.
+
+            \end{itemize}
+
+        \end{block}
+
+    \end{column}
+
+\end{columns}
+
+\end{frame}
+
+
+
 \begin{frame}{Recapitulando -- Demanda}
     \small
     \begin{itemize}
@@ -68,6 +209,396 @@
 \end{frame}
 
 
+
+\begin{frame}{Shape -- Resultados}
+    \small
+
+    O modelo \textbf{LightGBM} apresentou o melhor
+    desempenho na previsão do \textit{Shape},
+    alcançando um \textbf{MAE de 6,35\%}.
+
+    \vspace{0.3cm}
+
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.78\textwidth]{figures/shape_features.png}
+    \end{figure}
+
+    \vspace{0.2cm}
+
+    \begin{itemize}
+        \item O \textbf{dia da semana} e a variável
+        \textbf{fim de semana} foram as que mais
+        contribuíram para a redução do erro de previsão.
+    \end{itemize}
+
+\end{frame}
+
+
+
+\begin{frame}{Resultados - Level}
+    \small
+
+    Comparação dos modelos de previsão da demanda
+    total por ciclo, considerando diferentes níveis
+    de granularidade.
+
+    \vspace{0.5cm}
+
+    \begin{table}
+        \centering
+        \footnotesize
+        \renewcommand{\arraystretch}{1.5}
+
+        \begin{tabular}{llccc}
+            \toprule
+            \textbf{Nível} &
+            \textbf{Modelo} &
+            \textbf{MAE} &
+            \textbf{WMAPE} &
+            \textbf{Bias (\%)} \\
+            \midrule
+
+            Setor &
+            Média móvel (5 ciclos) &
+            1.958,28 &
+            43,46\% &
+            -6,94\% \\
+
+            \textbf{Setor} &
+            \textbf{LightGBM} &
+            \textbf{1.892,37} &
+            \textbf{42,01\%} &
+            \textbf{2,48\%} \\
+
+            \midrule
+
+            Setor-cidade &
+            Média móvel (5 ciclos) &
+            235,32 &
+            60,68\% &
+            -19,92\% \\
+
+            \textbf{Setor-cidade} &
+            \textbf{LightGBM} &
+            \textbf{222,22} &
+            \textbf{57,26\%} &
+            \textbf{-17,18\%} \\
+
+            \bottomrule
+        \end{tabular}
+    \end{table}
+
+\end{frame}
+
+
+\begin{frame}{Modelos por hierarquia}
+\small
+
+Foram testados dois modelos de previsão hierárquica.
+
+\vspace{0.4cm}
+
+\begin{columns}[T,onlytextwidth]
+
+% ==========================================
+% COLUNA ESQUERDA
+% ==========================================
+\begin{column}{0.48\textwidth}
+
+\centering
+\textbf{Modelo por compartilhamento}
+
+\vspace{0.25cm}
+
+\begin{minipage}{0.96\linewidth}
+\footnotesize
+\begin{itemize}
+    \item Previsão no nível mais agregado;
+    \item Distribuição para os níveis inferiores
+    conforme o \textit{share} de participação.
+\end{itemize}
+\end{minipage}
+
+\vspace{0.35cm}
+
+\begin{tikzpicture}[
+    >=Stealth,
+    every node/.style={
+        font=\scriptsize,
+        align=center
+    },
+    nivel/.style={
+        draw=blue!65!black,
+        rounded corners=2pt,
+        fill=blue!5,
+        minimum width=2.5cm,
+        minimum height=0.58cm
+    },
+    seta/.style={
+        ->,
+        thick,
+        draw=blue!65!black
+    }
+]
+
+\node[nivel] (r) at (0,0) {Região};
+\node[nivel] (g) at (0,-0.95) {Gerências de vendas};
+\node[nivel] (s) at (0,-1.90) {Setores};
+\node[nivel] (c) at (0,-2.85) {Cidades};
+
+\draw[seta] (r) -- (g);
+\draw[seta] (g) -- (s);
+\draw[seta] (s) -- (c);
+
+\node[
+    right=0.16cm of g,
+    font=\tiny,
+    text=blue!65!black
+] {Share};
+
+\node[
+    right=0.16cm of s,
+    font=\tiny,
+    text=blue!65!black
+] {Share};
+
+\node[
+    right=0.16cm of c,
+    font=\tiny,
+    text=blue!65!black
+] {Share};
+
+\end{tikzpicture}
+
+\end{column}
+
+% ==========================================
+% COLUNA DIREITA
+% ==========================================
+\begin{column}{0.48\textwidth}
+
+\centering
+\textbf{Modelo por reconciliação}
+
+\vspace{0.25cm}
+
+\begin{minipage}{0.96\linewidth}
+\footnotesize
+\begin{itemize}
+    \item Previsões independentes em cada nível;
+    \item Ajuste das previsões para garantir
+    coerência entre os níveis.
+\end{itemize}
+\end{minipage}
+
+\vspace{0.35cm}
+
+\begin{tikzpicture}[
+    >=Stealth,
+    every node/.style={
+        font=\scriptsize,
+        align=center
+    },
+    previsao/.style={
+        draw=blue!65!black,
+        rounded corners=2pt,
+        fill=blue!5,
+        minimum width=1.65cm,
+        minimum height=0.52cm
+    },
+    ajuste/.style={
+        draw=blue!70!black,
+        rounded corners=2pt,
+        fill=blue!15,
+        minimum width=1.45cm,
+        minimum height=0.75cm
+    },
+    seta/.style={
+        ->,
+        thick,
+        draw=blue!65!black
+    }
+]
+
+\node[previsao] (r) at (-1.35,0) {Região};
+\node[previsao] (g) at (-1.35,-0.85) {Gerências};
+\node[previsao] (s) at (-1.35,-1.70) {Setores};
+\node[previsao] (c) at (-1.35,-2.55) {Cidades};
+
+\node[ajuste] (rec) at (1.1,-1.25)
+    {Reconciliação};
+
+\draw[seta] (r.east) -- (rec.north west);
+\draw[seta] (g.east) -- (rec.west);
+\draw[seta] (s.east) -- (rec.west);
+\draw[seta] (c.east) -- (rec.south west);
+
+\node[
+    below=0.45cm of rec,
+    font=\scriptsize,
+    text=blue!65!black,
+    align=center
+] (out) {Previsões\\coerentes};
+
+\draw[seta] (rec) -- (out);
+
+\end{tikzpicture}
+
+\end{column}
+
+\end{columns}
+
+\end{frame}
+
+
+\begin{frame}{Resultados -- Modelo por Hierarquia}
+
+\centering
+\scriptsize
+
+% Ajustes de espacamento
+\renewcommand{\arraystretch}{1.12}
+\setlength{\tabcolsep}{5pt}
+
+\begin{tabular}{llrrr}
+\toprule
+\textbf{Nível} &
+\textbf{Modelo} &
+\textbf{MAE} &
+\textbf{WMAPE} &
+\textbf{Bias (\%)} \\
+\midrule
+
+Região & Média móvel (5 ciclos)
+& 40.248 & 11,73\% & -7,17\% \\
+
+\textbf{Região} & \textbf{ETS + LightGBM (Rec.)}
+& \textbf{36.505} & \textbf{10,64\%} & \textbf{-0,66\%} \\
+
+Região & Compartilhamento
+& 38.659 & 11,27\% & -6,52\% \\
+
+\midrule
+
+Gerência & Média móvel (5 ciclos)
+& 12.358 & 16,66\% & -7,17\% \\
+
+\textbf{Gerência} & \textbf{ETS + LightGBM (Rec.)}
+& \textbf{11.068} & \textbf{14,92\%} & \textbf{-0,66\%} \\
+
+Gerência & Compartilhamento
+& 11.848 & 15,97\% & -6,52\% \\
+
+\midrule
+
+Setor & Média móvel (5 ciclos)
+& 1.958 & 43,46\% & -6,94\% \\
+
+Setor & ETS + LightGBM (Rec.)
+& 1.860 & 41,31\% & -0,66\% \\
+
+\textbf{Setor} & \textbf{Compartilhamento}
+& \textbf{1.851} & \textbf{41,09\%} & \textbf{-6,52\%} \\
+
+\midrule
+
+Setor-cidade & Média móvel (5 ciclos)
+& 235 & 60,68\% & -19,92\% \\
+
+Setor-cidade & ETS + LightGBM (Rec.)
+& 222 & 57,20\% & -15,67\% \\
+
+\textbf{Setor-cidade} & \textbf{Compartilhamento}
+& \textbf{220} & \textbf{57,04\%} & \textbf{-21,72\%} \\
+
+\bottomrule
+\end{tabular}
+
+\vspace{0.35cm}
+
+\begin{minipage}{0.94\textwidth}
+\footnotesize
+\begin{itemize}
+    \item O aumento da \textbf{granularidade} está
+    associado a \textbf{maiores erros percentuais}
+    de previsão.
+\end{itemize}
+\end{minipage}
+
+\end{frame}
+
+
+\begin{frame}{Resultados -- Modelos por Hierarquia}
+
+\small
+\textbf{E se pararmos no nível de gerência?}
+
+\vspace{0.4cm}
+
+\begin{center}
+\scriptsize
+
+\renewcommand{\arraystretch}{1.20}
+\setlength{\tabcolsep}{6pt}
+
+\begin{tabular}{llrrr}
+\toprule
+\textbf{Nível} &
+\textbf{Modelo} &
+\textbf{MAE} &
+\textbf{WMAPE} &
+\textbf{Bias (\%)} \\
+\midrule
+
+Região & Média móvel (5 ciclos)
+& 40.248 & 11,73\% & -7,17\% \\
+
+\textbf{Região} & \textbf{ETS + LightGBM (Rec.)}
+& \textbf{35.555} & \textbf{10,36\%} & \textbf{-2,46\%} \\
+
+Região & Compartilhamento
+& 38.659 & 11,27\% & -6,52\% \\
+
+\midrule
+
+Gerência & Média móvel (5 ciclos)
+& 11.915 & 16,06\% & -7,17\% \\
+
+\textbf{Gerência} & \textbf{ETS + LightGBM (Rec.)}
+& \textbf{11.114} & \textbf{14,98\%} & \textbf{-2,46\%} \\
+
+Gerência & Compartilhamento
+& 11.615 & 15,66\% & -6,52\% \\
+
+\midrule
+
+Gerência-cidade & Média móvel (5 ciclos)
+& 248 & 53,06\% & -5,40\% \\
+
+Gerência-cidade & ETS + LightGBM (Rec.)
+& 235 & 50,27\% & -14,78\% \\
+
+\textbf{Gerência-cidade} & \textbf{Compartilhamento}
+& \textbf{231} & \textbf{49,74\%} & \textbf{-17,90\%} \\
+
+\bottomrule
+\end{tabular}
+
+\end{center}
+
+\vspace{0.5cm}
+
+\begin{itemize}
+    \item A \textbf{reconciliação} apresentou os
+    menores erros em região e gerência, enquanto
+    o \textbf{compartilhamento} obteve o melhor
+    WMAPE em gerência-cidade.
+\end{itemize}
+
+\end{frame}
+
+
 % ------------------------------------------------------------
 % 1. O PROBLEMA: O TAMANHO REAL NÃO FECHA  (~1,5 min)
 % ------------------------------------------------------------
@@ -98,7 +629,6 @@
     \begin{column}{0.40\textwidth}
       \begin{itemize}
         \item O MIP \textbf{não prova o ótimo} em 2 h, mas chega a \textbf{0,41\%} do limite inferior
-        \item \textbf{Warm-start do SA não mudou} o resultado em 2 h (mesma solução, mesmo \textit{gap})
         \item A matheurística termina em \textbf{9,5 min} a \textbf{+3,9\%} do MIP
         \item O SA sozinho é rápido, mas \textbf{longe do ótimo} ($\sim$2$\times$)
       \end{itemize}
@@ -107,41 +637,12 @@
 \end{frame}
 
 % ------------------------------------------------------------
-% 2. POR QUE NÃO FECHA: TAMANHO x DIFICULDADE  (~1 min)
-% ------------------------------------------------------------
-\begin{frame}{Dificuldade do problema}
-  % Fonte: experiments/mip_size (contagem em forma fechada, conferida contra o modelo Pyomo)
-  % - binárias = 15*S ; restrições = S + 4*dias + 1 (com 2 CDs)
-  % - 800 setores, 7 ciclos: 12.000 binárias, 1.389 restrições
-  \small
-  \centering
-  \begin{tabular}{rrrrr}
-    \toprule
-    Setores & Ciclos & Dias & Binárias & Restrições \\
-    \midrule
-    40   & 1 & 21  & 600    & 125 \\
-    600  & 6 & 126 & 9.000  & 1.105 \\
-    800  & 7 & 147 & 12.000 & 1.389 \\
-    1000 & 7 & 147 & 15.000 & 1.589 \\
-    \bottomrule
-  \end{tabular}
-
-  \vspace{0.5em}
-  \raggedright
-  \begin{itemize}
-    \item Variáveis crescem \textbf{linearmente} nos setores ($15\,|S|$); os ciclos só acrescentam restrições diárias
-    \item Poucas restrições para muitas binárias: o relaxamento linear é \textbf{fraco}, e a busca em árvore domina o tempo
-  \end{itemize}
-\end{frame}
-
-
-% ------------------------------------------------------------
 % 4. SA EM ESCALA  (~1,5 min)
 % ------------------------------------------------------------
 \begin{frame}{Simulated Annealing em escala}
   % Fonte: docs/agent-log/2026-10-19-sa-pico-desvio-solvers-escala.md (instância sintética de 800 setores)
   \small
-  \textbf{Resultado em 800 setores (instância sintética)}
+  \textbf{Comparação de configurações}
   \begin{center}
     \begin{tabular}{lcc}
       \toprule
@@ -156,9 +657,7 @@
   \begin{itemize}
     \item Mais iterações reduzem o \textit{gap} (8,3\% $\to$ 4,2\%)
     \item \textbf{Pico+desvio} reduz o desvio da carga em 1--3\%, mas piora o \textit{gap} da amplitude; cada energia exige \textbf{calibração própria}
-    \item Dados reais (568 setores, 6 ciclos): SA devolve solução em $\sim$1 s
   \end{itemize}
-  \note{Avaliação incremental dos vizinhos: mesma trajetória, só mais rápida. Com os parâmetros da amplitude, a energia pico+desvio teve 0/8 execuções viáveis em \texttt{tight40}, por isso precisou de calibração própria.}
 \end{frame}
 
 % ------------------------------------------------------------
@@ -197,6 +696,10 @@
 % ------------------------------------------------------------
 % 6. PIPELINE PONTA A PONTA COM DADOS REAIS  (~1,5 min)
 % ------------------------------------------------------------
+% the goal of this slide is to show that 
+% even with the errors from the forecast, 
+% the otimizer still improves over the as-is 
+% values
 \begin{frame}{End-to-end com dados reais}
   \footnotesize
   \begin{columns}[T]
@@ -210,7 +713,7 @@
         \midrule
         Hier. (setor) & 26,7 $\pm$ 2,4\% & \textbf{18,1 $\pm$ 2,5\%} \\
         Hier. (gerência) & 26,3 $\pm$ 2,4\% & \textbf{17,7 $\pm$ 3,6\%} \\
-        Média ingênua        & 26,6 $\pm$ 2,5\% & \textbf{18,6 $\pm$ 2,8\%} \\
+        Média        & 26,6 $\pm$ 2,5\% & \textbf{18,6 $\pm$ 2,8\%} \\
         \midrule
         Todas (30 exec.) & 26,5 $\pm$ 2,4\% & \textbf{18,1 $\pm$ 2,9\%} \\
         Mín--máx             & 23,2--31,1\%    & 9,3--24,0\% \\
@@ -228,7 +731,7 @@
 \end{frame}
 
 % ------------------------------------------------------------
-% 7. RECOMENDAÇÃO E PRÓXIMOS PASSOS  (~1 min)
+% RECOMENDAÇÃO  (~1 min)
 % ------------------------------------------------------------
 \begin{frame}{Qual método usar}
   \footnotesize
@@ -238,5 +741,25 @@
     \item \textbf{Matheurística:} com warm-start do SA, \textbf{9,5 min a +3,9\% do MIP} no tamanho real
   \end{itemize}
 \end{frame}
+
+
+\begin{frame}{Próximos Passos}
+    \small
+
+    \begin{itemize}
+        \setlength{\itemsep}{1.2cm}
+
+        \item \textbf{Refinamento dos modelos:}
+        aprimoramento das abordagens de previsão
+        de demanda e otimização;
+
+        \item \textbf{Elaboração do relatório final:}
+        consolidação da metodologia, dos resultados
+        e das principais conclusões do projeto.
+
+    \end{itemize}
+
+\end{frame}
+
 
 \end{document}
