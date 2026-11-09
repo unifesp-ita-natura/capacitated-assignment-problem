@@ -94,3 +94,23 @@ def test_subproblem_with_an_infeasible_fixing_reports_no_solution():
 
     # Mudar os 4 setores estoura o orçamento de churn (M = 0), então o subproblema é inviável.
     assert solved is False
+
+
+def test_warm_start_skips_construction_and_never_worsens():
+    from src.solver.matheuristics.relax_and_fix import RelaxAndFixParams, solve
+    from tests.solver.matheuristics.test_relax_and_fix import _instance
+
+    instance = _instance()
+    warm = {1: 1, 2: 2, 3: 1, 4: 2}  # the optimum of the toy instance
+    result = solve(instance, params=RelaxAndFixParams(), warm_start=warm)
+    assert result.construction is not None
+    assert result.construction.objective == result.objective == 0.0
+
+
+def test_infeasible_warm_start_falls_back_to_construction():
+    from src.solver.matheuristics.relax_and_fix import RelaxAndFixParams, solve
+    from tests.solver.matheuristics.test_relax_and_fix import _instance
+
+    instance = _instance(max_churn=0)
+    result = solve(instance, params=RelaxAndFixParams(), warm_start={1: 2, 2: 2, 3: 2, 4: 2})
+    assert result.feasible

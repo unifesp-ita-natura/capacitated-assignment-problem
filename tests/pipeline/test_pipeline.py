@@ -58,3 +58,43 @@ def test_explanation_reports_infeasible_solve() -> None:
     explanation = explain.explain(TOY_INSTANCE, solved, {})
     assert explanation.to_be is None
     assert "no feasible" in explain.render(explanation)
+
+
+def test_realized_daily_sums_items_per_sector_cycle_day() -> None:
+    from src.pipeline.realized import realized_daily
+
+    raw = load_demand_base(FIXTURE)
+    frame = realized_daily(raw, ["202612"])
+    assert (
+        frame["items_pred"].sum()
+        == raw.loc[raw["CICLOS"].eq("202612"), "total_itens_mascarado"].sum()
+    )
+    assert frame["relative_day"].min() >= 1
+
+
+def test_rescore_on_same_demand_matches_explain() -> None:
+    from src.pipeline.realized import rescore
+
+    solved = run_solver("sa", TOY_INSTANCE, _config("sa"))
+    explanation = explain.explain(TOY_INSTANCE, solved, {})
+    as_is, to_be = rescore(TOY_INSTANCE, TOY_INSTANCE, solved.assignment)
+    assert as_is.objective == explanation.as_is.objective
+    assert to_be.objective == explanation.to_be.objective
+
+
+def test_pick_targets_shift_moves_the_horizon_back():
+    import pandas as pd
+
+    from src.pipeline.forecast_stage import pick_targets
+
+    calendar = pd.DataFrame(
+        {
+            "CICLOS": [f"c{i}" for i in range(6)],
+            "opening_date": pd.date_range("2025-01-01", periods=6, freq="14D"),
+            "is_complete": True,
+        }
+    )
+    assert pick_targets(calendar, 2, 2) == ["c4", "c5"]
+    assert pick_targets(calendar, 2, 2, shift=2) == ["c2", "c3"]
+    with pytest.raises(ValueError, match="shift"):
+        pick_targets(calendar, 2, 2, shift=3)

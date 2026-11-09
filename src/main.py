@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -11,6 +12,7 @@ from src.config import RunConfig, load_config
 from src.forecasting.dataset import load_demand_base
 from src.persistence import write_results_csv
 from src.pipeline import explain as explain_stage
+from src.pipeline import realized as realized_stage
 from src.pipeline.forecast_stage import (
     HorizonPlan,
     forecast_accuracy,
@@ -67,6 +69,9 @@ def run_pipeline(config: RunConfig) -> explain_stage.Explanation:
     solved = run_solver(pipeline.solver_family, instance, config)
     accuracy = forecast_accuracy(raw, plan, pipeline, level) if pipeline.report_accuracy else {}
     explanation = explain_stage.explain(instance, solved, accuracy)
+    actual = realized_stage.realized_instance(instance, real, raw, plan.targets)
+    as_is, to_be = realized_stage.rescore(instance, actual, solved.assignment)
+    explanation = replace(explanation, realized_as_is=as_is, realized_to_be=to_be)
 
     results = Path(config.paths.results)
     write_results_csv([solved.result], results / "pipeline_solve.csv")

@@ -1,0 +1,664 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[num]{abntex2cite}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds,calc}
+
+\usepackage{capt-of}
+\bibliographystyle{abntex2-num}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=\paperwidth,ht=5ex,dp=2ex,right]{page number in head/foot}%
+      {\usebeamercolor[fg]{structure}\fontsize{12}{14}\selectfont\bfseries\insertframenumber\,/\,\inserttotalframenumber}\hspace*{1.5em}%
+    \end{beamercolorbox}}%
+  \vskip0pt%
+}
+\setbeamertemplate{bibliography item}[text]
+
+\title[Simulador 2.0]{Desafio Natura: Otimização e Recomendação Proativa\\de Blocos e Sublocos}
+\subtitle{Segunda apresentação parcial}
+\author{Luiza Santos, Leonardo Ferreira, Leonardo Leal, Mateus Martins, \newline Layza Carvalho, Ana Clara Felizardo, Tasso Canellas
+}
+\institute{UNIFESP}
+\date{\today}
+
+\begin{document}
+
+% ------------------------------------------------------------
+% TÍTULO
+% ------------------------------------------------------------
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% ------------------------------------------------------------
+% 1. CONTEXTO E OBJETIVO  (~2 min)
+% ------------------------------------------------------------
+\begin{frame}{Contexto}
+  % - ~800 setores distribuídos em blocos (1 a 3) e sublocos (1 a 5)
+  % - Bloco 2 concentra ~45% do volume de pedidos -> picos operacionais
+  % - INA: Bloco 1 (produto ainda em produção) e Bloco 3 (estoque esgotado)
+  % - Processo atual: mudanças reativas + validação por simulação manual
+  % - Objetivo: Recomendação proativa
+  % - Governança: propostas valem só para ciclos futuros
+  % TODO: confirmar 633 vs ~800 setores (633 é o número após a limpeza dos dados?)
+\begin{columns}[c]
+    \begin{column}{0.42\textwidth}
+        \begin{itemize}
+            \item 633 setores distribuídos entre 16 grupos (3 blocos $\times$ 5 sublocos + bloco 0)
+            \item \textbf{Bloco 2 concentra $\sim$44\%} do volume de pedidos, criando picos operacionais
+            \item Processo atual: mudanças reativas + validação por simulação manual
+        \end{itemize}
+    \end{column}
+    \begin{column}{0.58\textwidth}
+        \begin{figure}
+            \centering
+            \includegraphics[width=\linewidth,height=0.62\textheight,keepaspectratio]{figures/historical_order_per_sector.png}
+            \caption{Percentual de pedidos por bloco}
+            \label{fig:hist-orders}
+        \end{figure}
+    \end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Objetivo}
+    \begin{itemize}
+        \item \textbf{Alocação proativa} dos setores por bloco e subloco
+        \item \textbf{Nivelamento da demanda:} eliminar picos que violam a capacidade operacional
+        \item Cada setor preserva sua curva histórica de decisão de compra; apenas a posição muda
+    \end{itemize}
+    \vspace{-0.1cm}
+    \centering
+    \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]{figures/objetivo.png}
+\end{frame}
+
+% ------------------------------------------------------------
+% 2. VISÃO GERAL DA ABORDAGEM  (~1 min)
+% ------------------------------------------------------------
+\begin{frame}{Visão geral da abordagem}
+  % - Pipeline em três camadas:
+  %   (i) previsão de level f(setor, tamanho_ciclo, dia_de_abertura) (quanto) e shape g(setor, dia_relativo_do_ciclo) (quando)
+  %   (ii) reconstrução de cenários: q_{s,a,d} = level do setor com abertura em d * sigma_{s,t},
+  %        ex.: itens no dia 25 dado que o ciclo abriu em 22, 23 ou 24
+  %   (iii) otimização da alocação setor -> (bloco, subloco)
+  % - Otimização: MIP (referência exata), SA (heurística), matheurística R&F + F&O
+  % - Separar level e shape permite desenvolver as duas frentes em paralelo
+  Duas frentes:
+\begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+        \begin{block}{Previsão de demanda}
+            Para cada cenário de abertura:
+            \begin{itemize}
+                \item Previsão de \textit{level} (quanto)
+                \item Previsão de \textit{shape} (quando)
+            \end{itemize}
+        \end{block}
+    \end{column}
+
+    \begin{column}{0.48\textwidth}
+        \begin{block}{Otimização da alocação dos setores}
+            \begin{itemize}
+                \item Métodos exatos (MIP)
+                \item Metaheurísticas e matheurísticas
+            \end{itemize}
+        \end{block}
+    \end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Visão geral do pipeline}
+  \input{diagrama_overview}
+\end{frame}
+
+
+% ---------------------------------------------------------
+% 2. DADOS  (~1,5 min)
+% ---------------------------------------------------------
+\section{dados}
+
+
+\begin{frame}{Transformações de dados}
+\begin{columns}[T]
+
+\begin{column}{0.52\textwidth}
+\textbf{Integração das bases}
+\begin{enumerate}
+  % TODO: definir GV e RE na primeira vez em que aparecem
+  \item \textbf{Hierarquia:} relação setor $\rightarrow$ GV $\rightarrow$ RE, sem duplicatas
+  \item \textbf{Calendário de ciclos:} associado à hierarquia pelo código do setor
+  \item \textbf{Pedidos:} associados ao calendário pelo setor e pelo ciclo
+  \item \textbf{Filtro:} manutenção apenas dos pedidos dentro da janela do ciclo, $\text{abertura} \le \text{data} < \text{fechamento}$
+\end{enumerate}
+\end{column}
+
+\begin{column}{0.46\textwidth}
+    \textbf{Dados faltantes}
+    \begin{itemize}
+      \item Ciclo ausente no calendário: registros removidos (\textbf{6,7\%})
+      \item Data sem feriado correspondente: tratada como dia comum
+      \item Datas inválidas: tratadas como ausentes
+      \item Pedidos sem ciclo ou fora da janela: descartados (\textbf{15,4\%})
+    \end{itemize}
+\end{column}
+
+\end{columns}
+\end{frame}
+
+\begin{frame}{Dados externos incorporados}
+\centering
+\small
+% TODO: trocar "Calendário Online" por uma fonte específica
+\begin{tabular}{p{4.2cm} p{3.6cm} p{4.6cm}}
+\toprule
+\textbf{Variável} & \textbf{Fonte} & \textbf{Relevância para a demanda} \\
+\midrule
+Feriados nacionais & Governo federal & Reduzem dias úteis de captação de pedidos \\[4pt]
+Datas comemorativas (Dia das Mães, Dia dos Namorados, Dia dos Pais, Natal) & Calendário Online & Picos sazonais de consumo de cosméticos e presentes \\[4pt]
+Indicadores macroeconômicos (Densidade populacional, renda média, taxa de desemprego) & IBGE e PNAD contínua trimestral & Capturam o poder de compra das revendedoras e consumidores \\[4pt]
+Dias de pagamento (quinto dia útil) & Calendário de dias úteis & Concentram pedidos após o recebimento de salários \\
+\bottomrule
+\end{tabular}
+\end{frame}
+
+% ---------------------------------------------------------
+% 3. PREVISÃO DE LEVEL  (~1,5 min)
+% ---------------------------------------------------------
+\section{level}
+
+\begin{frame}{Previsão de \textit{level}}
+  % - A função é avaliada para CADA data de abertura candidata e cada setor
+  %   -> um valor de level por cenário de abertura
+  % - Candidatos: naive/naive sazonal (baseline), SARIMA, ETS, Prophet, LightGBM
+  % - Validação rolling-origin (nunca partição aleatória); features só com informação disponível na data da previsão
+  % TODO: confirmar validação (rolling-window vs rolling-origin) e métrica (MAE vs MASE)
+  \small
+  \textbf{Função de previsão}
+  \begin{equation*}
+    f(\text{duração},\ \text{início},\ \text{setor},\ \text{outras \textit{features}}) \;\rightarrow\; \text{itens esperados no ciclo}
+  \end{equation*}
+  \centering
+  Ex.: $f(21,\ 21/06/2027,\ S300,\ X) = 1500$ itens
+
+  \vspace{0.4em}
+  \raggedright
+  \begin{itemize}
+    \item A função é avaliada para cada data de abertura correspondente aos possíveis pares (bloco, subloco), gerando um cenário de \textit{level} por data.
+  \end{itemize}
+
+  \vspace{0.3em}
+  \textbf{Candidatos e validação}
+  \begin{itemize}
+    \item \textbf{Candidatos:} \textit{naive} / \textit{naive} sazonal (\textit{baseline}), SARIMA, ETS \cite{hyndman2021forecasting}, Prophet, LightGBM
+    \item \textbf{Validação:} \textit{rolling-window} \cite{hewamalage2023forecast}
+    \item \textbf{Métrica:} MAE
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Resultados iniciais}
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.9\linewidth,height=0.7\textheight,keepaspectratio]{figures/level.jpeg}
+        \caption{Previsão utilizando LightGBM}
+        \label{fig:level}
+    \end{figure}
+\end{frame}
+
+
+% ---------------------------------------------------------
+% 4. CURVA DE SHAPE  (~1 min)
+% ---------------------------------------------------------
+\section{shape}
+
+\begin{frame}{Curva de \textit{shape}}
+  % - Método 1: média histórica normalizada (baseline)
+  % - Método 2: média ponderada por recência, w(k) = lambda^{idade}
+  % - Parâmetros a testar: janela (3, 6, 12 ciclos), lambda (0,8; 0,9; 1,0), outliers (sem remoção / IQR)
+  % - Validação temporal; métrica principal MAE da shape
+  \small
+  \textbf{Normalização}
+  \begin{equation*}
+    p(s,k,t) = \frac{V(s,k,t)}{\sum_{j} V(s,k,j)}
+  \end{equation*}
+  onde $V(s,k,t)$ é o volume do setor $s$ no ciclo $k$ no dia $t$ do ciclo, e $p(s,k,t) \in [0,1]$ é a \textit{shape}: a proporção da demanda alocada ao dia $t$, com $\sum_{t} p(s,k,t) = 1$.
+
+  \vspace{0.3em}
+  \textbf{Métodos}
+  \begin{itemize}
+    \item \textbf{Método 1 (\textit{baseline}):} média histórica normalizada
+    \item \textbf{Método 2:} média ponderada por recência, com peso $w(k) = \lambda^{\text{idade}(k)}$
+  \end{itemize}
+
+  \vspace{0.3em}
+  \textbf{Parâmetros a testar}
+  \begin{itemize}
+    \item Janela: 3, 6 e 12 ciclos
+    \item $\lambda \in \{0{,}8;\ 0{,}9;\ 1{,}0\}$
+    \item \textit{Outliers}: sem remoção vs.\ IQR
+  \end{itemize}
+
+  \vspace{0.3em}
+  \textbf{Validação}
+  \begin{itemize}
+    \item Validação temporal; métrica principal: MAE da \textit{shape}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Resultados iniciais}
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.9\linewidth,height=0.7\textheight,keepaspectratio]{figures/shape_curve.png}
+        \caption{Curva de \textit{shape} estimada}
+        \label{fig:shape}
+    \end{figure}
+\end{frame}
+
+% ---------------------------------------------------------
+% 3. FORMULAÇÃO MATEMÁTICA  (~2 min)
+% ---------------------------------------------------------
+\section{otimização}
+
+\begin{frame}{Formulação matemática: notação}
+  % - Conjuntos: S (setores), D (combinações bloco/subloco), A (dias), C (CDs), K (ciclos)
+  % - Parâmetros: q_{s,a,d} (definido no slide anterior), Cap_{c,a}, x^{AsIs}_{s,d}, M (churn)
+  % - Variável: x_{s,d} in {0,1}; auxiliares z_max, z_min
+    \begin{columns}[T]
+        \begin{column}{0.48\textwidth}
+            \textbf{Conjuntos}
+            \begin{itemize}
+                \item $S$: setores
+                \item $S_c \subseteq S$: setores atendidos pelo CD $c$
+                \item $D$: combinações bloco/subloco
+                \item $A$, $C$, $K$: dias, CDs e ciclos
+            \end{itemize}
+            \textbf{Parâmetros}
+            \begin{itemize}
+                \item $q_{s,a,d}$: demanda
+                \item $\text{Cap}_{c,a}$: capacidade do CD
+                \item $x^{\text{AsIs}}_{s,d}$: alocação atual
+                \item $M$: controle de \textit{churn}
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \textbf{Variáveis}
+            \begin{itemize}
+                \item $x_{s,d}\in\{0,1\}$: atribuição
+                \item $z_{\max}, z_{\min}$: carga máxima e mínima
+            \end{itemize}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Formulação matemática: modelo}
+    \begin{block}{Objetivo}
+        \vspace{-0.3cm}
+        \[ \min\; z_{\max}-z_{\min} \]
+    \end{block}
+
+    \small
+    \setlength{\abovedisplayskip}{3pt}
+    \setlength{\belowdisplayskip}{3pt}
+    \setlength{\abovedisplayshortskip}{2pt}
+    \setlength{\belowdisplayshortskip}{2pt}
+
+    \textbf{Sujeito a:}
+    \begin{align}
+        \makebox[3.2cm][l]{\scriptsize Atribuição única}
+        & \sum_{d \in D} x_{s,d} = 1
+            && \forall s \in S
+            \label{eq:assign} \\[2pt]
+        \makebox[3.2cm][l]{\scriptsize\parbox{3.2cm}{Definição de $z_{\max}$ e $z_{\min}$ (carga diária)}}
+        & z_{\min} \le \sum_{s \in S} \sum_{d \in D} q_{s,a,d}\, x_{s,d} \le z_{\max}
+            && \forall a \in A
+            \label{eq:zminmax} \\[2pt]
+        \makebox[3.2cm][l]{\scriptsize Capacidade por CD}
+        & \sum_{s \in S_c} \sum_{d \in D} q_{s,a,d}\, x_{s,d} \le \text{Cap}_{c,a}
+            && \forall c \in C,\ a \in A
+            \label{eq:capacity} \\[2pt]
+        \makebox[3.2cm][l]{\scriptsize\parbox{3.2cm}{Controle de \textit{churn} (no máximo $M$ setores mudam)}}
+        & \sum_{s \in S}\sum_{d \in D} \left[ x^{\text{AsIs}}_{s,d} + \left(1-2\,x^{\text{AsIs}}_{s,d}\right) x_{s,d} \right] \le 2M
+            \label{eq:churn}
+    \end{align}
+\end{frame}
+
+
+% ------------------------------------------------------------
+% 6. SIMULATED ANNEALING  (~1,5 min)
+% ------------------------------------------------------------
+\section{heuristicas}
+
+\begin{frame}{Métodos exatos e heurísticas}
+  % - MIP: referência de qualidade (ótimo exato com HiGHS); garante otimalidade
+  %   mas em ~800 setores não deve fechar em tempo hábil
+  % - SA: heurística; trata o simulador de capacidade como caixa-preta;
+  %   rápida, mas sem garantia de otimalidade
+  % - Matheurística: usa o MIP em subproblemas menores (R&F + F&O),
+  %   combinando a estrutura do modelo exato com a escalabilidade das heurísticas
+  \small
+  \begin{columns}[T]
+    \begin{column}{0.32\textwidth}
+      \begin{block}{MIP (exato)}
+        \begin{itemize}
+          \item Problema de atribuição generalizada com capacidades \cite{oncan_survey_2007}
+          \item Garante o ótimo e fornece o \textit{gap}
+          \item Serve de \textbf{referência} para calibrar as demais abordagens
+          \item Não escala: em $\sim$800 setores não deve fechar em tempo hábil
+        \end{itemize}
+      \end{block}
+    \end{column}
+
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Simulated Annealing}
+        \begin{itemize}
+          \item Metaheurística de busca local com aceitação de pioras \cite{kirkpatrick1983optimization}
+          \item Trata o simulador de capacidade como \textit{caixa-preta}
+          \item Rápida e escalável
+          \item Sem garantia de otimalidade
+        \end{itemize}
+      \end{block}
+    \end{column}
+
+    \begin{column}{0.32\textwidth}
+      \begin{block}{Matheurística}
+        \begin{itemize}
+          \item \textit{Relax-and-Fix} + \textit{Fix-and-Optimize} \cite{carvalho2022hybrid}
+          \item Resolve subproblemas do MIP, com decomposição por CDs
+          \item Mantém a estrutura do modelo exato
+          \item Escala melhor que o MIP completo
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.4cm}
+  \centering
+  \textbf{Estratégia:} MIP como referência $\rightarrow$ SA e matheurística para o tamanho real
+\end{frame}
+
+\begin{frame}{Simulated Annealing}
+  \begin{itemize}
+    \item \textbf{Solução:} atribuição de cada setor a um par (bloco, subloco)
+    \item \textbf{Energia:} penaliza desbalanceamento entre blocos e \textit{churn} de setores
+    \item \textbf{Busca:} aceita pioras com probabilidade decrescente (Metropolis), resfriando ao longo das iterações, para escapar de ótimos locais
+  \end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+% 7. CALIBRAÇÃO DO SA  (~2 min)
+% ------------------------------------------------------------
+\begin{frame}{Calibração do SA}
+\begin{itemize}
+    \small
+    \item \textbf{Referência de qualidade}: ótimo exato do MIP; \quad
+    $\text{gap} = 100 \cdot \dfrac{z_{\text{SA}} - z_{\text{ref}}}{z_{\text{ref}}}$ (100 se inviável)
+    \item \textbf{Orçamento fixo}: $N =$ \textbf{200.000} iterações; $\alpha$ derivado de $T_0$ e $T_{\min}$
+    \item \textbf{Protocolo em 3 fases}, regra de escolha definida \emph{antes} da execução: menor \textit{gap} médio, desempate pelo P90
+\end{itemize}
+
+\vspace{0.3cm}
+\begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+        \begin{table}
+            \centering
+            \footnotesize
+            \caption{Instâncias de calibração.}
+            \label{tab:calibracao-instancias}
+            \begin{tabular}{lccl}
+                \toprule
+                Instância & Setores & Cap. & Papel \\
+                \midrule
+                \texttt{base40}  & 40 & folgada  & calibração \\
+                \texttt{tight40} & 40 & apertada & calibração \\
+                \texttt{base80}  & 80 & folgada  & calibração \\
+                \texttt{tight80} & 80 & apertada & \textbf{revalidação} \\
+                \bottomrule
+            \end{tabular}
+        \end{table}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+        \begin{table}
+            \centering
+            \footnotesize
+            \caption{Protocolo em 3 fases.}
+            \label{tab:calibracao-protocolo}
+            \begin{tabular}{lll}
+                \toprule
+                Fase & Método & Config. \\
+                \midrule
+                1. Triagem      & LHS \cite{mckay1979comparison}                 & \textbf{60} \\
+                2. Refino       & TPE \cite{bergstra2011algorithms} \cite{akiba2019optuna}        & 3$\times$\textbf{12} \\
+                3. Revalid.  & reavaliação          & \textbf{8} sementes \\
+                \bottomrule
+            \end{tabular}
+        \end{table}
+    \end{column}
+\end{columns}
+\end{frame}
+
+% ------------------------------------------------------------
+% 8. RESULTADOS  (~1,5 min)
+% ------------------------------------------------------------
+\begin{frame}{Resultados da calibração}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+    \small
+    \begin{table}
+        \centering
+        \footnotesize
+        \caption{\textit{Gap} médio por configuração.}
+        \label{tab:calibracao-revalidacao}
+        \begin{tabular}{lccc}
+            \toprule
+            Config. & \textit{Gap} & P90 & Viáveis \\
+            \midrule
+            \textbf{Calibrada} & \textbf{1,96\%} & \textbf{4,59\%} & 24/24 \\
+            Original          & 23,79\%          & --              & 24/24 \\
+            \texttt{tight80}$^{*}$ & 2,39\%       & --              & -- \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+    {\scriptsize $^{*}$fora da calibração\par}
+
+    \vspace{0.5em}
+    \begin{itemize}
+        \footnotesize
+        \item \textbf{Orçamento}: derivar $\alpha$ de $T_0$ e $T_{\min}$ já leva o \textit{gap} a \textbf{8,12\%}.
+        \item \textbf{$\rho = 146$} (moderado): $\rho$ alto trava a busca.
+        \item \textbf{$T_0$ intermediário}: $T_0 < 160 \Rightarrow \sim$\textbf{11,8\%}.
+    \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+    \begin{figure}
+        \centering
+        \includegraphics[width=0.95\textwidth,height=0.55\textheight,keepaspectratio]{figures/convergence.png}
+        \caption{\footnotesize Convergência (energia/temperatura), \texttt{tight40}, semente 101.}
+        \label{fig:calibracao-convergencia}
+    \end{figure}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ------------------------------------------------------------
+% 9. MATHEURÍSTICA R&F + F&O  (~1 min)
+% ------------------------------------------------------------
+
+\begin{frame}{Matheurística \textit{Relax-and-Fix} + \textit{Fix-and-Optimize}}
+  % - Motivação: em ~800 setores o MIP não deve fechar em tempo hábil
+  % - Matheurísticas: R&F e F&O apontados como eficientes (Mula 2021; Roshani 2023; Oh 2026)
+  % - R&F integrado ao F&O tem desempenho melhor (Carvalho 2022; Fiorotto 2020)
+  % - Decomposição por CD: capacidade (3.5.4) é separável por CD,
+  %   mas objetivo e churn acoplam todos os setores
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \begin{block}{Fase 1: \textit{Relax-and-Fix} (construção)}
+        \begin{itemize}
+          \item Janela de $W$ CDs ($C_{int}$) com $x_{s,d}$ binário
+          \item CDs restantes ($C_{relax}$): $x_{s,d}\in[0,1]$
+          \item CDs já processados ($C_{fix}$): valores fixados
+          \item Congela só os $P$ primeiros CDs ($C_{step}$) e avança
+          \item $P<W$: janelas se sobrepõem, o que ajuda a manter a viabilidade
+        \end{itemize}
+      \end{block}
+    \end{column}
+
+    \begin{column}{0.48\textwidth}
+      \begin{block}{Fase 2: \textit{Fix-and-Optimize} (refino)}
+        \begin{itemize}
+          \item Parte da solução viável da Fase 1
+          \item Janela deslizante: libera as binárias de $C_{int}$
+          \item Todos os demais CDs ficam fixos na incumbente
+          \item A incumbente só é atualizada se o objetivo melhorar
+          \item Solução final nunca é pior que a da Fase 1
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{R\&F: janela deslizante sobre os CDs}
+  % Exemplo com |C| = 6, W = 3, P = 2
+  % - Iteração 1: CD1-2 viram step (congelados), CD3 fica na janela, CD4-6 relaxados
+  % - Iteração 2: CD1-2 fixos, CD3-4 step, CD5 na janela, CD6 relaxado
+  % - O CD3 foi reotimizado na iteração 2: é o efeito do overlap
+  \centering
+\begin{tikzpicture}[
+    cdbox/.style={draw, minimum width=1.1cm, minimum height=0.7cm, font=\footnotesize},
+    cdfix/.style={cdbox, fill=gray!40},
+    cdint/.style={cdbox, fill=blue!20},
+    cdstp/.style={cdbox, fill=blue!50, text=white},
+    cdrelax/.style={cdbox, dashed}
+  ]
+  \node[anchor=east, font=\footnotesize] at (0.4,0) {Iteração 1};
+  \foreach \i/\k in {1/cdstp,2/cdstp,3/cdint,4/cdrelax,5/cdrelax,6/cdrelax}
+    \node[\k] at (\i*1.2,0) {CD\i};
+
+  \node[anchor=east, font=\footnotesize] at (0.4,-1) {Iteração 2};
+  \foreach \i/\k in {1/cdfix,2/cdfix,3/cdstp,4/cdstp,5/cdint,6/cdrelax}
+    \node[\k] at (\i*1.2,-1) {CD\i};
+
+  \node[anchor=east, font=\footnotesize] at (0.4,-2) {Iteração 3};
+  \foreach \i/\k in {1/cdfix,2/cdfix,3/cdfix,4/cdfix,5/cdstp,6/cdstp}
+    \node[\k] at (\i*1.2,-2) {CD\i};
+
+  % Legenda
+  \node[cdfix]   at (1.0,-3.2) {};   \node[right, font=\footnotesize] at (1.5,-3.2) {$C_{fix}$};
+  \node[cdstp]   at (3.0,-3.2) {};   \node[right, font=\footnotesize] at (3.5,-3.2) {$C_{step}$};
+  \node[cdint]   at (5.0,-3.2) {};   \node[right, font=\footnotesize] at (5.5,-3.2) {$C_{int}$};
+  \node[cdrelax] at (7,-3.2) {};   \node[right, font=\footnotesize] at (7.5,-3.2) {$C_{relax}$};
+\end{tikzpicture}
+
+  \vspace{0.3cm}
+  {\footnotesize Exemplo com $|C|=6$, $W=3$, $P=2$. Em cada iteração, $C_{step}\subseteq C_{int}$ são os $P$ primeiros CDs da janela.}
+\end{frame}
+
+
+% ------------------------------------------------------------
+% 10. LIMITAÇÕES E PRÓXIMOS PASSOS  (~1,5 min)
+% ------------------------------------------------------------
+\section{next steps}
+
+\begin{frame}{Próximos passos}
+  % Limitações:
+  % - Instâncias sintéticas e pequenas (40 e 80 setores) vs. ~800 reais
+  % - Apenas tight40 tem capacidade restringindo o ótimo
+  % - rho perto da borda de viabilidade e dependente da escala
+  % - Regime em que o MIP não fecha ainda não foi exercitado
+    \begin{itemize}
+        \item Otimização
+            \begin{itemize}
+                \item Localizar a fronteira do MIP
+                \item Revalidar $\rho$ e $T_0$ como múltiplos da mediana de $|\Delta E|$
+                \item Parada por estagnação
+                \item Implementar \textit{Relax-and-Fix}
+            \end{itemize}
+        \item Previsão de demanda
+            \begin{itemize}
+                \item Análise de \textit{features}
+                \item Integrar previsão de \textit{level} + \textit{shape}
+            \end{itemize}
+        \item Ponta a ponta: dos dados à otimização
+    \end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------
+% MATERIAL EXTRA (caso sobre tempo)
+% ------------------------------------------------------------
+\section{material extra}
+
+\begin{frame}
+  \centering
+  \vfill
+  {\usebeamercolor[fg]{structure}\Huge\bfseries Material Extra}\\[0.6em]
+  {\large conteúdo adicional, caso sobre tempo}
+  \vfill
+\end{frame}
+
+\begin{frame}{Integração \textit{shape} + \textit{level}}
+\begin{columns}[T]
+        \begin{column}{0.48\textwidth}
+            \textbf{Level}
+            \begin{itemize}
+                \item Volume total de pedidos por setor e ciclo
+                \item Modelo de previsão com sazonalidade e variáveis externas
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \textbf{Shape}
+            \begin{itemize}
+                \item Proporção da demanda em cada dia do ciclo
+                \item {\footnotesize $\hat{S}_{s,t}$: média (ponderada) de $p(s,k,t)$ nos ciclos $k$ passados}
+            \end{itemize}
+        \end{column}
+    \end{columns}
+
+    \vspace{0.4cm}
+    \begin{center}
+        $\hat{V}_{s,k,t} = \hat{L}_{s,k} \times \hat{S}_{s,t}, \qquad \sum_{t} \hat{S}_{s,t} = 1$
+    \end{center}
+
+    \vspace{0.2cm}
+    \textbf{Entrada da otimização}
+    \begin{equation*}
+        q_{s,a,d} = \hat{L}_{s,k}\,\hat{S}_{s,t}, \qquad t = a - a_k^{\text{ini}} - \delta_d
+    \end{equation*}
+    {\footnotesize Demanda do setor $s$ no dia $a$, se o ciclo $k$ abre com a combinação $d$ (válido para $0 \le t < W_k$; zero caso contrário). $a_k^{\text{ini}}$: dia de início do ciclo $k$; $\delta_d$: deslocamento da abertura da combinação $d$; $W_k$: duração da janela de vendas.}
+\end{frame}
+
+\begin{frame}{Simulated Annealing: formalização}
+  \begin{itemize}
+    \item \textbf{Solução:} vetor $X = (x_1,\dots,x_{|S|})$, com $X[s] = d$ o par (bloco, subloco) do setor $s$.
+    \item \textbf{Energia:}
+      \[
+        E(X) = (z_{\max} - z_{\min}) + \rho\,\bigl(P_{\text{cap}}(X) + P_{\text{churn}}(X)\bigr)
+      \]
+    \item \textbf{Aceitação (Metropolis):} uma piora é aceita com probabilidade $e^{-\Delta E / T}$ \cite{metropolis1953equation}\cite{kirkpatrick1983optimization}.
+    \item \textbf{Resfriamento geométrico:} $T_{k+1} = \alpha\, T_k$, com
+      $\alpha = (T_{\min}/T_0)^{1/N}$ \cite{aarts1985statistical}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Algoritmo Simulated Annealing}
+    \input{pseudocode/sa/algoritmo-principal}
+\end{frame}
+
+% ------------------------------------------------------------
+% REFERÊNCIAS (fora da conta de tempo)
+% ------------------------------------------------------------
+\begin{frame}[allowframebreaks]{Referências}
+\bibliography{references}
+\end{frame}
+
+\end{document}

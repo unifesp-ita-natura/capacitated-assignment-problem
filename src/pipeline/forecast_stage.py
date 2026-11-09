@@ -28,15 +28,22 @@ def shape_candidate(config: PipelineConfig) -> ShapeCandidate:
     return ShapeCandidate(name=name, model=config.shape_model, n_bins=config.shape_bins)
 
 
-def pick_targets(calendar: pd.DataFrame, horizon_cycles: int, history_cycles: int) -> list[str]:
-    """The last `horizon_cycles` complete cycles, leaving `history_cycles` of them to train on."""
+def pick_targets(
+    calendar: pd.DataFrame, horizon_cycles: int, history_cycles: int, shift: int = 0
+) -> list[str]:
+    """The last `horizon_cycles` complete cycles, leaving `history_cycles` of them to train on.
+
+    `shift` moves the horizon back by that many complete cycles (0 = the most recent window).
+    """
     complete = calendar[calendar["is_complete"]].sort_values("opening_date")
-    if len(complete) < history_cycles + horizon_cycles:
+    needed = history_cycles + horizon_cycles + shift
+    if len(complete) < needed:
         raise ValueError(
-            f"need {history_cycles + horizon_cycles} complete cycles "
-            f"({history_cycles} history + {horizon_cycles} horizon); found {len(complete)}"
+            f"need {needed} complete cycles ({history_cycles} history + {horizon_cycles} "
+            f"horizon + {shift} shift); found {len(complete)}"
         )
-    return complete["CICLOS"].tail(horizon_cycles).tolist()
+    kept = complete["CICLOS"].iloc[: len(complete) - shift]
+    return kept.tail(horizon_cycles).tolist()
 
 
 def _complete_sectors(windows: pd.DataFrame, known: set[str]) -> pd.DataFrame:
@@ -47,10 +54,12 @@ def _complete_sectors(windows: pd.DataFrame, known: set[str]) -> pd.DataFrame:
     return windows[windows["cd_setor"].isin(keep)].copy()
 
 
-def plan_horizon(raw: pd.DataFrame, horizon_cycles: int, history_cycles: int) -> HorizonPlan:
+def plan_horizon(
+    raw: pd.DataFrame, horizon_cycles: int, history_cycles: int, shift: int = 0
+) -> HorizonPlan:
     """Cut off just before the first target cycle opens and list every cycle windows to emit."""
     calendar = cycle_calendar(raw)
-    targets = pick_targets(calendar, horizon_cycles, history_cycles)
+    targets = pick_targets(calendar, horizon_cycles, history_cycles, shift)
     opening = calendar.set_index("CICLOS").loc[targets, "opening_date"]
     as_of = opening.min() - pd.Timedelta(days=1)
     history = prepare_histories(raw, as_of, history_cycles)

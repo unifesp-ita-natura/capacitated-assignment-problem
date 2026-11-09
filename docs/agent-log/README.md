@@ -5,6 +5,9 @@ Record of what AI agents did in this repo. See
 
 ## Index
 
+- [2026-11-02 SA seed stability](2026-11-02-sa-seed-stability.md) — 30 SA runs (3 forecast scenarios x 10 seeds): realized improvement 18.1% ± 2.9 pp vs 26.5% forecast
+- [2026-11-02 realized-demand re-score](2026-11-02-realized-demand-rescore.md) — To-Be beats As-Is by 19.0% on the held-out actuals vs 22.1% on the forecast; the gain survives forecast error
+- [2026-11-02 certified SA gap](2026-11-02-sa-certified-gap.md) — 2 h warm-started Gurobi at 568 sectors x 6 cycles: MIP within 0.41% of its bound, but default-parameter SA is only certified within 127.7% of optimal, not the 4-8% seen on synthetic instances
 - [2026-10-30 hierarchy forecast presets](2026-10-30-hierarchy-forecast-presets.md) — Default sector-city ETS/LightGBM distribution and selectable management-city preset connected to daily shapes
 - [2026-10-30 remove legacy hierarchy comparisons](2026-10-30-remove-legacy-hierarchy-comparisons.md) — Checkpoint the current implementation, then remove historical candidate execution and dedicated YAMLs while preserving retained forecasts
 - [2026-10-30 standard hierarchy comparison](2026-10-30-standard-hierarchy-comparison.md) — Three default candidates with a pure five-cycle moving average and explicit historical reproduction mode
