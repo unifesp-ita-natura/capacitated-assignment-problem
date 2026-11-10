@@ -4,8 +4,8 @@ history_cycles: 20
 validation_cycles: ["202612"]
 
 level:
-  model: naive
-  strategy: mean
+  model: hierarchical
+  city_grouping: sector  # management para o preset gerência-cidade
 
 shape:
   name: sector_10_bins

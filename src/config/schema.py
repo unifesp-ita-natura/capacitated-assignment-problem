@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from src.forecasting.hierarchy_config import HierarchyForecastParams
+
 
 class Paths(BaseModel):
     instances: str = "data/instances"
@@ -147,6 +149,54 @@ class LightGBMParams(BaseModel):
     validation_cycles: int = 1
 
 
+class LightGBMExternalParams(LightGBMParams):
+    """Pooled LightGBM plus static per-UF socioeconomic features (requires panel external=True)."""
+
+    model: Literal["lightgbm_external"] = "lightgbm_external"
+    external_features: list[
+        Literal["uf_populacao", "uf_densidade", "uf_salario_medio", "uf_desemprego"]
+    ] = ["uf_populacao", "uf_densidade", "uf_salario_medio", "uf_desemprego"]
+
+
+class LightGBMDynamicsParams(LightGBMParams):
+    """Pooled LightGBM plus derived momentum and opening-quarter features."""
+
+    model: Literal["lightgbm_dynamics"] = "lightgbm_dynamics"
+    momentum: bool = True
+    calendar_quarter: bool = True
+
+
+class ProphetParams(BaseModel):
+    """Prophet fitted per (sector, city) series; seasonality off by default (per-cycle panel)."""
+
+    model: Literal["prophet"] = "prophet"
+    growth: Literal["linear", "flat"] = "linear"
+    n_changepoints: int = 5
+    changepoint_prior_scale: float = 0.05
+    seasonality_mode: Literal["additive", "multiplicative"] = "additive"
+    yearly_seasonality: bool = False
+    weekly_seasonality: bool = False
+    daily_seasonality: bool = False
+
+
+class CrostonParams(BaseModel):
+    """Intermittent-demand forecast per (sector, city) series: Croston, SBA or TSB."""
+
+    model: Literal["croston"] = "croston"
+    variant: Literal["classic", "sba", "tsb"] = "sba"
+    alpha: float = 0.1
+    beta: float = 0.1
+
+
+class LightGBMObjectiveParams(LightGBMParams):
+    """Pooled LightGBM with a selectable training objective (Tweedie or Quantile)."""
+
+    model: Literal["lightgbm_objective"] = "lightgbm_objective"
+    objective: Literal["tweedie", "quantile"] = "tweedie"
+    tweedie_variance_power: float = 1.3
+    quantile_alpha: float = 0.5
+
+
 class CycleFactorParams(BaseModel):
     model: Literal["cycle_factor"] = "cycle_factor"
     # "last" repeats the most recent observed factor; "mean" averages the
@@ -157,13 +207,33 @@ class CycleFactorParams(BaseModel):
 
 
 ForecastParams = Annotated[
-    NaiveParams | ArimaParams | ETSParams | LightGBMParams | CycleFactorParams,
+    NaiveParams
+    | ArimaParams
+    | ETSParams
+    | ProphetParams
+    | CrostonParams
+    | LightGBMParams
+    | LightGBMExternalParams
+    | LightGBMDynamicsParams
+    | LightGBMObjectiveParams
+    | CycleFactorParams,
+    Field(discriminator="model"),
+]
+
+
+CombinedLevelParams = Annotated[
+    NaiveParams
+    | ArimaParams
+    | ETSParams
+    | LightGBMParams
+    | CycleFactorParams
+    | HierarchyForecastParams,
     Field(discriminator="model"),
 ]
 
 
 class ForecastConfig(BaseModel):
-    params: ForecastParams = NaiveParams()
+    params: CombinedLevelParams = Field(default_factory=HierarchyForecastParams)
     train_window: TrainWindow = TrainWindow()
 
 
@@ -173,13 +243,14 @@ class PipelineConfig(BaseModel):
     base_csv: str = "data/base_tratada_v2.csv"
     history_cycles: int = Field(default=20, ge=1)
     horizon_cycles: int = Field(default=1, ge=1)
-    solver_family: Literal["mip", "matheuristic", "sa", "sa_mip"] = "sa"
+    solver_family: Literal["mip", "matheuristic", "sa", "sa_mip", "sa_matheuristic"] = "sa"
     shape_model: Literal["uniform", "sector"] = "sector"
     shape_bins: int = Field(default=10, ge=1)
     max_churn: float = Field(default=0.2, ge=0, le=1)  # fraction of sectors allowed to move
     capacity_multiplier: float = Field(default=1.0, gt=0)
     seed: int = 42
     max_sectors: int | None = Field(default=None, ge=1)  # keep the largest N sectors (quick runs)
+    time_limit_seconds: float = Field(default=600.0, gt=0)  # wall limit of the MIP / matheuristic
     report_accuracy: bool = True  # also replay the horizon to report forecast WMAPE
 
 

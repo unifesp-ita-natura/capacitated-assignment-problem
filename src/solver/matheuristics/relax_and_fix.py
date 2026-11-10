@@ -46,6 +46,9 @@ class RelaxAndFixParams:
     # Se uma janela do R&F fica sem solução, tenta de novo descongelando os `step` últimos
     # grupos (e depois o dobro, ...) até esse número de vezes. 0 desliga o backtracking.
     max_backtracks: int = 2
+    # Limite de parede do Fix-and-Optimize, em segundos: depois dele nenhuma janela nova começa
+    # e a incumbente atual é devolvida. O Relax-and-Fix não é interrompido. None não limita.
+    total_time_limit: float | None = None
 
     def __post_init__(self) -> None:
         if self.max_group_sectors is not None and self.max_group_sectors < 1:
@@ -79,12 +82,15 @@ def solve(
     params: RelaxAndFixParams | None = None,
     solve_subproblem: SubproblemSolver | None = None,
     cd_order: Sequence[int] | None = None,
+    warm_start: Mapping[int, int] | None = None,
 ) -> RelaxAndFixResult:
     """Roda o Relax-and-Fix e depois o Fix-and-Optimize sobre grupos de setores (CDs ou fatias).
 
     `cd_order` define a ordem em que os CDs entram nas janelas (padrão: a de
     `instance.cd_sectors`); `solve_subproblem` troca o solver dos subproblemas
-    (padrão: HiGHS via Pyomo).
+    (padrão: HiGHS via Pyomo). `warm_start` (setor -> combinação), se viável, substitui a fase
+    do Relax-and-Fix: o Fix-and-Optimize parte dela e só aceita melhoras, então o resultado
+    nunca é pior que ela. Se for inviável, a construção normal roda.
     """
     params = params or RelaxAndFixParams()
     start = time.perf_counter()
@@ -94,9 +100,9 @@ def solve(
     order = _cd_order(problem, cd_order)
     ctx = _Context(
         problem, model, _groups(problem, order, params.max_group_sectors), params,
-        _Runner(solver, params.subproblem_time_limit),
+        _Runner(solver, params.subproblem_time_limit), _deadline(params, start),
     )  # fmt: skip
-    constructed = _construct(ctx)
+    constructed = _warm_construction(problem, warm_start) or _construct(ctx)
     if constructed is None:
         return _no_solution_window(ctx, start)
     return _finish(ctx, constructed, start)
@@ -106,6 +112,7 @@ def run_relax_and_fix(
     instance: ProblemInstance,
     solver: str = "appsi_highs",
     params: RelaxAndFixParams | None = None,
+    warm_start: Mapping[int, int] | None = None,
 ) -> SolveResult:
     """Roda a matheurística e devolve um `SolveResult` comparável ao do MIP e ao do SA."""
     params = params or RelaxAndFixParams()
@@ -113,6 +120,7 @@ def run_relax_and_fix(
         instance,
         params=params,
         solve_subproblem=pyomo_subproblem_solver(solver, params.mip_rel_gap),
+        warm_start=warm_start,
     )
     return SolveResult(
         model_name="relax_and_fix",
@@ -144,12 +152,26 @@ class _Context:
     groups: dict[int, tuple[int, ...]]  # id do grupo -> setores; a ordem é a das janelas
     params: RelaxAndFixParams
     runner: _Runner
+    deadline: float | None = None  # instante (perf_counter) em que o Fix-and-Optimize para
 
 
 @dataclass(frozen=True)
 class _Incumbent:
     assignment: dict[int, int]
     evaluation: Evaluation
+
+
+def _deadline(params: RelaxAndFixParams, start: float) -> float | None:
+    return None if params.total_time_limit is None else start + params.total_time_limit
+
+
+def _warm_construction(
+    problem: AssignmentProblem, warm_start: Mapping[int, int] | None
+) -> dict[int, int] | None:
+    """`warm_start` como solução de partida, se for viável; senão None."""
+    if warm_start is None or not evaluate_assignment(problem, warm_start).feasible:
+        return None
+    return dict(warm_start)
 
 
 def _cd_order(problem: AssignmentProblem, cd_order: Sequence[int] | None) -> tuple[int, ...]:
@@ -251,6 +273,8 @@ def _optimize_pass(ctx: _Context, incumbent: _Incumbent) -> _Incumbent:
         tuple(ctx.groups), ctx.params.window, ctx.params.optimize_step
     )
     for cds in windows:
+        if ctx.deadline is not None and time.perf_counter() >= ctx.deadline:
+            break
         incumbent = _better(incumbent, _reoptimize(ctx, incumbent, cds))
     return incumbent
 

@@ -1,0 +1,154 @@
+experiment_name: teste_features_e_temporais
+description:
+  goal: >
+    Minha tarefa: testar as features externas no nivel (level) e pensar em
+    features adicionais, alem de testar modelos temporais. Este experimento
+    roda tudo no mesmo harness (compare_forecasters) e ranqueia por
+    mae_common, a unica metrica comparavel entre linhas.
+  hypothesis: >
+    (1) Features externas so ajudam o LightGBM; os modelos temporais (ARIMA,
+    ETS, cycle_factor, naive sazonal) ignoram features por design e servem de
+    referencia temporal. (2) Entre as features, espera-se que region/gerencia
+    (CD_RE/CD_GV) e os companion lags (orders/volumes) ajudem o pooled LightGBM
+    a separar series parecidas. (3) O vencedor decide qual candidato gera a
+    previsao de nivel.
+  design_note: >
+    Todos os candidatos rodam no mesmo RollingOriginSplit sobre o mesmo item
+    panel, entao so o candidato muda. O ranking usa comparison.compare, que
+    pontua todos na interseccao dos pontos que todos previram; mae_own aparece
+    ao lado mas NAO e comparavel entre linhas. Os modelos temporais nao
+    aceitam categorical_features/companion_lags: eles operam so sobre a serie
+    de items. As features externas de censo/salario/desemprego NAO entram aqui
+    porque ainda nao estao ligadas ao painel (ver src/processamento_dados/
+    analise_populacao.py, que e standalone e por UF/trimestre) — isso e a
+    Etapa 2.
+  status: in_progress
+
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  # ---------------------------------------------------------------
+  # Baselines e modelos temporais (ignoram features, so a serie items)
+  # ---------------------------------------------------------------
+  - model: naive
+    strategy: mean
+  - model: naive
+    strategy: last_value
+
+  # ARIMA: AR(1) com intercepto (trend c), sem o intercepto o statsmodels
+  # força um passeio aleatorio numa serie que vive em ~milhares de itens.
+  - model: arima
+    order: [1, 0, 0]
+    trend: c
+
+  # ETS(A,N,N): suavizacao exponencial, nivel sem tendencia nem sazonalidade.
+  - model: ets
+    error: add
+    trend: null
+    seasonal: null
+
+  # cycle_factor: nivel por serie x um fator de ciclo compartilhado (media).
+  - model: cycle_factor
+    strategy: mean
+    window: 3
+
+  # ---------------------------------------------------------------
+  # LightGBM: base + features externas ja disponiveis
+  # ---------------------------------------------------------------
+  - model: lightgbm
+    label: lgbm_base
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    companion_lags: []
+    categorical_features: []
+
+  # Feature externa: regiao (CD_RE)
+  - model: lightgbm
+    label: lgbm_regiao
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    companion_lags: []
+    categorical_features: [CD_RE]
+
+  # Feature externa: gerencia de vendas (CD_GV)
+  - model: lightgbm
+    label: lgbm_gerencia
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    companion_lags: []
+    categorical_features: [CD_GV]
+
+  # Feature externa: regiao + gerencia juntas
+  - model: lightgbm
+    label: lgbm_regiao_gerencia
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    companion_lags: []
+    categorical_features: [CD_RE, CD_GV]
+
+  # Feature geografica: estado + cidade (ja sao colunas do painel)
+  - model: lightgbm
+    label: lgbm_geografia
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    companion_lags: []
+    categorical_features: [estado]
+
+  # ---------------------------------------------------------------
+  # Features adicionais para testar (ideias)
+  # ---------------------------------------------------------------
+  # Companion lags: pedidos, volumes e itens-por-pedido anteriores
+  - model: lightgbm
+    label: lgbm_companion
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    companion_lags: [1, 2, 3, 4]
+    categorical_features: []
+
+  # Tudo junto: regiao + gerencia + companion lags
+  - model: lightgbm
+    label: lgbm_full
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    companion_lags: [1, 2, 3, 4]
+    categorical_features: [CD_RE, CD_GV]
+
+  # Target ratio: preve a correcao sobre a media (naive:mean) em vez do nivel
+  - model: lightgbm
+    label: lgbm_ratio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    companion_lags: []
+    categorical_features: []
+    target: ratio
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-19_features_temporais

@@ -15,15 +15,30 @@ wheels/
 *.aux
 *.fdb_latexmk
 *.fls
+docs/papers/*.log
+docs/papers/*.out
+docs/papers/*.gz
+docs/papers/*.bbl
+docs/papers/*.blg
+docs/papers/*.synctex.gz
+docs/papers/*.toc
+docs/papers/*.nav
+docs/papers/*.snm
 docs/paper/*.log
 docs/paper/*.out
 docs/paper/*.gz
 docs/paper/*.bbl
 docs/paper/*.blg
+docs/papers/*.log
+docs/papers/*.nav
+docs/papers/*.pdf
+docs/papers/*.snm
+docs/papers/*.toc
 
 # result files
 results/
 figures/
+/outputs/
 
 # data files — ignore contents, keep the directory skeleton (.gitkeep, README)
 data/generated/*

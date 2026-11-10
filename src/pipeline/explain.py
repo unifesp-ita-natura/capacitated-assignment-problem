@@ -48,6 +48,18 @@ class Explanation:
     status: str
     wall_time_seconds: float
     forecast: dict[str, float]
+    realized_as_is: Scenario | None = None
+    realized_to_be: Scenario | None = None
+
+    @property
+    def realized_improvement_pct(self) -> float | None:
+        """Relative drop of the balance metric from As-Is to To-Be on the actual demand."""
+        if self.realized_to_be is None or self.realized_as_is is None:
+            return None
+        if not self.realized_as_is.objective:
+            return None
+        gap = self.realized_as_is.objective - self.realized_to_be.objective
+        return 100.0 * gap / self.realized_as_is.objective
 
     @property
     def improvement_pct(self) -> float | None:
@@ -126,6 +138,20 @@ def _verdict_lines(explanation: Explanation) -> list[str]:
     ]
 
 
+def _realized_lines(explanation: Explanation) -> list[str]:
+    if explanation.realized_as_is is None or explanation.realized_to_be is None:
+        return []
+    gain = explanation.realized_improvement_pct
+    realized = "n/a" if gain is None else f"{gain:.1f}%"
+    return [
+        "Re-scored on the realized demand of the held-out cycles:",
+        _scenario_line("As-Is", explanation.realized_as_is),
+        _scenario_line("To-Be", explanation.realized_to_be),
+        f"  Realized improvement over As-Is: {realized} "
+        f"(on the forecast: {explanation.improvement_pct or 0:.1f}%).",
+    ]
+
+
 def _forecast_lines(forecast: dict[str, float]) -> list[str]:
     if not forecast:
         return []
@@ -141,9 +167,25 @@ def render(explanation: Explanation) -> str:
         *_verdict_lines(explanation),
         f"Solver: {explanation.solver} ({explanation.status}) in "
         f"{explanation.wall_time_seconds:.1f}s.",
+        *_realized_lines(explanation),
         *_forecast_lines(explanation.forecast),
     ]
     return "\n".join(lines)
+
+
+def _realized_rows(explanation: Explanation) -> list[tuple[str, str, float | None]]:
+    rows: list[tuple[str, str, float | None]] = []
+    for scope, scenario in [
+        ("realized_as_is", explanation.realized_as_is),
+        ("realized_to_be", explanation.realized_to_be),
+    ]:
+        if scenario is not None:
+            rows += [(scope, name, value) for name, value in vars(scenario).items()]
+    if explanation.realized_improvement_pct is not None:
+        rows.append(
+            ("comparison", "realized_improvement_pct", explanation.realized_improvement_pct)
+        )
+    return rows
 
 
 def to_frame(explanation: Explanation) -> pd.DataFrame:
@@ -152,6 +194,7 @@ def to_frame(explanation: Explanation) -> pd.DataFrame:
     if explanation.to_be is not None:
         rows += [("to_be", name, value) for name, value in vars(explanation.to_be).items()]
         rows.append(("comparison", "improvement_pct", explanation.improvement_pct))
+    rows += _realized_rows(explanation)
     rows += [("forecast", name, value) for name, value in explanation.forecast.items()]
     return pd.DataFrame(rows, columns=["scope", "metric", "value"])
 

@@ -1,0 +1,69 @@
+experiment_name: teste_externos_uf
+description:
+  goal: >
+    Etapa 2: testar as features socioeconomicas por UF (populacao, densidade,
+    salario medio, desemprego — censo 2022 + SIDRA) como preditores continuos
+    do nivel, atraves de um candidato novo (lightgbm_external) que NAO altera
+    o LightGBM base. Join por `estado` no painel setor/cidade/ciclo.
+  hypothesis: >
+    Expectativa moderada: a categorica `estado` nao ajudou no teste anterior,
+    e estes valores sao por UF (grosseiros) e estaticos. Mas sao continuos e
+    exogenos — sinal que o modelo nunca viu —, entao vale medir se movem o
+    mae_common contra o lgbm_base.
+  design_note: >
+    O harness monta o painel com external=True automaticamente quando ha um
+    candidato lightgbm_external. As colunas uf_* sao estaticas por serie e
+    entram como features numericas (NaN para UF sem dado, que o LightGBM trata
+    nativamente). Ranking por mae_common, a unica metrica comparavel.
+  status: in_progress
+
+split:
+  min_train_cycles: 20
+  horizon: 1
+  window: expanding
+
+candidates:
+  - model: naive
+    strategy: mean
+
+  - model: lightgbm
+    label: lgbm_base
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+
+  # Todas as features por UF
+  - model: lightgbm_external
+    label: lgbm_ext_todas
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    external_features: [uf_populacao, uf_densidade, uf_salario_medio, uf_desemprego]
+
+  # So socioeconomicas (salario + desemprego)
+  - model: lightgbm_external
+    label: lgbm_ext_socio
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    external_features: [uf_salario_medio, uf_desemprego]
+
+  # So tamanho de mercado (populacao + densidade)
+  - model: lightgbm_external
+    label: lgbm_ext_mercado
+    n_estimators: 100
+    learning_rate: 0.05
+    num_leaves: 7
+    lags: [1, 2, 3, 4]
+    rolling_windows: [3, 6]
+    external_features: [uf_populacao, uf_densidade]
+
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/compare_forecasters/outputs/2026-10-19_externos_uf

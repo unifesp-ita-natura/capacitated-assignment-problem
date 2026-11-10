@@ -13,7 +13,7 @@ from src.solver.heuristics.simulated_annealing import (
     _evaluate,
     solve,
 )
-from src.solver.inputs import ProblemInstance
+from src.solver.inputs import ProblemInstance, effective_cd_sector_shares
 from tests.solver.heuristics.test_simulated_annealing import _instance
 
 _CAPACITY = 40.0
@@ -41,7 +41,7 @@ def _problem(instance: ProblemInstance):
         instance.sectors,
         instance.combinations,
         instance.days,
-        instance.cd_sectors,
+        effective_cd_sector_shares(instance),
         instance.daily_capacity,
         instance.projected_demand,
         instance.current_assignment,
