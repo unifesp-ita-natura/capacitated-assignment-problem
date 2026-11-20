@@ -16,6 +16,7 @@ from experiments.forecast_combined.run import (
 from src.config.schema import ForecastConfig, NaiveParams
 from src.forecasting.combined import forecast_combined
 from src.forecasting.combined_inputs import prepare_histories, prepare_windows
+from src.forecasting.combined_validation import validate_combined
 from src.forecasting.hierarchy import forecast_distribution, forecast_hierarchy
 from src.forecasting.hierarchy_config import HierarchyForecastParams
 from src.forecasting.hierarchy_data import aggregate_nodes
@@ -77,6 +78,7 @@ def windows():
 
 def params(grouping="sector"):
     return HierarchyForecastParams(
+        target_level="city",
         city_grouping=grouping,
         learning={"n_estimators": 3, "min_child_samples": 1, "num_leaves": 3},
     )
@@ -98,7 +100,6 @@ def test_effective_presets_and_explicit_override():
         "structure",
         "hierarchy",
         "intermittency",
-        "city_recent_shares",
     ]
     assert "history" not in params("management").learning.features
 
@@ -272,3 +273,146 @@ def test_forecast_hierarchical_path_names_missing_columns():
     history = pd.DataFrame({"cd_setor": ["01"], "CICLOS": [1]})
     with pytest.raises(ValueError, match=r"missing columns in history.*CD_GV.*CD_RE"):
         forecast_hierarchical_path(history, history, HierarchyForecastParams(), 5)
+
+
+@pytest.fixture
+def city_history(raw):
+    """Multiple cities per sector make aggregation and structure preservation observable."""
+    extra = raw.assign(
+        estado="MG", cidade="OUTRA", total_itens_mascarado=raw.total_itens_mascarado / 2
+    )
+    return pd.concat([raw, extra], ignore_index=True)
+
+
+def sector_params():
+    return HierarchyForecastParams(
+        learning={"n_estimators": 3, "min_child_samples": 1, "num_leaves": 3}
+    )
+
+
+def sector_prediction(raw, windows):
+    return forecast_combined(
+        raw,
+        windows,
+        "2026-02-11",
+        5,
+        sector_params(),
+        ShapeCandidate(model="sector", name="sector"),
+    )
+
+
+def test_sector_default_and_incompatible_city_grouping():
+    default = ForecastConfig().params
+    assert default.target_level == "sector"
+    assert profile_settings(default, 20).levels == ["region", "management", "sector"]
+    with pytest.raises(ValueError, match="target_level=city"):
+        HierarchyForecastParams(city_grouping="management")
+
+
+def test_sector_nodes_preserve_previously_evaluated_features(city_history, windows):
+    history = prepare_histories(city_history, pd.Timestamp("2026-02-11"), 5)
+    full = profile_settings(params(), 5)
+    old = aggregate_nodes(history.level, full.levels)
+    new = aggregate_nodes(history.level, full.levels[:-1])
+    pd.testing.assert_frame_equal(
+        new.reset_index(drop=True), old[old.level.ne("city")].reset_index(drop=True)
+    )
+    query = (
+        prepare_windows(windows)
+        .merge(history.cities, on="cd_setor")
+        .assign(CD_RE="r", CD_GV="g", items=0, closing_date=pd.NaT)
+    )
+    planned = aggregate_nodes(query, full.levels)
+    expected = forecast_distribution(old, planned, full)
+    result = sector_prediction(city_history, windows)
+    np.testing.assert_allclose(result.level.level_pred, result.level.level_node.map(expected))
+
+
+def test_sector_models_do_not_fit_city_or_volume_targets(city_history, windows, monkeypatch):
+    from src.forecasting import hierarchy
+
+    original = hierarchy.learned_values
+    fitted = []
+
+    def record(train, target, config, kind, fallback):
+        fitted.append((target.level.iloc[0], kind))
+        return original(train, target, config, kind, fallback)
+
+    monkeypatch.setattr(hierarchy, "learned_values", record)
+    result = sector_prediction(city_history, windows)
+    assert fitted == [("management", "share"), ("sector", "share")]
+    assert not {"estado", "cidade"}.intersection(result.level.columns)
+    assert len(result.level) == windows.cd_setor.nunique()
+
+
+def test_sector_daily_conservation_and_new_future_cities(city_history, windows):
+    result = sector_prediction(city_history, windows)
+    daily = result.daily.groupby("cd_setor").items_pred.sum().sort_index()
+    np.testing.assert_allclose(daily, result.level.set_index("cd_setor").level_pred.sort_index())
+    changed = city_history.copy()
+    changed.loc[changed.CICLOS.ge("202607"), "total_itens_mascarado"] *= 10000
+    extra = changed[changed.CICLOS.eq("202607")].assign(cidade="FUTURE")
+    pd.testing.assert_frame_equal(
+        result.daily, sector_prediction(pd.concat([changed, extra]), windows).daily
+    )
+
+
+def test_sector_scenarios_and_recursive_projection_are_independent(city_history, windows):
+    later = windows.assign(
+        CICLOS="202608",
+        opening_date="2026-02-19",
+        window_start="2026-02-19",
+        window_end="2026-02-21",
+    )
+    path = pd.concat([windows, later])
+    base = sector_prediction(city_history, path)
+    alternate = path.assign(
+        scenario_id="later", window_end=pd.to_datetime(path.window_end) + pd.Timedelta(days=1)
+    )
+    together = sector_prediction(city_history, pd.concat([path, alternate]))
+    pd.testing.assert_frame_equal(
+        base.daily, together.daily[together.daily.scenario_id.eq("base")].reset_index(drop=True)
+    )
+    assert base.daily.CICLOS.nunique() == 2
+
+
+def test_sector_validation_aggregates_actual_cities_before_errors(city_history):
+    result = validate_combined(
+        city_history, ["202607"], 5, sector_params(), ShapeCandidate(model="sector", name="sector")
+    )
+    actual = (
+        city_history[city_history.CICLOS.eq("202607")]
+        .groupby(["cd_setor", "data_pedido"])
+        .total_itens_mascarado.sum()
+    )
+    scored = result.predictions.set_index(["cd_setor", "date"])
+    np.testing.assert_allclose(scored.actual.reindex(actual.index), actual)
+    assert not {"estado", "cidade"}.intersection(result.predictions.columns)
+    assert not result.predictions.duplicated(["scenario_id", "cd_setor", "CICLOS", "date"]).any()
+
+
+@pytest.mark.parametrize("mode", ["forecast", "validate"])
+def test_runner_exports_sector_grain_and_effective_configuration(
+    tmp_path, city_history, windows, mode
+):
+    base, schedule = tmp_path / "base.csv", tmp_path / "windows.csv"
+    city_history.to_csv(base, index=False)
+    windows.to_csv(schedule, index=False)
+    config = dict(
+        mode=mode,
+        history_cycles=5,
+        level=sector_params().model_dump(),
+        paths=dict(base_csv=str(base), run_dir=str(tmp_path / "output")),
+    )
+    if mode == "forecast":
+        config.update(as_of="2026-02-11", paths={**config["paths"], "windows_csv": str(schedule)})
+    else:
+        config["validation_cycles"] = ["202607"]
+    file = tmp_path / "config.yaml"
+    file.write_text(yaml.safe_dump(config), encoding="utf-8")
+    directory = run(file)
+    record = json.loads((directory / "run_manifest.json").read_text())
+    assert record["hierarchy_settings"]["levels"] == ["region", "management", "sector"]
+    assert "cidade" not in record["target_keys"]
+    expected = {"forecast": "level_predictions.csv", "validate": "validation_by_sector.csv"}[mode]
+    assert (directory / expected).is_file()

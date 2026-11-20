@@ -45,10 +45,11 @@ class LearningSettings(BaseModel):
 
 
 class HierarchyForecastParams(BaseModel):
-    """Use the lowest-MAE shared-distribution preset for the chosen city grouping."""
+    """Forecast shared hierarchy totals through sectors, with optional legacy city output."""
 
     model_config = ConfigDict(extra="forbid")
     model: Literal["hierarchical"] = "hierarchical"
+    target_level: Literal["sector", "city"] = "sector"
     city_grouping: Literal["sector", "management"] = "sector"
     share_window: int = Field(default=5, ge=1)
     learning: LearningSettings = Field(default_factory=LearningSettings)
@@ -56,11 +57,29 @@ class HierarchyForecastParams(BaseModel):
     @model_validator(mode="after")
     def preset_features(self):
         if "features" not in self.learning.model_fields_set:
-            blocks = ["calendar", "structure", "hierarchy", "intermittency", "city_recent_shares"]
-            if self.city_grouping == "sector":
-                blocks = ["history", *blocks]
+            blocks = ["history", "calendar", "structure", "hierarchy", "intermittency"]
+            if self.target_level == "city":
+                blocks = [*blocks, "city_recent_shares"]
+            if self.city_grouping == "management":
+                blocks = blocks[1:]
             self.learning = self.learning.model_copy(update={"features": blocks})
         return self
+
+    @model_validator(mode="after")
+    def valid_target(self):
+        if self.target_level == "sector" and self.city_grouping != "sector":
+            raise ValueError(
+                "sector target requires city_grouping=sector; "
+                "use target_level=city for management-city"
+            )
+        return self
+
+
+def forecast_entity_keys(params) -> list[str]:
+    """Identify the output entity without changing the legacy city model contract."""
+    if isinstance(params, HierarchyForecastParams) and params.target_level == "sector":
+        return ["cd_setor"]
+    return ["cd_setor", "estado", "cidade"]
 
 
 class HierarchySettings(BaseModel):
@@ -82,13 +101,19 @@ class HierarchySettings(BaseModel):
     @model_validator(mode="after")
     def valid_structure(self):
         expected = _ordered_levels(self.levels)
-        if self.levels != expected or len(self.levels) < 2 or self.levels[-1] != "city":
-            raise ValueError("levels must be ordered, unique, end in city and include a parent")
+        if (
+            self.levels != expected
+            or len(self.levels) < 2
+            or self.levels[-1] not in {"sector", "city"}
+        ):
+            raise ValueError(
+                "levels must be ordered, unique, end in sector or city and include a parent"
+            )
         return self
 
     @model_validator(mode="after")
     def valid_city_grouping(self):
-        if self.city_grouping == "management" and self.levels[-2] != "management":
+        if self.city_grouping == "management" and self.levels[-2:] != ["management", "city"]:
             raise ValueError("management city grouping requires management directly before city")
         return self
 

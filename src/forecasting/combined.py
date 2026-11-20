@@ -1,4 +1,4 @@
-"""Combine predicted city-cycle totals with sector daily shapes for explicit opening scenarios."""
+"""Combine sector or city cycle totals with daily shapes for explicit opening scenarios."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ LEVEL_KEYS = ["scenario_id", "serie", "CICLOS"]
 
 
 class CombinedResult(NamedTuple):
-    """Intermediate forecasts and the final city-day demand table."""
+    """Intermediate forecasts and daily demand at the chosen level granularity."""
 
     level: pd.DataFrame
     shape: pd.DataFrame
@@ -79,7 +79,7 @@ def _validate_shares(shape: pd.DataFrame) -> None:
 
 
 def combine_predictions(level: pd.DataFrame, shape: pd.DataFrame) -> pd.DataFrame:
-    """Multiply city totals by aligned daily shares without using future actual demand."""
+    """Multiply entity totals by aligned daily shares without using future actual demand."""
     _validate_shares(shape)
     _validate_levels(level)
     keys = [*WINDOW_KEYS, "window_start", "window_end"]
@@ -97,7 +97,7 @@ def combine_predictions(level: pd.DataFrame, shape: pd.DataFrame) -> pd.DataFram
 
 
 def _validate_levels(level: pd.DataFrame) -> None:
-    """Preserve missing model forecasts explicitly while rejecting invalid city totals."""
+    """Preserve missing model forecasts explicitly while rejecting invalid entity totals."""
     if level[LEVEL_KEYS].duplicated().any():
         raise ValueError("duplicate level keys")
     known = level["level_pred"].dropna()
@@ -106,11 +106,11 @@ def _validate_levels(level: pd.DataFrame) -> None:
 
 
 def _validate_conservation(level: pd.DataFrame, daily: pd.DataFrame) -> None:
-    """Ensure daily amounts preserve each predicted city-cycle total."""
+    """Ensure daily amounts preserve each predicted entity-cycle total."""
     totals = daily.groupby(LEVEL_KEYS)["items_pred"].sum(min_count=1)
     expected = level.set_index(LEVEL_KEYS)["level_pred"].reindex(totals.index)
     if not np.allclose(totals, expected, equal_nan=True):
-        raise ValueError("daily predictions do not conserve city-cycle totals")
+        raise ValueError("daily predictions do not conserve entity-cycle totals")
 
 
 def _forecast_path(
@@ -142,7 +142,7 @@ def forecast_combined(
     level_params: CombinedLevelParams,
     shape_params: ShapeCandidate,
 ) -> CombinedResult:
-    """Run point-in-time city-level and sector-shape models and return emitted daily forecasts."""
+    """Run point-in-time level and sector-shape models and return emitted daily forecasts."""
     timestamp = pd.Timestamp(as_of)
     _validate_timestamp(timestamp, history_cycles)
     windows = prepare_windows(windows)

@@ -8,7 +8,7 @@ paths:
 forecast:
   params:
     model: hierarchical
-    city_grouping: sector  # management selects the management-city preset
+    target_level: sector  # region -> management -> sector
 pipeline:
   base_csv: data/base_tratada_v2.csv
   history_cycles: 20

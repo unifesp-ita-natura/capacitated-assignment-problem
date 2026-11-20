@@ -1,0 +1,14 @@
+settings:
+  levels: [region, management, sector]
+  history_cycles: 20
+  share_window: 5
+  learning:
+    features: [history, calendar, structure, hierarchy, intermittency]
+    n_estimators: 100
+    num_leaves: 7
+    learning_rate: 0.05
+    min_child_samples: 20
+    random_state: 42
+paths:
+  base_csv: data/base_tratada_v2.csv
+  run_dir: experiments/hierarchical_level/outputs/sector_cycle_v01

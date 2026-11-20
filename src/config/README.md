@@ -8,8 +8,10 @@ Loads and validates the run configuration.
 - `loader.py` — `load_config(path)` reads a YAML file into a `RunConfig`.
 
 The application defaults to `forecast.params.model: hierarchical` with
-`city_grouping: sector`. Use `management` for the management-city preset.
-Both feed the existing daily level × shape flow; see
+`target_level: sector` (region → management → sector). The level output is one
+row per scenario-sector-cycle and the daily output is one row per sector-day.
+Legacy city output requires `target_level: city`, with `city_grouping: sector`
+or `management`. All modes feed the daily level × shape flow; see
 [the combined forecast guide](../../docs/guides/combined-forecast.md).
 
 Extend `RunConfig` as the project grows (experiment parameters, generator

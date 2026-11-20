@@ -9,7 +9,7 @@ from scipy.sparse import csr_matrix
 def distribute(
     query: pd.DataFrame, root_values: np.ndarray, shares: dict[str, np.ndarray], levels: list[str]
 ) -> pd.Series:
-    """Propagate normalized child shares from the configured starting level down to cities."""
+    """Propagate normalized child shares from the starting level to the configured leaf level."""
     root = query[query["level"].eq(levels[0])]
     values = pd.Series(root_values, index=root["node"])
     for level in levels[1:]:

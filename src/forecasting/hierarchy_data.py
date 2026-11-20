@@ -91,8 +91,16 @@ def aggregate_nodes(
         _aggregate(panel, level, parent, city_grouping) for level, parent in zip(levels, parents)
     ]
     augmented = [_with_children(frame, child) for frame, child in zip(frames, frames[1:])]
-    leaf = frames[-1].assign(n_children=0, active_children=0, largest_share=0)
+    leaf = _leaf_structure(panel, frames[-1], city_grouping)
     return pd.concat([*augmented, leaf], ignore_index=True)
+
+
+def _leaf_structure(panel: pd.DataFrame, leaf: pd.DataFrame, city_grouping: str) -> pd.DataFrame:
+    """Retain known city composition as sector features without predicting city demand."""
+    if leaf["level"].iloc[0] == "sector":
+        cities = _aggregate(panel, "city", "sector", city_grouping)
+        return _with_children(leaf, cities)
+    return leaf.assign(n_children=0, active_children=0, largest_share=0)
 
 
 def known_roster(past: pd.DataFrame) -> pd.DataFrame:
