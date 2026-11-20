@@ -5,7 +5,7 @@ history_cycles: 20
 
 level:
   model: hierarchical
-  city_grouping: sector  # management para o preset gerência-cidade
+  target_level: sector  # região -> gerência -> setor
 
 shape:
   name: sector_10_bins
@@ -15,4 +15,4 @@ shape:
 paths:
   base_csv: data/base_tratada_v2.csv
   windows_csv: configs/experiments/forecast_combined/future_windows.csv
-  run_dir: experiments/forecast_combined/outputs/future_v01
+  run_dir: experiments/forecast_combined/outputs/sector_future_v01

@@ -235,6 +235,17 @@ def test_configuration_validation():
         HierarchySettings(history_cycles=4)
 
 
+def test_sector_leaf_backtest_reports_only_configured_levels(raw, settings):
+    source = yaml.safe_load(Path("configs/experiments/hierarchical_level/sector.yaml").read_text())
+    config = HierarchySettings.model_validate(source["settings"]).model_copy(
+        update={"history_cycles": settings.history_cycles, "max_origins": 1}
+    )
+    result = evaluate_hierarchy(raw, config)
+    assert set(result.comparison.level) == {"region", "management", "sector"}
+    assert set(result.comparison.scoring_scope) == {"all_points"}
+    assert not result.predictions.level.eq("city").any()
+
+
 def test_standard_moving_average_does_not_distribute_or_reconcile(raw, monkeypatch):
     from src.forecasting.hierarchy import HierarchyResult, _baselines
 

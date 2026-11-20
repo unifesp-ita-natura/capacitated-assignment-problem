@@ -14,10 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from src.config.schema import CombinedLevelParams, LightGBMParams
 from src.forecasting.combined import forecast_combined
-from src.forecasting.combined_validation import summarize_cities, validate_combined
+from src.forecasting.combined_validation import summarize_entities, validate_combined
 from src.forecasting.dataset import load_demand_base
 from src.forecasting.features import feature_columns
-from src.forecasting.hierarchy_config import HierarchyForecastParams
+from src.forecasting.hierarchy_config import HierarchyForecastParams, forecast_entity_keys
 from src.forecasting.hierarchy_features import feature_columns as hierarchy_feature_columns
 from src.forecasting.hierarchy_future import profile_settings
 from src.forecasting.shape_evaluation import ShapeCandidate
@@ -87,9 +87,7 @@ def _manifest(config: CombinedConfig) -> dict:
         "formula": "items_pred = level_pred * share_pred",
         "target_keys": [
             "scenario_id",
-            "cd_setor",
-            "estado",
-            "cidade",
+            *forecast_entity_keys(config.level),
             "CICLOS",
             "window_start",
             "date",
@@ -153,7 +151,11 @@ def _validation(config: CombinedConfig, raw: pd.DataFrame, directory: Path) -> d
     )
     result.predictions.to_csv(directory / "daily_validation.csv", index=False)
     result.metrics.to_csv(directory / "validation_metrics.csv", index=False)
-    summarize_cities(result.predictions).to_csv(directory / "validation_by_city.csv", index=False)
+    entity_keys = forecast_entity_keys(config.level)
+    suffix = "sector" if entity_keys == ["cd_setor"] else "city"
+    summarize_entities(result.predictions, entity_keys).to_csv(
+        directory / f"validation_by_{suffix}.csv", index=False
+    )
     result.windows.to_csv(directory / "validation_windows.csv", index=False)
     print(result.metrics.to_string(index=False))
     return {

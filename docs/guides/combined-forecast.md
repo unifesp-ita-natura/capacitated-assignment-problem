@@ -1,14 +1,14 @@
 # Previsão diária: level × shape
 
 Este fluxo conecta o level e o shape. A saída é por
-**setor–estado–cidade–ciclo–data de abertura–dia**:
+**setor–ciclo–data de abertura–dia** no padrão atual:
 
 ```text
 items_pred = level_pred × share_pred
 ```
 
-O level prevê o total da cidade; o shape prevê as participações dos dias do
-setor. A mesma curva é aplicada às cidades do setor. Por exemplo, level de
+O level prevê diretamente o total do setor; o shape prevê as participações dos
+dias desse setor. Por exemplo, level de
 1.200 e shares `[0,20; 0,30; 0,50]` produzem `[240; 360; 600]` itens diários.
 O fluxo futuro nunca usa o total real do ciclo alvo. As quantidades permanecem
 decimais para conservar o total previsto, sem arredondamentos independentes.
@@ -16,31 +16,38 @@ decimais para conservar o total previsto, sem arredondamentos independentes.
 ## 1. Escolha os modelos em um único YAML
 
 Edite `configs/experiments/forecast_combined/future.yaml`. O padrão do level
-é o preset hierárquico **ETS + distribuição LightGBM no nível setor-cidade**:
+é **ETS + distribuição compartilhada LightGBM até o setor**:
 
 ```yaml
 history_cycles: 20
 level:
   model: hierarchical
-  city_grouping: sector
+  target_level: sector
 ```
 
 O ETS prevê a região e os LightGBMs compartilhados distribuem o total entre
-gerências, setores e cidades. O preset usa os blocos `history`, `calendar`,
-`structure`, `hierarchy`, `intermittency` e `city_recent_shares`.
+gerências e setores: **região → gerência → setor**. Não há ajuste de modelo de
+demanda por cidade nem soma de previsões de cidades para obter o level do setor.
+O preset usa `history`, `calendar`, `structure`, `hierarchy` e `intermittency`.
+`city_recent_shares` é omitido por padrão porque só possui valores no nível cidade.
 Esses presets exigem `CD_RE` e `CD_GV` no histórico, além dos identificadores
 de setor, estado e cidade; o último cadastro conhecido é usado na consulta.
+As cidades são usadas para compor os totais históricos e as features de estrutura
+do setor (quantidades de cidades, atividade e concentração). Essas features são
+preservadas para manter a previsão do setor equivalente à etapa do modelo já
+avaliado, sem prever a demanda das cidades.
 
-Para usar o melhor preset observado no nível **gerência-cidade**, basta trocar
-`city_grouping: sector` por `city_grouping: management`. Nesse caso a sequência
+Para reproduzir a saída antiga **setor-cidade**, configure explicitamente
+`target_level: city` e `city_grouping: sector`. Para **gerência-cidade**, use
+`target_level: city` e `city_grouping: management`. Nesse caso a sequência
 é região → gerência → cidade e o bloco `history` é desabilitado por padrão.
-Os demais cinco blocos permanecem habilitados. Uma lista explícita em
+As modalidades com cidade incluem `city_recent_shares`. Uma lista explícita em
 `level.learning.features` substitui essa seleção automática. Os parâmetros
 do LightGBM também podem ser alterados em `level.learning`.
 
-Nos dois presets, o LightGBM usa 100 árvores, 7 folhas, taxa de aprendizado
-0,05, mínimo de 20 registros por folha e semente 42; a regularização de
-cidades usa 5 ciclos. As participações históricas usam `share_window: 5`.
+O LightGBM usa 100 árvores, 7 folhas, taxa de aprendizado 0,05, mínimo de 20
+registros por folha e semente 42. Nas modalidades com cidade, a regularização
+de cidades usa 5 ciclos. As participações históricas usam `share_window: 5`.
 O ETS escolhe alpha em `[0.05, 0.1, 0.2, 0.4, 0.8]` e expoente de duração
 em `[0, 0.5, 1]`, usando apenas o treino. **20 ciclos de treino** e **5 ciclos
 de participações** são parâmetros diferentes; a média móvel dos comparativos
@@ -48,6 +55,35 @@ também permanece fixada em cinco. Nenhuma busca entre modelos é feita no futur
 
 ### Resultados que motivaram os presets
 
+Na arquitetura até setor-cidade, a etapa de **setor** do compartilhamento teve
+MAE **1.850,85**, WMAPE **41,09%** e Bias **−6,52%**, nos resultados arquivados
+de `2026-10-24_recent_city_shares_v01/active_city_analysis/comparison.csv`.
+Essas são métricas por setor-ciclo, com todos os pontos desse nível; não são
+métricas diárias nem métricas restritas a cidades ativas. A modalidade atual
+encerra a distribuição nessa etapa e preserva suas features históricas.
+
+Para executar um backtest isolado do level até setor (média móvel de cinco,
+compartilhamento e reconciliação), use:
+
+```bat
+.venv\Scripts\python.exe -m experiments.hierarchical_level.run configs/experiments/hierarchical_level/sector.yaml
+```
+
+O forecast futuro usa somente compartilhamento; o YAML acima compara as
+abordagens para validação, sem selecionar automaticamente uma vencedora.
+
+Na conferência de 19/11/2026, os nove ciclos arquivados reproduziram as 5.506
+previsões conhecidas de setor, com diferença máxima de 1,82e-12 item. Os três
+pontos originalmente sem previsão mantêm o tratamento de zero do comparativo.
+
+A validação diária de produção do ciclo 202612 está em
+`experiments/forecast_combined/outputs/2026-11-19_sector_level_validation_v01/`.
+Ela teve MAE de 259,99 itens, WMAPE de 122,19%, Bias de −4,96% e cobertura de
+99,32% do volume real; 13 linhas reais não tiveram previsão disponível.
+Esse resultado avalia a combinação com o shape, é exploratório em um único ciclo
+e não demonstra boa acurácia diária. A equivalência do level não elimina esse erro.
+
+As modalidades opcionais com cidade têm os resultados históricos abaixo.
 As métricas abaixo são de level, condicionadas a cidades com demanda real
 positiva, nos resultados históricos arquivados. Elas não são uma nova avaliação
 da previsão diária nem uma comparação direta entre granularidades.
@@ -72,10 +108,12 @@ Se todo o grupo não comprou nessa janela, usa-se o histórico completo do trein
 se também for zero, a repartição é uniforme entre os setores conhecidos.
 Exemplo: compras de 30 e 10 dão participações de 75% e 25%.
 
-`level_predictions.csv` registra `level_node`, `aggregate_level_pred`,
+Na modalidade `target_level: city`, `level_predictions.csv` registra `level_node`, `aggregate_level_pred`,
 `sector_share` e `level_granularity`, além de `level_pred`. A soma de
 `level_pred` preserva o total de cada nó agregado e a soma de `items_pred`
-preserva o total de cada setor-cidade. O MAE de 230,50 avalia o total
+preserva o total de cada setor-cidade. No padrão `target_level: sector`, há uma
+linha por setor-ciclo, com `level_node`, `level_pred` e `level_granularity=sector`,
+sem colunas de cidade ou repartição entre cidades. O MAE de 230,50 avalia o total
 gerência-cidade; **não avalia essa nova repartição aos setores**.
 
 O histórico é limitado aos setores presentes na agenda da trajetória, para
@@ -134,8 +172,9 @@ O primeiro cenário terá 10 dias; o segundo, 8. O código recalcula tanto o lev
 quanto o shape para cada cenário. Na saída, `window_start` é a data de abertura
 do setor, `date` é o dia de calendário e `relative_day=1` é o primeiro dia da janela.
 
-Todas as cidades conhecidas do setor são consultadas automaticamente. Estado
-é mantido na identificação para não misturar cidades homônimas. Setores sem
+O cadastro de cidades conhecidas serve para construir as features de estrutura.
+Na modalidade opcional com cidade, estado é mantido na identificação para não
+misturar cidades homônimas. Setores sem
 histórico de cidades geram erro explícito. Uma cidade sem previsão de level
 permanece com `level_status=missing` e valores vazios, sem substituir por zero.
 
@@ -159,6 +198,12 @@ terminou; seus volumes são os previstos, nunca os reais futuros. A informação
 disponível fica congelada em `as_of`. Etapas intermediárias podem exigir
 histórico anterior à janela inicialmente selecionada; se não houver a
 quantidade necessária de ciclos fechados, o executor informa o erro.
+
+No padrão até setor, o histórico recursivo contém apenas nós de região,
+gerência e setor. Não são fabricadas previsões por cidade. As características
+de composição das cidades de um setor são mantidas no último estado conhecido
+dos ciclos fechados de treino; atividade e concentração entre setores e
+gerências são atualizadas a partir dos volumes previstos de seus filhos.
 
 ## 3. Configure o corte do histórico
 
@@ -191,7 +236,7 @@ Na pasta definida por `paths.run_dir`, serão gravados:
 
 | Arquivo | Conteúdo |
 | --- | --- |
-| `level_predictions.csv` | Total previsto por cenário–setor–estado–cidade–ciclo |
+| `level_predictions.csv` | Total previsto por cenário–setor–ciclo; cidade somente em `target_level: city` |
 | `shape_predictions.csv` | Participações por cenário–setor–ciclo–dia |
 | `daily_predictions.csv` | Resultado final, incluindo abertura, data, dia relativo, level e share |
 | `config_snapshot.yaml` | Configuração utilizada |
@@ -200,7 +245,8 @@ Na pasta definida por `paths.run_dir`, serão gravados:
 
 Cada execução exige uma pasta nova, para não sobrescrever resultados.
 Verifique o status e a contagem `n_missing_levels` no manifest. O pipeline
-verifica shares não negativos somando 1 e conservação do level por cidade.
+verifica shares não negativos somando 1 e conservação do level por setor
+(ou por cidade na modalidade opcional).
 Os dashboards existentes de level e shape continuam voltados a seus próprios
 backtests; este novo formato não é carregado automaticamente por eles.
 
@@ -235,7 +281,8 @@ Arquivos específicos da validação:
 | --- | --- |
 | `daily_validation.csv` | Previsto e real por cenário observado–setor–estado–cidade–ciclo–dia |
 | `validation_metrics.csv` | Métricas gerais e por ciclo |
-| `validation_by_city.csv` | Métricas por setor–estado–cidade–ciclo |
+| `validation_by_sector.csv` | Métricas por setor–ciclo no padrão até setor |
+| `validation_by_city.csv` | Métricas por setor–estado–cidade–ciclo, somente em `target_level: city` |
 | `validation_windows.csv` | Janelas reconstruídas, etapas intermediárias e datas de corte |
 
 Também são salvos o YAML e o manifest. O MAE diário em itens é a referência
@@ -244,6 +291,9 @@ O sinal do erro é previsto menos real. As métricas são calculadas sobre os
 pontos com previsão disponível: sempre leia também `n_unpredicted_rows`,
 `unpredicted_actual_items` e `actual_volume_coverage`. Não compare métricas
 com coberturas diferentes sem considerar a demanda que ficou de fora.
+No padrão por setor, os itens reais de todas as cidades são somados por
+setor–ciclo–dia **antes** de calcular MAE, WMAPE e Bias. O arquivo de validação
+não usa cidades fictícias nem repete o total do setor para cada cidade.
 
 ## Código e fluxo
 

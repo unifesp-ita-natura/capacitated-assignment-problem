@@ -5,7 +5,7 @@ validation_cycles: ["202612"]
 
 level:
   model: hierarchical
-  city_grouping: sector  # management para o preset gerência-cidade
+  target_level: sector  # região -> gerência -> setor
 
 shape:
   name: sector_10_bins
@@ -14,4 +14,4 @@ shape:
 
 paths:
   base_csv: data/base_tratada_v2.csv
-  run_dir: experiments/forecast_combined/outputs/validation_v02
+  run_dir: experiments/forecast_combined/outputs/sector_validation_v01

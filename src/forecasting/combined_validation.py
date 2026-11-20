@@ -1,4 +1,4 @@
-"""Replay a fixed level-shape configuration and measure held-out city-day demand errors."""
+"""Replay fixed level-shape forecasts and measure errors at the chosen sector or city grain."""
 
 from __future__ import annotations
 
@@ -11,10 +11,9 @@ from src.config.schema import CombinedLevelParams
 from src.forecasting.combined import forecast_combined
 from src.forecasting.combined_inputs import prepare_histories
 from src.forecasting.dataset import cycle_calendar
+from src.forecasting.hierarchy_config import forecast_entity_keys
 from src.forecasting.metrics import bias, bias_pct, mae, rmse, wmape
 from src.forecasting.shape_evaluation import ShapeCandidate
-
-ACTUAL_KEYS = ["scenario_id", "cd_setor", "estado", "cidade", "CICLOS", "date"]
 
 
 class ValidationResult(NamedTuple):
@@ -52,10 +51,10 @@ def _replay_windows(raw, calendar, target, history):
     return windows[windows["cd_setor"].isin(known)].copy(), windows[windows["emit"]].copy()
 
 
-def _actual_days(raw: pd.DataFrame, windows: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate actual demand at city-day resolution for the observed target scenario."""
+def _actual_days(raw: pd.DataFrame, windows: pd.DataFrame, entity_keys: list[str]) -> pd.DataFrame:
+    """Aggregate actual demand at the forecast grain before calculating errors."""
     actual = (
-        raw.groupby(["cd_setor", "estado", "cidade", "CICLOS", "data_pedido"], as_index=False)
+        raw.groupby([*entity_keys, "CICLOS", "data_pedido"], as_index=False)
         .agg(actual=("total_itens_mascarado", "sum"))
         .rename(columns={"data_pedido": "date"})
     )
@@ -66,10 +65,13 @@ def _actual_days(raw: pd.DataFrame, windows: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _compare(daily: pd.DataFrame, actual: pd.DataFrame, target: str, as_of) -> pd.DataFrame:
+def _compare(
+    daily: pd.DataFrame, actual: pd.DataFrame, target: str, as_of, entity_keys
+) -> pd.DataFrame:
     """Preserve missing predictions and treat forecasted days without orders as actual zero."""
     actual = actual.rename(columns={"window_start": "actual_window_start"})
-    compared = daily.merge(actual, on=ACTUAL_KEYS, how="outer", validate="one_to_one")
+    keys = ["scenario_id", *entity_keys, "CICLOS", "date"]
+    compared = daily.merge(actual, on=keys, how="outer", validate="one_to_one")
     compared["actual"] = compared["actual"].fillna(0)
     compared["window_start"] = compared["window_start"].fillna(compared["actual_window_start"])
     compared["relative_day"] = (compared["date"] - compared["window_start"]).dt.days + 1
@@ -94,7 +96,7 @@ def _metrics(rows: pd.DataFrame) -> dict:
 
 
 def _point_metrics(covered: pd.DataFrame) -> dict:
-    """Leave accuracy undefined for wholly uncovered cities instead of averaging empty arrays."""
+    """Leave accuracy undefined for wholly uncovered entities instead of averaging empty arrays."""
     functions = {"mae": mae, "rmse": rmse, "wmape": wmape, "bias": bias, "bias_pct": bias_pct}
     if covered.empty:
         return dict.fromkeys(functions, np.nan)
@@ -123,7 +125,9 @@ def _validate_cycle(raw, calendar, target, history_cycles, level, shape):
     if windows.empty:
         raise ValueError(f"no sectors with a complete known forecast path for {target}")
     result = forecast_combined(raw, windows, as_of, history_cycles, level, shape)
-    compared = _compare(result.daily, _actual_days(raw, actual_windows), target, as_of)
+    entity_keys = forecast_entity_keys(level)
+    actual = _actual_days(raw, actual_windows, entity_keys)
+    compared = _compare(result.daily, actual, target, as_of, entity_keys)
     compared["training_cycles"] = ",".join(result.training_cycles)
     return compared, windows.assign(as_of=as_of)
 
@@ -163,7 +167,12 @@ def _distinct_cycles(cycles: list[str]) -> None:
 
 def summarize_cities(rows: pd.DataFrame) -> pd.DataFrame:
     """Expose city-cycle errors without cancellation between cities."""
-    keys = ["target_cycle", "cd_setor", "estado", "cidade"]
+    return summarize_entities(rows, ["cd_setor", "estado", "cidade"])
+
+
+def summarize_entities(rows: pd.DataFrame, entity_keys: list[str]) -> pd.DataFrame:
+    """Expose cycle errors at the same granularity used by the production forecast."""
+    keys = ["target_cycle", *entity_keys]
     return pd.DataFrame(
         [
             dict(zip(keys, identity, strict=True), **_metrics(group))

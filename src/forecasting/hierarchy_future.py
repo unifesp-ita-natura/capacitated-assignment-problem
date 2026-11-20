@@ -1,5 +1,6 @@
-"""Forecast chosen hierarchy presets and preserve sector-city outputs for daily shapes."""
+"""Forecast sector-cycle hierarchy totals or optional city totals for daily shapes."""
 
+import numpy as np
 import pandas as pd
 
 from src.forecasting.hierarchy import forecast_distribution
@@ -28,6 +29,8 @@ def profile_settings(params: HierarchyForecastParams, history_cycles: int) -> Hi
     levels = ["region", "management", "city"]
     if params.city_grouping == "sector":
         levels = ["region", "management", "sector", "city"]
+    if params.target_level == "sector":
+        levels = levels[:-1]
     return HierarchySettings(
         levels=levels,
         city_grouping=params.city_grouping,
@@ -87,12 +90,9 @@ def _predict_cycle(history, query, config):
     return result
 
 
-def forecast_hierarchical_path(history, queries, params, history_cycles):
+def _forecast_city_path(history, queries, params, history_cycles):
     """Advance scenarios with predicted volumes only; never append actual future demand."""
     config = profile_settings(params, history_cycles)
-    missing = sorted(set(PANEL_COLUMNS) - set(history.columns))
-    if missing:
-        raise ValueError(f"missing columns in history: {missing}")
     panel = history[PANEL_COLUMNS].copy()
     queries = _organization(panel, queries)
     results = []
@@ -103,3 +103,68 @@ def forecast_hierarchical_path(history, queries, params, history_cycles):
         projected = result.assign(items=result.level_pred, closing_date=result.window_end.max())
         panel = pd.concat([panel, projected[PANEL_COLUMNS]], ignore_index=True)
     return pd.concat(results, ignore_index=True)
+
+
+def _sector_output(query, values):
+    """Return one level row per planned sector-cycle, without city placeholders."""
+    result = query.drop(columns=["serie", "estado", "cidade"]).drop_duplicates("cd_setor").copy()
+    result["serie"] = result.cd_setor
+    result["level_node"] = node_ids(result, "sector")
+    result["level_pred"] = result.level_node.map(values)
+    return result.assign(level_granularity="sector")
+
+
+def _projected_structure(target, predicted, training, closing):
+    """Use predicted child volumes and carry the last known city composition at sector leaves."""
+    projected = target.assign(items=target.node.map(predicted), closing_date=closing)
+    children = projected.assign(active=projected["items"].gt(0)).groupby("parent")
+    totals = children.agg(active=("active", "sum"), largest=("items", "max"))
+    previous = (
+        training.sort_values("opening_date").drop_duplicates("node", keep="last").set_index("node")
+    )
+    leaf = projected.level.eq("sector")
+    active = projected.node.map(totals.active).where(
+        ~leaf, projected.node.map(previous.active_children)
+    )
+    largest = projected.node.map(totals.largest) / projected["items"].replace(0, np.nan)
+    projected["active_children"] = np.minimum(active.fillna(0), projected.n_children)
+    projected["largest_share"] = largest.where(
+        ~leaf, projected.node.map(previous.largest_share)
+    ).fillna(0)
+    return projected
+
+
+def _forecast_sector_path(history, queries, params, history_cycles):
+    """Fit only region, management and sector nodes; recursive history never uses city forecasts."""
+    config = profile_settings(params, history_cycles)
+    queries = _organization(history, queries)
+    calendar = history.groupby("CICLOS", as_index=False).agg(
+        opening_date=("opening_date", "min"), closing_date=("closing_date", "max")
+    )
+    selected = history[history.cd_setor.isin(queries.cd_setor)]
+    nodes = aggregate_nodes(selected, config.levels)
+    results = []
+    for cycle, query in queries.sort_values("opening_date").groupby("CICLOS", sort=False):
+        cycles = _closed_training(calendar, query.opening_date.min(), history_cycles).CICLOS
+        training = nodes[nodes.CICLOS.isin(cycles)]
+        target = aggregate_nodes(query.assign(items=0.0, closing_date=pd.NaT), config.levels)
+        predicted = forecast_distribution(training, target, config)
+        results.append(_sector_output(query, predicted))
+        closing = query.window_end.max()
+        nodes = pd.concat(
+            [nodes, _projected_structure(target, predicted, training, closing)], ignore_index=True
+        )
+        step = pd.DataFrame(
+            [dict(CICLOS=cycle, opening_date=query.opening_date.min(), closing_date=closing)]
+        )
+        calendar = pd.concat([calendar, step], ignore_index=True)
+    return pd.concat(results, ignore_index=True)
+
+
+def forecast_hierarchical_path(history, queries, params, history_cycles):
+    """Dispatch the selected output level after validating required historical inputs."""
+    missing = sorted(set(PANEL_COLUMNS) - set(history.columns))
+    if missing:
+        raise ValueError(f"missing columns in history: {missing}")
+    forecasters = {"sector": _forecast_sector_path, "city": _forecast_city_path}
+    return forecasters[params.target_level](history, queries, params, history_cycles)
